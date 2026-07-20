@@ -105,7 +105,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "t2f"
 version = "0.1.0"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 dependencies = ["numpy>=1.26", "pyyaml>=6", "psutil>=5.9"]
 
 [project.optional-dependencies]
@@ -133,12 +133,12 @@ Create empty `tests/__init__.py`. `README.md`:
 Deterministic, non-LLM Chinese vehicle-control router + eval harness.
 
 ## Setup
-python -m venv .venv && . .venv/bin/activate
-pip install -e ".[dev]"          # core; add ".[dev,model]" for the real embedder
+# Core deps (numpy, pyyaml, psutil, pytest) are required. This dev box already has them on
+# the system interpreter. For the real embedder also install: pip install "sentence-transformers".
 
 ## Test
-pytest -q                        # core (no network)
-pytest -m model -q               # model-backed tests
+python3 -m pytest -q             # core (no network); marker '-m "not model"' is applied via pyproject
+python3 -m pytest -m model -q    # model-backed tests (needs sentence-transformers + network)
 
 ## Eval
 python -m eval.run_eval --arm C --dataset data/eval/gold.jsonl
@@ -146,7 +146,9 @@ python -m eval.run_eval --arm C --dataset data/eval/gold.jsonl
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `pip install -e ".[dev]" && pytest -q`
+Run: `python3 -m pytest -q` (from repo root — no editable install needed; pytest's prepend
+import mode puts the repo root on `sys.path` so `t2f`/`eval` import directly. This box's Python
+is externally-managed with `ensurepip` stripped, so do **not** run `pip install`.)
 Expected: PASS (1 test)
 
 - [ ] **Step 5: Commit**
