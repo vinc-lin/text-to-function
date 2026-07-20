@@ -1,0 +1,152 @@
+domain: display
+functions:
+  - name: set_screen_brightness
+    description: 设置中控屏幕亮度
+    params:
+      - {name: percent, type: integer, required: true, minimum: 0, maximum: 100, unit: percent, description: 屏幕亮度}
+    aliases: [屏幕亮度, 中控亮度, 屏幕明暗, 调屏幕亮度, 显示亮度]
+    utterances:
+      - 屏幕亮度调到50%
+      - 屏幕暗一点
+      - 把中控屏调亮
+      - 屏幕亮度设成百分之三十
+      - 屏幕亮度开到最大
+      - 中控屏太亮了，调低点
+      - 屏幕调到80%
+      - 屏幕亮度减小
+    hard_negatives:
+      - 氛围灯亮度调到50%
+      - 仪表亮度调低
+    response_template: "已将屏幕亮度调整到{percent}%。"
+
+  - name: set_display_mode
+    description: 切换屏幕显示模式，如日间、夜间、自动
+    params:
+      - {name: mode, type: enum, required: true, enum: [day, night, auto], description: 显示模式}
+    aliases: [显示模式, 日夜模式, 夜间模式, 日间模式, 屏幕模式]
+    utterances:
+      - 切换到夜间模式
+      - 打开日间模式
+      - 屏幕调成自动模式
+      - 换成夜间显示
+      - 显示模式设成自动
+      - 晚上了，用夜间模式
+      - 切到日间模式
+      - 屏幕模式改成夜间
+    hard_negatives:
+      - 屏幕亮度调到50%
+      - 打开勿扰模式
+    response_template: "已切换屏幕显示模式。"
+
+  - name: turn_off_screen
+    description: 关闭或点亮中控屏幕
+    params:
+      - {name: is_off, type: boolean, required: true, description: 息屏为true，点亮为false}
+    aliases: [息屏, 熄屏, 关屏幕, 屏幕关闭, 点亮屏幕]
+    utterances:
+      - 息屏
+      - 把屏幕关了
+      - 熄屏
+      - 屏幕关闭
+      - 不看屏幕了，息屏
+      - 点亮屏幕
+      - 关掉中控屏
+      - 屏幕先熄了
+    hard_negatives:
+      - 屏幕亮度调低
+      - 截个屏
+    response_template: "已为您调整屏幕显示状态。"
+
+  - name: set_dashboard_brightness
+    description: 设置仪表盘亮度
+    params:
+      - {name: percent, type: integer, required: true, minimum: 0, maximum: 100, unit: percent, description: 仪表亮度}
+    aliases: [仪表亮度, 仪表盘亮度, 仪表明暗, 调仪表亮度, 仪表屏亮度]
+    utterances:
+      - 仪表亮度调低
+      - 仪表盘调亮一点
+      - 把仪表亮度设成50%
+      - 仪表亮度开到最大
+      - 仪表盘太暗了，调亮
+      - 仪表亮度调到百分之四十
+      - 仪表盘亮度减小
+      - 仪表调到70%
+    hard_negatives:
+      - 屏幕亮度调到50%
+      - 氛围灯亮度调低
+    response_template: "已将仪表盘亮度调整到{percent}%。"
+
+  - name: set_hud
+    description: 打开或关闭抬头显示HUD
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [抬头显示, HUD, 投影显示, 挡风投影, 抬显]
+    utterances:
+      - 打开抬头显示
+      - 开启HUD
+      - 把抬头显示关了
+      - 关闭抬头显示
+      - 投影显示打开
+      - 挡风玻璃投影开一下
+      - 取消HUD
+      - 抬显打开
+    hard_negatives:
+      - 屏幕亮度调到50%
+      - 打开实时路况
+    response_template: "已为您调整抬头显示状态。"
+
+  - name: take_screenshot
+    description: 对当前屏幕进行截图
+    params: []
+    aliases: [截屏, 截图, 屏幕截图, 抓屏, 保存截图]
+    utterances:
+      - 截个屏
+      - 截图
+      - 把当前屏幕截下来
+      - 屏幕截图
+      - 抓个屏
+      - 保存一张截图
+      - 帮我截屏
+      - 截一下屏幕
+    hard_negatives:
+      - 息屏
+      - 打开抬头显示
+    response_template: "已为您截屏。"
+
+  - name: set_theme
+    description: 切换车机界面主题或壁纸
+    params:
+      - {name: theme, type: string, required: true, description: 主题或壁纸名称}
+    aliases: [主题, 壁纸, 换主题, 界面主题, 换壁纸]
+    utterances:
+      - 换成深色主题
+      - 把壁纸换成星空
+      - 切换界面主题
+      - 用简约主题
+      - 换个壁纸
+      - 主题改成科技风
+      - 桌面壁纸换一下
+      - 界面换成蓝色主题
+    hard_negatives:
+      - 切换到夜间模式
+      - 屏幕亮度调到50%
+    response_template: "已为您切换主题{theme}。"
+
+  - name: set_do_not_disturb
+    description: 打开或关闭勿扰模式
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [勿扰模式, 免打扰, 勿扰, 静默模式, 免打扰模式]
+    utterances:
+      - 打开勿扰模式
+      - 开启免打扰
+      - 别让消息打扰我
+      - 关闭勿扰模式
+      - 把勿扰模式开一下
+      - 静默模式打开
+      - 取消免打扰
+      - 勿扰关掉
+    hard_negatives:
+      - 静音
+      - 切换到夜间模式
+    response_template: "已为您调整勿扰模式状态。"

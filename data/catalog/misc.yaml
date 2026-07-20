@@ -1,0 +1,155 @@
+domain: misc
+functions:
+  - name: set_wiper_speed
+    description: 设置雨刮档位
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 4, unit: level, description: 雨刮档位，0为关闭}
+    aliases: [雨刮, 雨刷, 刮水器, 雨刮档位, 雨刷速度]
+    utterances:
+      - 打开雨刮
+      - 雨刮开到二挡
+      - 雨大了，雨刮开快点
+      - 雨刷调到三档
+      - 关闭雨刮
+      - 雨小了，雨刮慢一点
+      - 雨刮开到最大
+      - 把雨刷关掉
+    hard_negatives:
+      - 打开自动雨刮
+      - 喷点玻璃水
+    response_template: "已将雨刮设置为{level}档。"
+
+  - name: set_rain_sensing_wiper
+    description: 打开或关闭雨量感应自动雨刮
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [自动雨刮, 感应雨刮, 雨量感应, 自动雨刷, 智能雨刮]
+    utterances:
+      - 打开自动雨刮
+      - 开启雨量感应
+      - 雨刮设成自动
+      - 关闭自动雨刮
+      - 用感应雨刮就行
+      - 把智能雨刮打开
+      - 取消自动雨刮
+      - 自动雨刷开一下
+    hard_negatives:
+      - 雨刮开到二挡
+      - 喷点玻璃水
+    response_template: "已为您调整自动雨刮状态。"
+
+  - name: spray_washer
+    description: 喷洒玻璃水清洗挡风玻璃
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开始喷水为true}
+    aliases: [玻璃水, 喷水, 洗玻璃, 喷玻璃水, 清洗玻璃]
+    utterances:
+      - 喷点玻璃水
+      - 玻璃脏了，喷水洗一下
+      - 喷玻璃水
+      - 清洗一下挡风玻璃
+      - 来点玻璃水
+      - 洗洗前挡玻璃
+      - 喷水刮一下
+      - 挡风玻璃有虫子，喷玻璃水
+    hard_negatives:
+      - 雨刮开到二挡
+      - 打开前挡除雾
+    response_template: "已为您喷洒玻璃水。"
+
+  - name: fold_mirror
+    description: 折叠或展开后视镜，可指定位置
+    params:
+      - {name: enabled, type: boolean, required: true, description: 折叠为true，展开为false}
+      - {name: position, type: enum, enum: [driver, passenger, all], description: 后视镜位置}
+    aliases: [后视镜折叠, 收后视镜, 折叠后视镜, 倒车镜折叠, 展开后视镜]
+    utterances:
+      - 折叠后视镜
+      - 把后视镜收起来
+      - 展开后视镜
+      - 主驾后视镜折叠
+      - 副驾后视镜收一下
+      - 两边后视镜都折起来
+      - 后视镜打开
+      - 停车了，收起后视镜
+    hard_negatives:
+      - 后视镜往上调
+      - 打开后视镜加热
+    response_template: "已为您调整{position}后视镜折叠状态。"
+
+  - name: adjust_mirror
+    description: 调整后视镜角度，可指定位置
+    params:
+      - {name: direction, type: enum, required: true, enum: [up, down, left, right], description: 调整方向}
+      - {name: position, type: enum, enum: [driver, passenger], description: 后视镜位置}
+    aliases: [后视镜调节, 调后视镜, 倒车镜角度, 后视镜方向, 镜子角度]
+    utterances:
+      - 后视镜往上调
+      - 主驾后视镜往下一点
+      - 副驾后视镜往左偏
+      - 后视镜往右调
+      - 看不到后轮，后视镜往下
+      - 把左后视镜往上调
+      - 后视镜角度往左
+      - 右后视镜往下调一点
+    hard_negatives:
+      - 折叠后视镜
+      - 座椅升高一点
+    response_template: "已调整{position}后视镜角度。"
+
+  - name: set_mirror_heating
+    description: 打开或关闭后视镜加热
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [后视镜加热, 倒车镜加热, 后视镜除雾, 镜子加热, 加热后视镜]
+    utterances:
+      - 打开后视镜加热
+      - 后视镜起雾了，除个雾
+      - 开启倒车镜加热
+      - 关闭后视镜加热
+      - 把后视镜加热开一下
+      - 后视镜除雾打开
+      - 取消后视镜加热
+      - 镜子模糊，开加热
+    hard_negatives:
+      - 折叠后视镜
+      - 打开后挡除霜
+    response_template: "已为您调整后视镜加热状态。"
+
+  - name: set_auto_hold
+    description: 打开或关闭自动驻车功能
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [自动驻车, AUTOHOLD, 自动刹车保持, 驻车保持, 自动驻停]
+    utterances:
+      - 打开自动驻车
+      - 开启AUTOHOLD
+      - 自动驻车功能打开
+      - 关闭自动驻车
+      - 把自动驻车开一下
+      - 停车老溜车，开自动驻车
+      - 取消自动驻车
+      - 自动驻停关掉
+    hard_negatives:
+      - 打开倒车雷达
+      - 打开电子手刹
+    response_template: "已为您调整自动驻车状态。"
+
+  - name: set_parking_sensor
+    description: 打开或关闭倒车雷达
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [倒车雷达, 泊车雷达, 雷达, 倒车提示音, 障碍提示]
+    utterances:
+      - 打开倒车雷达
+      - 关闭倒车雷达
+      - 倒车雷达开一下
+      - 泊车雷达打开
+      - 把倒车提示音关了
+      - 倒车雷达老响，先关掉
+      - 开启障碍提示
+      - 倒车雷达关闭
+    hard_negatives:
+      - 打开自动驻车
+      - 打开行车记录仪
+    response_template: "已为您调整倒车雷达状态。"

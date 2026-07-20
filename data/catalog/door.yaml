@@ -1,0 +1,154 @@
+domain: door
+functions:
+  - name: lock_doors
+    description: 锁闭车门，可指定位置
+    params:
+      - {name: position, type: enum, enum: [driver, passenger, all], description: 车门位置}
+    aliases: [锁车, 锁门, 上锁, 车门上锁, 落锁, 中控锁]
+    utterances:
+      - 锁车门
+      - 把车锁上
+      - 全车落锁
+      - 中控锁上
+      - 主驾车门上锁
+      - 帮我锁一下车
+      - 车门锁起来
+      - 上锁
+    hard_negatives:
+      - 解锁车门
+      - 打开后备箱
+    response_template: "已为您锁闭{position}车门。"
+
+  - name: unlock_doors
+    description: 解锁车门，可指定位置
+    params:
+      - {name: position, type: enum, enum: [driver, passenger, all], description: 车门位置}
+    aliases: [解锁, 开锁, 车门解锁, 解除车锁, 开中控锁]
+    utterances:
+      - 解锁车门
+      - 把车门解锁
+      - 全车解锁
+      - 中控锁打开
+      - 主驾车门开锁
+      - 帮我解个锁
+      - 车门解开
+      - 解锁
+    hard_negatives:
+      - 锁车门
+      - 打开车门
+    response_template: "已为您解锁{position}车门。"
+
+  - name: open_trunk
+    description: 打开或关闭后备箱
+    params:
+      - {name: is_open, type: boolean, required: true, description: 打开为true，关闭为false}
+    aliases: [后备箱, 尾门, 行李箱, 开后备箱, 关后备箱, 电动尾门]
+    utterances:
+      - 打开后备箱
+      - 把后备箱关上
+      - 尾门打开
+      - 后备箱开一下
+      - 关闭后备箱
+      - 手上拿着东西，开后备箱
+      - 行李箱打开
+      - 后备箱关掉
+    hard_negatives:
+      - 打开天窗
+      - 打开充电口
+    response_template: "已为您调整后备箱状态。"
+
+  - name: open_charge_port
+    description: 打开或关闭充电口盖
+    params:
+      - {name: is_open, type: boolean, required: true, description: 打开为true，关闭为false}
+    aliases: [充电口, 充电盖, 充电口盖, 充电插口, 开充电口]
+    utterances:
+      - 打开充电口
+      - 充电口盖打开
+      - 要充电了，开充电口
+      - 关闭充电口
+      - 充电口开一下
+      - 把充电盖打开
+      - 充电口盖关上
+      - 开个充电口
+    hard_negatives:
+      - 打开油箱盖
+      - 打开后备箱
+    response_template: "已为您调整充电口盖状态。"
+
+  - name: open_fuel_cap
+    description: 打开油箱盖
+    params:
+      - {name: is_open, type: boolean, required: true, description: 打开为true，关闭为false}
+    aliases: [油箱盖, 加油口, 油箱口, 开油箱盖, 油盖]
+    utterances:
+      - 打开油箱盖
+      - 加油口打开
+      - 要加油，开油箱盖
+      - 把油箱盖打开
+      - 油箱口开一下
+      - 油盖打开
+      - 关闭油箱盖
+      - 开个油箱盖
+    hard_negatives:
+      - 打开充电口
+      - 打开后备箱
+    response_template: "已为您调整油箱盖状态。"
+
+  - name: set_door_child_lock
+    description: 打开或关闭车门儿童安全锁
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [车门儿童锁, 儿童安全锁, 儿童锁, 后门儿童锁, 安全锁]
+    utterances:
+      - 打开车门儿童锁
+      - 后排有小孩，锁儿童锁
+      - 开启儿童安全锁
+      - 关闭车门儿童锁
+      - 把儿童锁打开
+      - 后门儿童锁锁上
+      - 解除儿童安全锁
+      - 儿童锁开一下
+    hard_negatives:
+      - 打开车窗儿童锁
+      - 锁车门
+    response_template: "已为您调整车门儿童锁状态。"
+
+  - name: open_door
+    description: 打开或关闭电动车门，可指定位置
+    params:
+      - {name: is_open, type: boolean, required: true, description: 打开为true，关闭为false}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 车门位置}
+    aliases: [车门, 开车门, 关车门, 电动车门, 电吸门]
+    utterances:
+      - 打开车门
+      - 副驾车门打开
+      - 后排车门开一下
+      - 关闭车门
+      - 主驾车门打开
+      - 把右后门打开
+      - 帮我开个车门
+      - 车门关上
+    hard_negatives:
+      - 打开后备箱
+      - 解锁车门
+    response_template: "已为您调整{position}车门状态。"
+
+  - name: set_auto_lock
+    description: 打开或关闭行车自动落锁功能
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [自动落锁, 行车落锁, 自动上锁, 起步落锁, 自动锁车]
+    utterances:
+      - 打开行车自动落锁
+      - 开启自动上锁
+      - 起步自动锁车打开
+      - 关闭自动落锁
+      - 把自动锁车功能开一下
+      - 行车落锁设置打开
+      - 取消自动落锁
+      - 自动锁车关掉
+    hard_negatives:
+      - 锁车门
+      - 打开车门儿童锁
+    response_template: "已为您调整行车自动落锁状态。"

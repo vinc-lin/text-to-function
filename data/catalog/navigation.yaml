@@ -1,0 +1,150 @@
+domain: navigation
+functions:
+  - name: navigate_to
+    description: 导航到指定目的地
+    params:
+      - {name: destination, type: string, required: true, description: 目的地名称或地址}
+    aliases: [导航, 导航到, 去, 带我去, 设置目的地, 走导航]
+    utterances:
+      - 导航到北京南站
+      - 带我去人民广场
+      - 去最近的星巴克
+      - 导航去机场
+      - 我要去朝阳大悦城
+      - 设置目的地为西湖
+      - 走导航到公司楼下
+      - 帮我导航到虹桥火车站
+    hard_negatives:
+      - 导航回家
+      - 取消导航
+    response_template: "已为您规划前往{destination}的路线。"
+
+  - name: navigate_home
+    description: 导航回家
+    params: []
+    aliases: [回家, 导航回家, 走导航回家, 回家导航, 带我回家]
+    utterances:
+      - 导航回家
+      - 带我回家
+      - 走导航回家
+      - 回家
+      - 现在回家怎么走
+      - 规划回家的路线
+      - 我要回家
+      - 导航到家
+    hard_negatives:
+      - 导航去公司
+      - 导航到北京南站
+    response_template: "已为您规划回家路线。"
+
+  - name: navigate_to_work
+    description: 导航到公司
+    params: []
+    aliases: [去公司, 导航去公司, 上班导航, 去单位, 导航到公司]
+    utterances:
+      - 导航去公司
+      - 带我去上班
+      - 走导航到单位
+      - 去公司
+      - 现在去公司怎么走
+      - 规划去公司的路线
+      - 我要去上班
+      - 导航到公司
+    hard_negatives:
+      - 导航回家
+      - 导航到北京南站
+    response_template: "已为您规划前往公司的路线。"
+
+  - name: cancel_navigation
+    description: 取消当前导航
+    params: []
+    aliases: [取消导航, 结束导航, 退出导航, 关闭导航, 不导航了]
+    utterances:
+      - 取消导航
+      - 结束导航
+      - 退出导航
+      - 不导航了
+      - 把导航关了
+      - 停止导航
+      - 导航取消
+      - 不用导航了
+    hard_negatives:
+      - 导航回家
+      - 导航到北京南站
+    response_template: "已取消导航。"
+
+  - name: find_nearby
+    description: 搜索附近的地点，如加油站、餐厅、停车场
+    params:
+      - {name: category, type: string, required: true, description: 地点类别}
+    aliases: [附近, 附近的, 找附近, 周边, 查找附近]
+    utterances:
+      - 附近有什么加油站
+      - 找找附近的餐厅
+      - 附近的停车场在哪
+      - 搜一下周边的充电站
+      - 附近有厕所吗
+      - 找个最近的超市
+      - 周边的咖啡店
+      - 附近哪里可以吃饭
+    hard_negatives:
+      - 导航到北京南站
+      - 添加途经点
+    response_template: "已为您查找附近的{category}。"
+
+  - name: add_waypoint
+    description: 在当前路线中添加途经点
+    params:
+      - {name: waypoint, type: string, required: true, description: 途经点名称或地址}
+    aliases: [途经点, 加个途经, 路上经过, 中途去, 顺路]
+    utterances:
+      - 添加途经点加油站
+      - 路上先去趟超市
+      - 加个途经点到公司
+      - 中途经过我妈家
+      - 顺路去一下药店
+      - 在路线里加个途经点
+      - 先绕去银行
+      - 途中经过学校
+    hard_negatives:
+      - 导航到北京南站
+      - 附近有什么加油站
+    response_template: "已在路线中添加途经点{waypoint}。"
+
+  - name: set_route_preference
+    description: 设置路线偏好，如最快、最短、避开高速、避开收费
+    params:
+      - {name: mode, type: enum, required: true, enum: [fastest, shortest, avoid_highway, avoid_toll], description: 路线偏好}
+    aliases: [路线偏好, 路线设置, 避开高速, 躲避拥堵, 走法]
+    utterances:
+      - 走最快的路线
+      - 选最短路线
+      - 避开高速
+      - 不走收费的路
+      - 路线偏好设成躲避拥堵
+      - 尽量别上高速
+      - 走最省时间的路
+      - 避开收费站
+    hard_negatives:
+      - 打开实时路况
+      - 导航回家
+    response_template: "已切换路线偏好。"
+
+  - name: set_traffic_display
+    description: 打开或关闭实时路况显示
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [路况, 实时路况, 交通路况, 路况显示, 拥堵显示]
+    utterances:
+      - 打开实时路况
+      - 关闭路况显示
+      - 看看现在的路况
+      - 把交通路况打开
+      - 显示实时路况
+      - 路况信息开一下
+      - 取消路况显示
+      - 别显示路况了
+    hard_negatives:
+      - 走最快的路线
+      - 导航回家
+    response_template: "已为您调整实时路况显示状态。"

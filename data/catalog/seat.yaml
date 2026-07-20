@@ -1,0 +1,240 @@
+domain: seat
+functions:
+  - name: set_seat_heating
+    description: 设置座椅加热档位，可指定座椅位置
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 3, unit: level, description: 加热档位，0为关闭}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 座椅位置}
+    aliases: [座椅加热, 座椅加温, 屁股加热, 加热座椅, 座椅暖风, 座垫加热]
+    utterances:
+      - 打开座椅加热
+      - 座椅加热开到二挡
+      - 主驾座椅加热开到最大
+      - 副驾座椅加热调到一档
+      - 后排座椅加热打开
+      - 屁股有点凉，座椅加热
+      - 关闭座椅加热
+      - 全车座椅加热开到三挡
+    hard_negatives:
+      - 座椅通风开到二挡
+      - 把温度调到25度
+    response_template: "已将{position}座椅加热设置为{level}档。"
+
+  - name: set_seat_ventilation
+    description: 设置座椅通风档位，可指定座椅位置
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 3, unit: level, description: 通风档位，0为关闭}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 座椅位置}
+    aliases: [座椅通风, 座椅吹风, 通风座椅, 座垫通风, 座椅散热]
+    utterances:
+      - 打开座椅通风
+      - 座椅通风开到二挡
+      - 主驾座椅通风开到最大
+      - 副驾座椅通风调到一档
+      - 后排座椅通风打开
+      - 天热出汗，座椅通风
+      - 关闭座椅通风
+      - 全车座椅通风开到三挡
+    hard_negatives:
+      - 座椅加热开到二挡
+      - 风速调到三档
+    response_template: "已将{position}座椅通风设置为{level}档。"
+
+  - name: set_seat_massage
+    description: 设置座椅按摩强度，可指定座椅位置
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 5, unit: level, description: 按摩强度，0为关闭}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 座椅位置}
+    aliases: [座椅按摩, 按摩功能, 按摩座椅, 座椅揉背, 靠背按摩]
+    utterances:
+      - 打开座椅按摩
+      - 座椅按摩开到三挡
+      - 主驾按摩开到最大
+      - 副驾座椅按摩来一下
+      - 后排座椅按摩打开
+      - 开车累了，座椅按摩
+      - 关闭座椅按摩
+      - 按摩强度调到二挡
+    hard_negatives:
+      - 座椅加热开到二挡
+      - 腰部支撑往上调
+    response_template: "已将{position}座椅按摩设置为{level}档。"
+
+  - name: move_seat
+    description: 前后移动座椅，可指定座椅位置
+    params:
+      - {name: direction, type: enum, required: true, enum: [front, back], description: 移动方向}
+      - {name: position, type: enum, enum: [driver, passenger], description: 座椅位置}
+    aliases: [座椅前后, 座椅移动, 座椅前移, 座椅后移, 调座椅]
+    utterances:
+      - 座椅往前移
+      - 主驾座椅往后一点
+      - 座椅太靠前了，往后退
+      - 副驾座椅往前挪挪
+      - 把座位往后调
+      - 座椅前移一点
+      - 主驾座椅后移
+      - 够不着踏板，座椅往前
+    hard_negatives:
+      - 靠背往后放倒
+      - 座椅升高一点
+    response_template: "已调整{position}座椅前后位置。"
+
+  - name: adjust_backrest
+    description: 调整座椅靠背角度，可指定座椅位置
+    params:
+      - {name: direction, type: enum, required: true, enum: [recline, upright], description: 靠背方向}
+      - {name: position, type: enum, enum: [driver, passenger, rear], description: 座椅位置}
+    aliases: [靠背, 靠背角度, 椅背, 放倒靠背, 调靠背, 座椅角度]
+    utterances:
+      - 靠背往后放倒
+      - 主驾靠背立起来一点
+      - 副驾靠背放倒
+      - 把椅背调直
+      - 后排靠背往后躺
+      - 靠背角度往后调
+      - 靠背立直
+      - 想休息一下，靠背放倒
+    hard_negatives:
+      - 座椅往前移
+      - 头枕往上升
+    response_template: "已调整{position}座椅靠背角度。"
+
+  - name: adjust_seat_height
+    description: 升高或降低座椅，可指定座椅位置
+    params:
+      - {name: direction, type: enum, required: true, enum: [up, down], description: 升降方向}
+      - {name: position, type: enum, enum: [driver, passenger], description: 座椅位置}
+    aliases: [座椅高低, 座椅升降, 座椅高度, 升座椅, 降座椅]
+    utterances:
+      - 座椅升高一点
+      - 主驾座椅降低
+      - 坐得太低了，座椅往上升
+      - 副驾座椅调高
+      - 把座位降下来
+      - 座椅高度往下调
+      - 座椅升上去
+      - 视野不好，座椅升高
+    hard_negatives:
+      - 座椅往前移
+      - 头枕往上升
+    response_template: "已调整{position}座椅高度。"
+
+  - name: adjust_headrest
+    description: 升高或降低座椅头枕，可指定座椅位置
+    params:
+      - {name: direction, type: enum, required: true, enum: [up, down], description: 升降方向}
+      - {name: position, type: enum, enum: [driver, passenger, rear], description: 座椅位置}
+    aliases: [头枕, 头枕高度, 头枕升降, 调头枕, 靠枕]
+    utterances:
+      - 头枕往上升
+      - 主驾头枕降低一点
+      - 头枕太高了，往下调
+      - 副驾头枕升高
+      - 后排头枕往上
+      - 把头枕降下来
+      - 头枕高度往上调
+      - 头枕顶脖子，往下降
+    hard_negatives:
+      - 靠背往后放倒
+      - 座椅升高一点
+    response_template: "已调整{position}座椅头枕高度。"
+
+  - name: set_lumbar_support
+    description: 调整座椅腰部支撑强度，可指定座椅位置
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 4, unit: level, description: 腰托强度，0为关闭}
+      - {name: position, type: enum, enum: [driver, passenger], description: 座椅位置}
+    aliases: [腰部支撑, 腰托, 腰靠, 腰部支撑调节, 腰撑]
+    utterances:
+      - 腰部支撑往上调
+      - 主驾腰托加大一点
+      - 腰不舒服，腰部支撑开到三挡
+      - 副驾腰托调小
+      - 把腰撑力度加大
+      - 腰部支撑调到二挡
+      - 腰托顶得慌，减小一点
+      - 关闭腰部支撑
+    hard_negatives:
+      - 靠背往后放倒
+      - 座椅按摩开到三挡
+    response_template: "已将{position}座椅腰部支撑设置为{level}档。"
+
+  - name: recall_seat_memory
+    description: 恢复到已保存的座椅记忆位置
+    params:
+      - {name: index, type: integer, required: true, minimum: 1, maximum: 3, description: 记忆位置编号}
+      - {name: position, type: enum, enum: [driver, passenger], description: 座椅位置}
+    aliases: [座椅记忆, 记忆位置, 恢复座椅, 座椅一键调节, 我的座椅]
+    utterances:
+      - 恢复我的座椅记忆
+      - 座椅调到记忆位置一
+      - 主驾座椅恢复记忆二
+      - 用第一组座椅记忆
+      - 副驾座椅调到记忆位置3
+      - 换到二号驾驶员的座椅设置
+      - 座椅回到我的常用位置
+      - 调用座椅记忆一
+    hard_negatives:
+      - 保存当前座椅位置
+      - 座椅往前移
+    response_template: "已恢复{position}座椅记忆位置{index}。"
+
+  - name: save_seat_memory
+    description: 将当前座椅位置保存为记忆位置
+    params:
+      - {name: index, type: integer, required: true, minimum: 1, maximum: 3, description: 记忆位置编号}
+      - {name: position, type: enum, enum: [driver, passenger], description: 座椅位置}
+    aliases: [保存座椅, 座椅记忆保存, 记录座椅, 存座椅位置, 设置座椅记忆]
+    utterances:
+      - 保存当前座椅位置
+      - 把座椅存成记忆一
+      - 主驾座椅记忆保存到二号
+      - 记录一下现在的座椅
+      - 副驾座椅保存成记忆位置3
+      - 把这个坐姿存起来
+      - 存一组座椅记忆
+      - 当前座椅保存为记忆位置一
+    hard_negatives:
+      - 恢复我的座椅记忆
+      - 座椅往前移
+    response_template: "已保存{position}座椅记忆位置{index}。"
+
+  - name: fold_rear_seat
+    description: 放倒或复位后排座椅
+    params:
+      - {name: enabled, type: boolean, required: true, description: 放倒为true，复位为false}
+      - {name: position, type: enum, enum: [rear, left, right], description: 后排座椅位置}
+    aliases: [后排放倒, 放倒座椅, 后排座椅折叠, 座椅放平, 后排靠背放倒]
+    utterances:
+      - 把后排座椅放倒
+      - 后排左边座椅放倒
+      - 后排座椅复位
+      - 要装东西，后排放平
+      - 后排右侧座椅放倒
+      - 把后排座椅立起来
+      - 后排座椅折叠一下
+      - 后排放倒方便放行李
+    hard_negatives:
+      - 靠背往后放倒
+      - 打开后备箱
+    response_template: "已为您调整{position}后排座椅折叠状态。"
+
+  - name: set_easy_entry
+    description: 打开或关闭上下车便捷进出功能，上车时座椅自动后移
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [便捷进出, 迎宾座椅, 上车方便, 座椅自动后移, easy entry]
+    utterances:
+      - 打开便捷进出
+      - 开启上下车方便功能
+      - 上车座椅自动后移打开
+      - 关闭便捷进出
+      - 把迎宾座椅功能打开
+      - 座椅自动后移开一下
+      - 取消便捷进出
+      - 方便上下车的功能打开
+    hard_negatives:
+      - 座椅往前移
+      - 恢复我的座椅记忆
+    response_template: "已为您调整座椅便捷进出功能状态。"

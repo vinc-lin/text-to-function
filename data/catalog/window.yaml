@@ -1,0 +1,155 @@
+domain: window
+functions:
+  - name: open_window
+    description: 打开或关闭车窗，可指定车窗位置
+    params:
+      - {name: is_open, type: boolean, required: true, description: 开启为true，关闭为false}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 车窗位置}
+    aliases: [车窗, 开车窗, 关车窗, 玻璃, 升窗, 降窗]
+    utterances:
+      - 开车窗
+      - 把窗户打开
+      - 关闭车窗
+      - 主驾车窗降下来
+      - 后排车窗打开
+      - 全车玻璃都升上去
+      - 副驾窗户开一半下不用了，关上
+      - 帮我把车窗关一下
+    hard_negatives:
+      - 打开天窗
+      - 打开后备箱
+    response_template: "已为您调整{position}车窗状态。"
+
+  - name: set_window_position
+    description: 将车窗调整到指定开度百分比，可指定车窗位置
+    params:
+      - {name: percent, type: integer, required: true, minimum: 0, maximum: 100, unit: percent, description: 车窗开度}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 车窗位置}
+    aliases: [车窗开度, 窗户开多少, 车窗百分比, 开窗程度]
+    utterances:
+      - 车窗开一半
+      - 主驾车窗开到百分之三十
+      - 把窗户降到50%
+      - 副驾车窗开到20%
+      - 后排车窗开个三分之一
+      - 全车车窗开到百分之十
+      - 车窗留一条缝，开10%
+      - 窗户开到70%
+    hard_negatives:
+      - 天窗开到一半
+      - 开车窗
+    response_template: "已将{position}车窗开度调整到{percent}%。"
+
+  - name: open_sunroof
+    description: 打开或关闭天窗
+    params:
+      - {name: is_open, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [天窗, 开天窗, 关天窗, 全景天窗, 车顶窗]
+    utterances:
+      - 打开天窗
+      - 把天窗关上
+      - 开一下天窗透气
+      - 天窗打开
+      - 关闭天窗
+      - 天气不错，开个天窗
+      - 要下雨了，天窗关掉
+      - 帮我开天窗
+    hard_negatives:
+      - 打开车窗
+      - 打开天窗遮阳帘
+    response_template: "已为您调整天窗状态。"
+
+  - name: set_sunroof_position
+    description: 将天窗调整到指定开度百分比
+    params:
+      - {name: percent, type: integer, required: true, minimum: 0, maximum: 100, unit: percent, description: 天窗开度}
+    aliases: [天窗开度, 天窗开多少, 天窗百分比, 天窗程度]
+    utterances:
+      - 天窗开到一半
+      - 天窗开到百分之三十
+      - 把天窗开到50%
+      - 天窗留个缝，开10%
+      - 天窗开到最大
+      - 天窗开个20%
+      - 天窗调到70%
+      - 天窗开三分之一
+    hard_negatives:
+      - 车窗开到一半
+      - 打开天窗遮阳帘
+    response_template: "已将天窗开度调整到{percent}%。"
+
+  - name: vent_sunroof
+    description: 将天窗调至翘起通风模式
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [天窗通风, 天窗翘起, 通风模式, 天窗透气, 翘起天窗]
+    utterances:
+      - 天窗翘起来通风
+      - 打开天窗通风模式
+      - 天窗翘一下透气
+      - 关闭天窗通风
+      - 让天窗翘起来
+      - 开个天窗通风就行
+      - 天窗透气模式打开
+      - 取消天窗翘起
+    hard_negatives:
+      - 打开天窗
+      - 打开内循环
+    response_template: "已为您调整天窗通风状态。"
+
+  - name: open_sunshade
+    description: 打开或关闭天窗遮阳帘
+    params:
+      - {name: is_open, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [遮阳帘, 天窗遮阳帘, 遮阳板, 天窗窗帘, 遮光帘]
+    utterances:
+      - 打开遮阳帘
+      - 把天窗遮阳帘关上
+      - 太阳晒，遮阳帘拉上
+      - 遮阳帘打开
+      - 关闭天窗遮阳帘
+      - 想看星星，遮阳帘打开
+      - 把遮光帘收起来
+      - 遮阳帘拉开
+    hard_negatives:
+      - 打开天窗
+      - 打开车窗
+    response_template: "已为您调整天窗遮阳帘状态。"
+
+  - name: set_window_child_lock
+    description: 打开或关闭车窗儿童锁
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [车窗儿童锁, 车窗锁定, 儿童车窗锁, 后窗锁, 车窗锁]
+    utterances:
+      - 打开车窗儿童锁
+      - 锁定后排车窗
+      - 后面有小孩，开车窗儿童锁
+      - 关闭车窗儿童锁
+      - 把后排车窗锁上
+      - 车窗儿童锁打开
+      - 解除车窗儿童锁
+      - 别让后排乱开窗，锁上
+    hard_negatives:
+      - 打开车门儿童锁
+      - 打开后排车窗
+    response_template: "已为您调整车窗儿童锁状态。"
+
+  - name: set_rain_close_window
+    description: 打开或关闭雨天自动关窗功能
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [雨天关窗, 自动关窗, 下雨关窗, 雨感关窗]
+    utterances:
+      - 打开雨天自动关窗
+      - 开启下雨自动关窗
+      - 下雨自动关窗功能打开
+      - 关闭雨天自动关窗
+      - 把自动关窗开一下
+      - 雨天关窗设置打开
+      - 取消雨天自动关窗
+      - 下雨天自动升窗打开
+    hard_negatives:
+      - 关闭车窗
+      - 打开内循环
+    response_template: "已为您调整雨天自动关窗状态。"

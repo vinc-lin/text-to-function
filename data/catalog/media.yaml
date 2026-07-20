@@ -1,0 +1,226 @@
+domain: media
+functions:
+  - name: set_volume
+    description: 设置多媒体音量大小
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 40, unit: level, description: 音量档位}
+    aliases: [音量, 声音, 音量大小, 调音量, 声音大小, 播放音量]
+    utterances:
+      - 音量调到三档
+      - 声音大一点
+      - 把音量调到20
+      - 声音太大了，调小点
+      - 音量开到最大
+      - 音量设成15
+      - 声音再响一点
+      - 把声音调到10
+    hard_negatives:
+      - 风速调到三档
+      - 座椅按摩开到三挡
+    response_template: "已将音量调整到{level}。"
+
+  - name: set_mute
+    description: 打开或关闭静音
+    params:
+      - {name: enabled, type: boolean, required: true, description: 静音为true，取消静音为false}
+    aliases: [静音, 取消静音, 闭麦, 关声音, 别出声]
+    utterances:
+      - 静音
+      - 取消静音
+      - 把声音静了
+      - 别出声了
+      - 解除静音
+      - 声音先关一下
+      - 打开静音
+      - 恢复声音
+    hard_negatives:
+      - 音量调到最小
+      - 暂停播放
+    response_template: "已为您调整静音状态。"
+
+  - name: play_music
+    description: 播放音乐，可指定歌曲、歌手或歌单
+    params:
+      - {name: query, type: string, description: 歌曲、歌手或歌单名称}
+    aliases: [放音乐, 播放歌曲, 听歌, 来首歌, 放首歌, 播放音乐]
+    utterances:
+      - 播放音乐
+      - 来首周杰伦的歌
+      - 我想听音乐
+      - 放点音乐听听
+      - 播放稻香
+      - 放一首轻音乐
+      - 听会儿歌
+      - 来点音乐
+    hard_negatives:
+      - 打开收音机
+      - 下一首
+    response_template: "正在为您播放{query}。"
+
+  - name: pause_playback
+    description: 暂停当前媒体播放
+    params: []
+    aliases: [暂停, 暂停播放, 别放了, 停一下, 停止播放]
+    utterances:
+      - 暂停
+      - 暂停播放
+      - 先停一下
+      - 别放了
+      - 音乐暂停
+      - 停止播放
+      - 歌先暂停
+      - 停一下音乐
+    hard_negatives:
+      - 继续播放
+      - 静音
+    response_template: "已暂停播放。"
+
+  - name: resume_playback
+    description: 继续播放已暂停的媒体
+    params: []
+    aliases: [继续播放, 继续, 接着放, 恢复播放, 播放]
+    utterances:
+      - 继续播放
+      - 接着放
+      - 继续
+      - 恢复播放
+      - 接着刚才的歌
+      - 歌继续
+      - 继续听
+      - 播放刚才的
+    hard_negatives:
+      - 暂停播放
+      - 下一首
+    response_template: "已继续播放。"
+
+  - name: next_track
+    description: 切换到下一首歌曲
+    params: []
+    aliases: [下一首, 换一首, 下一曲, 切歌, 换首歌]
+    utterances:
+      - 下一首
+      - 换一首
+      - 切下一首歌
+      - 这首不好听，换一首
+      - 下一曲
+      - 切歌
+      - 播放下一首
+      - 换个歌
+    hard_negatives:
+      - 上一首
+      - 暂停播放
+    response_template: "已切换到下一首。"
+
+  - name: previous_track
+    description: 切换到上一首歌曲
+    params: []
+    aliases: [上一首, 返回上一首, 上一曲, 回到上一首, 前一首]
+    utterances:
+      - 上一首
+      - 返回上一首
+      - 回到刚才那首
+      - 上一曲
+      - 播放上一首
+      - 切上一首歌
+      - 前一首
+      - 再听一遍上一首
+    hard_negatives:
+      - 下一首
+      - 继续播放
+    response_template: "已切换到上一首。"
+
+  - name: set_audio_source
+    description: 切换音频来源，如蓝牙、USB、收音机、AUX、本地音乐
+    params:
+      - {name: source, type: enum, required: true, enum: [bluetooth, usb, radio, aux, local], description: 音源}
+    aliases: [音源, 音源切换, 播放来源, 切换音源, 音频来源]
+    utterances:
+      - 切换到蓝牙音乐
+      - 用USB播放
+      - 切到收音机
+      - 音源换成蓝牙
+      - 播放本地音乐
+      - 切换到AUX
+      - 用手机蓝牙放歌
+      - 音源切到U盘
+    hard_negatives:
+      - 打开收音机
+      - 播放音乐
+    response_template: "已切换音频来源。"
+
+  - name: play_radio
+    description: 打开收音机并可指定电台频率
+    params:
+      - {name: frequency, type: number, minimum: 87, maximum: 108, description: 电台频率}
+      - {name: band, type: enum, enum: [fm, am], description: 波段}
+    aliases: [收音机, 电台, 广播, FM, 调频]
+    utterances:
+      - 打开收音机
+      - 调到FM103.9
+      - 听广播
+      - 收音机调到97.4
+      - 换个电台
+      - 打开调频广播
+      - 听交通广播
+      - 收音机开一下
+    hard_negatives:
+      - 切换到蓝牙音乐
+      - 播放音乐
+    response_template: "正在为您播放{frequency}电台。"
+
+  - name: set_equalizer
+    description: 设置音效均衡器风格
+    params:
+      - {name: mode, type: enum, required: true, enum: [pop, rock, classical, jazz, vocal, standard], description: 音效风格}
+    aliases: [音效, 均衡器, EQ, 音效模式, 声音风格]
+    utterances:
+      - 音效调成摇滚
+      - 切换到流行音效
+      - 用古典音效
+      - 音效改成人声模式
+      - 换成爵士音效
+      - 音效设成标准
+      - 打开摇滚音效
+      - 音效模式切一下
+    hard_negatives:
+      - 音量调到三档
+      - 声场调到主驾
+    response_template: "已切换音效风格。"
+
+  - name: set_sound_field
+    description: 调整车内声场偏向的位置
+    params:
+      - {name: position, type: enum, required: true, enum: [driver, passenger, rear, all], description: 声场位置}
+    aliases: [声场, 音场, 声场位置, 声音偏向, 声场调节]
+    utterances:
+      - 声场调到主驾
+      - 音场偏向副驾
+      - 声场设成全车
+      - 声音往后排偏一点
+      - 声场对着驾驶位
+      - 音场调到中间
+      - 声场偏向前排
+      - 把声场设到副驾
+    hard_negatives:
+      - 音效调成摇滚
+      - 音量调到三档
+    response_template: "已将声场调整到{position}。"
+
+  - name: set_shuffle
+    description: 打开或关闭随机播放
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [随机播放, 随机, 打乱播放, 单曲循环取消, 乱序播放]
+    utterances:
+      - 打开随机播放
+      - 关闭随机播放
+      - 随机放歌
+      - 别随机了，按顺序放
+      - 开启乱序播放
+      - 歌曲随机播放
+      - 取消随机播放
+      - 打乱顺序播放
+    hard_negatives:
+      - 下一首
+      - 继续播放
+    response_template: "已为您调整随机播放状态。"

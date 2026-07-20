@@ -1,0 +1,112 @@
+domain: phone
+functions:
+  - name: make_call
+    description: 拨打电话给指定联系人或号码
+    params:
+      - {name: contact, type: string, required: true, description: 联系人姓名或电话号码}
+    aliases: [打电话, 拨打, 打给, 呼叫, 拨号, 给打电话]
+    utterances:
+      - 打电话给老婆
+      - 拨打张经理
+      - 打给爸爸
+      - 呼叫10086
+      - 给李四打个电话
+      - 打个电话给公司前台
+      - 拨号13800138000
+      - 帮我联系一下王医生
+    hard_negatives:
+      - 接听电话
+      - 发短信给妈妈
+    response_template: "正在为您拨打{contact}。"
+
+  - name: answer_call
+    description: 接听来电
+    params: []
+    aliases: [接听, 接电话, 接一下, 接通, 接起来]
+    utterances:
+      - 接听
+      - 接电话
+      - 接一下
+      - 帮我接通
+      - 电话接起来
+      - 接这个电话
+      - 接听来电
+      - 接了吧
+    hard_negatives:
+      - 挂断电话
+      - 打电话给老婆
+    response_template: "已为您接听来电。"
+
+  - name: reject_call
+    description: 挂断或拒接电话
+    params: []
+    aliases: [挂断, 拒接, 挂电话, 不接, 挂了]
+    utterances:
+      - 挂断
+      - 拒接这个电话
+      - 挂电话
+      - 不接
+      - 帮我挂了
+      - 把电话挂掉
+      - 拒接来电
+      - 挂断电话
+    hard_negatives:
+      - 接听电话
+      - 打电话给老婆
+    response_template: "已为您挂断电话。"
+
+  - name: redial
+    description: 重拨上一个电话
+    params: []
+    aliases: [重拨, 再打一遍, 回拨, 重新拨打, 再拨一次]
+    utterances:
+      - 重拨
+      - 再打一遍
+      - 回拨刚才那个电话
+      - 重新拨打
+      - 再拨一次
+      - 刚才没接通，再打一次
+      - 重拨上一个号码
+      - 再打给他一次
+    hard_negatives:
+      - 打电话给老婆
+      - 接听电话
+    response_template: "正在为您重拨上一个电话。"
+
+  - name: send_message
+    description: 给指定联系人发送短信或消息
+    params:
+      - {name: contact, type: string, required: true, description: 联系人姓名}
+      - {name: content, type: string, description: 消息内容}
+    aliases: [发短信, 发消息, 发微信, 短信给, 发条信息]
+    utterances:
+      - 发短信给妈妈
+      - 给老板发条消息说我快到了
+      - 发微信给同事
+      - 短信告诉老婆晚点回家
+      - 给张三发个信息
+      - 发条短信给客户
+      - 微信发给李四说收到了
+      - 给爸爸发消息
+    hard_negatives:
+      - 打电话给老婆
+      - 读一下短信
+    response_template: "已为您向{contact}发送消息。"
+
+  - name: read_messages
+    description: 朗读未读短信或消息
+    params: []
+    aliases: [读短信, 念短信, 读消息, 读一下短信, 播报短信]
+    utterances:
+      - 读一下短信
+      - 念念未读消息
+      - 有新短信吗，读一下
+      - 播报一下短信
+      - 读消息
+      - 把短信念给我听
+      - 读未读短信
+      - 有没有新消息，读读看
+    hard_negatives:
+      - 发短信给妈妈
+      - 打电话给老婆
+    response_template: "正在为您朗读短信。"

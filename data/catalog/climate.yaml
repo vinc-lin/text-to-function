@@ -1,0 +1,231 @@
+domain: climate
+functions:
+  - name: set_temperature
+    description: 设置空调温度到指定摄氏度，可指定温区
+    params:
+      - {name: temperature, type: number, required: true, minimum: 16, maximum: 32, unit: celsius, description: 目标温度}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 温区}
+    aliases: [空调温度, 温度, 调温度, 制冷温度, 车内温度, 设定温度]
+    utterances:
+      - 把空调调到25度
+      - 温度设成22度
+      - 主驾这边热，调低到20度
+      - 副驾温度调高到26度
+      - 后排太冷了，给我升到24度
+      - 全车温度设定到23度
+      - 帮我把车里调到21度
+      - 有点闷，温度降到19度
+    hard_negatives:
+      - 风速调到三档
+      - 座椅加热开到二挡
+    response_template: "已将{position}温度设置为{temperature}°C。"
+
+  - name: set_fan_speed
+    description: 设置空调风速档位，可指定温区
+    params:
+      - {name: level, type: integer, required: true, minimum: 1, maximum: 7, unit: level, description: 风速档位}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 温区}
+    aliases: [风速, 风量, 空调风, 吹风, 出风量, 风力]
+    utterances:
+      - 风速调到三档
+      - 风大一点
+      - 后排风量开到最大
+      - 把空调风速设成两档
+      - 风太大了，调到一档
+      - 主驾出风量小一点
+      - 风速加到五档
+      - 全车风量开到最大
+    hard_negatives:
+      - 把温度调到25度
+      - 音量调到三档
+    response_template: "已将{position}风速设置为{level}档。"
+
+  - name: set_ac_power
+    description: 打开或关闭空调系统
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [空调开关, 开空调, 关空调, 冷气, 制冷开关, 空调]
+    utterances:
+      - 打开空调
+      - 把空调关掉
+      - 开一下冷气
+      - 太热了，开空调
+      - 空调关闭
+      - 不用空调了，关了吧
+      - 帮我开一下空调
+      - 把冷气关了
+    hard_negatives:
+      - 打开自动空调
+      - 温度调到25度
+    response_template: "已为您调整空调开关状态。"
+
+  - name: set_ac_mode
+    description: 切换空调工作模式，如制冷、制热、自动、除湿、送风
+    params:
+      - {name: mode, type: enum, required: true, enum: [cool, heat, auto, dry, fan], description: 空调模式}
+    aliases: [空调模式, 制冷制热, 除湿, 送风模式, 模式切换]
+    utterances:
+      - 切换到制冷模式
+      - 打开制热
+      - 空调调到自动模式
+      - 开一下除湿
+      - 切到送风模式
+      - 现在起雾了，开除湿
+      - 冬天了，用制热模式
+      - 空调设成自动
+    hard_negatives:
+      - 打开内循环
+      - 温度调到25度
+    response_template: "已切换空调模式。"
+
+  - name: set_air_direction
+    description: 设置空调出风方向，如吹面、吹脚、吹挡风玻璃
+    params:
+      - {name: direction, type: enum, required: true, enum: [face, feet, windshield, mix], description: 出风方向}
+    aliases: [出风方向, 吹风方向, 风向, 出风口, 送风方向]
+    utterances:
+      - 空调吹脸
+      - 改成吹脚
+      - 出风方向对着挡风玻璃
+      - 风向调成吹面
+      - 脚下有点冷，吹脚
+      - 上下都吹
+      - 切换出风口方向
+      - 风别对着脸，吹脚吧
+    hard_negatives:
+      - 打开除霜
+      - 风速调到三档
+    response_template: "已调整空调出风方向。"
+
+  - name: set_air_recirculation
+    description: 切换空调内循环或外循环
+    params:
+      - {name: mode, type: enum, required: true, enum: [internal, external], description: 循环模式}
+    aliases: [内循环, 外循环, 循环模式, 空气循环, 换气模式]
+    utterances:
+      - 打开内循环
+      - 切换到外循环
+      - 车里空气不好，开内循环
+      - 换成外循环透透气
+      - 开一下内循环
+      - 前面有大货车，赶紧内循环
+      - 循环模式改成外循环
+      - 用内循环
+    hard_negatives:
+      - 打开空气净化
+      - 打开除湿
+    response_template: "已切换空调循环模式。"
+
+  - name: set_front_defrost
+    description: 打开或关闭前挡风玻璃除霜除雾
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [前除霜, 前挡除雾, 前风挡除霜, 除雾, 玻璃除霜]
+    utterances:
+      - 打开前挡除雾
+      - 前风挡起雾了，除个霜
+      - 开一下前除霜
+      - 关闭前挡除霜
+      - 前面玻璃糊了，除雾
+      - 把前除霜关掉
+      - 挡风玻璃除霜打开
+      - 起雾看不清了，开除雾
+    hard_negatives:
+      - 打开后挡除霜
+      - 切到吹挡风玻璃
+    response_template: "已为您调整前挡除雾状态。"
+
+  - name: set_rear_defrost
+    description: 打开或关闭后挡风玻璃加热除霜
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [后除霜, 后挡加热, 后风挡除霜, 后窗除雾, 后挡除霜]
+    utterances:
+      - 打开后挡除霜
+      - 后窗起雾了，除个霜
+      - 开一下后挡加热
+      - 关闭后除霜
+      - 后面玻璃看不清，除雾
+      - 把后挡除霜关掉
+      - 后风挡除霜打开
+      - 后窗除雾开启
+    hard_negatives:
+      - 打开前挡除雾
+      - 后排座椅加热打开
+    response_template: "已为您调整后挡除霜状态。"
+
+  - name: set_auto_climate
+    description: 打开或关闭自动空调，由系统自动调节温度与风量
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [自动空调, AUTO空调, 自动模式, 一键自动, 空调自动]
+    utterances:
+      - 打开自动空调
+      - 开启AUTO
+      - 空调调成自动
+      - 关闭自动空调
+      - 让空调自己调
+      - 开一下自动模式
+      - 用自动空调就行
+      - 把自动空调关了
+    hard_negatives:
+      - 空调调到自动模式
+      - 风速调到三档
+    response_template: "已为您调整自动空调状态。"
+
+  - name: set_temperature_sync
+    description: 打开或关闭主副驾温度同步
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [温度同步, 同步温度, SYNC, 双区同步, 温区同步]
+    utterances:
+      - 打开温度同步
+      - 主副驾温度同步一下
+      - 开启SYNC
+      - 关闭温度同步
+      - 两边温度调成一样的
+      - 取消温度同步
+      - 双区温度同步开启
+      - 副驾跟主驾一样的温度
+    hard_negatives:
+      - 副驾温度调到26度
+      - 打开自动空调
+    response_template: "已为您调整温度同步状态。"
+
+  - name: set_steering_wheel_heating
+    description: 设置方向盘加热档位
+    params:
+      - {name: level, type: integer, required: true, minimum: 0, maximum: 3, unit: level, description: 加热档位，0为关闭}
+    aliases: [方向盘加热, 方向盘加温, 加热方向盘, 盘加热]
+    utterances:
+      - 打开方向盘加热
+      - 方向盘加热开到二挡
+      - 手有点凉，方向盘加热
+      - 关闭方向盘加热
+      - 方向盘加热调到最大
+      - 把方向盘加温开一下
+      - 方向盘加热开到一档
+      - 不用方向盘加热了，关掉
+    hard_negatives:
+      - 座椅加热开到二挡
+      - 打开前挡除雾
+    response_template: "已将方向盘加热设置为{level}档。"
+
+  - name: set_air_purifier
+    description: 打开或关闭车内空气净化或负离子功能
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [空气净化, 负离子, 车内净化, 空气清新, PM2.5净化]
+    utterances:
+      - 打开空气净化
+      - 开一下负离子
+      - 车里味道大，开净化
+      - 关闭空气净化
+      - 把负离子功能打开
+      - 空气清新开启
+      - 净化功能关掉
+      - 开个空气净化
+    hard_negatives:
+      - 打开内循环
+      - 切换到外循环
+    response_template: "已为您调整空气净化状态。"

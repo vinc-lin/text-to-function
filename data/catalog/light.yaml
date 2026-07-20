@@ -1,0 +1,192 @@
+domain: light
+functions:
+  - name: set_headlight
+    description: 打开或关闭前大灯
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [大灯, 前大灯, 车灯, 头灯, 前照灯, 开大灯]
+    utterances:
+      - 打开大灯
+      - 把大灯关掉
+      - 天黑了，开车灯
+      - 大灯打开
+      - 关闭前大灯
+      - 开一下头灯
+      - 车灯关了
+      - 帮我把大灯开开
+    hard_negatives:
+      - 打开雾灯
+      - 打开双闪
+    response_template: "已为您调整大灯状态。"
+
+  - name: set_headlight_mode
+    description: 切换大灯模式，如自动、近光、远光
+    params:
+      - {name: mode, type: enum, required: true, enum: [auto, low_beam, high_beam], description: 大灯模式}
+    aliases: [大灯模式, 远近光, 自动大灯, 近光, 大灯切换]
+    utterances:
+      - 切换到近光灯
+      - 打开自动大灯
+      - 大灯调成远光
+      - 换成近光模式
+      - 大灯设成自动
+      - 切到远光灯
+      - 用自动大灯就行
+      - 大灯模式改成近光
+    hard_negatives:
+      - 打开远光灯
+      - 打开大灯
+    response_template: "已切换大灯模式。"
+
+  - name: set_high_beam
+    description: 打开或关闭远光灯
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [远光灯, 远光, 大灯远光, 远灯, 晃灯]
+    utterances:
+      - 打开远光灯
+      - 关闭远光
+      - 前面没车，开远光
+      - 远光灯打开
+      - 会车了，远光关掉
+      - 开一下远光
+      - 把远光灯关了
+      - 远灯打开
+    hard_negatives:
+      - 切换到近光灯
+      - 打开雾灯
+    response_template: "已为您调整远光灯状态。"
+
+  - name: set_front_fog_light
+    description: 打开或关闭前雾灯
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [前雾灯, 雾灯, 前防雾灯, 开雾灯]
+    utterances:
+      - 打开前雾灯
+      - 起雾了，开雾灯
+      - 前雾灯打开
+      - 关闭前雾灯
+      - 雾天开一下雾灯
+      - 把前雾灯关掉
+      - 开个前雾灯
+      - 前雾灯开启
+    hard_negatives:
+      - 打开后雾灯
+      - 打开大灯
+    response_template: "已为您调整前雾灯状态。"
+
+  - name: set_rear_fog_light
+    description: 打开或关闭后雾灯
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [后雾灯, 后防雾灯, 尾部雾灯, 后雾]
+    utterances:
+      - 打开后雾灯
+      - 后面能见度低，开后雾灯
+      - 后雾灯打开
+      - 关闭后雾灯
+      - 雾散了，后雾灯关掉
+      - 把后雾灯开一下
+      - 后雾灯开启
+      - 关了后雾灯
+    hard_negatives:
+      - 打开前雾灯
+      - 打开双闪
+    response_template: "已为您调整后雾灯状态。"
+
+  - name: set_hazard_light
+    description: 打开或关闭危险报警闪光灯，即双闪
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [双闪, 危险报警灯, 应急灯, 双跳灯, 警示灯]
+    utterances:
+      - 打开双闪
+      - 把双闪关了
+      - 临时停一下，开双闪
+      - 危险报警灯打开
+      - 双闪灯开一下
+      - 关闭应急灯
+      - 开个双跳灯
+      - 双闪关掉
+    hard_negatives:
+      - 打开后雾灯
+      - 打开转向灯
+    response_template: "已为您调整危险报警灯状态。"
+
+  - name: set_reading_light
+    description: 打开或关闭车内阅读灯，可指定位置
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 阅读灯位置}
+    aliases: [阅读灯, 车内灯, 顶灯, 照明灯, 室内灯]
+    utterances:
+      - 打开阅读灯
+      - 副驾要看东西，开阅读灯
+      - 后排阅读灯打开
+      - 关闭阅读灯
+      - 主驾顶灯开一下
+      - 把车内灯关了
+      - 全车阅读灯打开
+      - 阅读灯关掉
+    hard_negatives:
+      - 打开氛围灯
+      - 打开大灯
+    response_template: "已为您调整{position}阅读灯状态。"
+
+  - name: set_ambient_light
+    description: 打开或关闭车内氛围灯
+    params:
+      - {name: enabled, type: boolean, required: true, description: 开启为true，关闭为false}
+    aliases: [氛围灯, 气氛灯, 内饰灯, 情调灯, 装饰灯]
+    utterances:
+      - 打开氛围灯
+      - 把氛围灯关了
+      - 晚上开个氛围灯
+      - 氛围灯打开
+      - 关闭氛围灯
+      - 内饰灯开一下
+      - 氛围灯关掉
+      - 来点氛围灯
+    hard_negatives:
+      - 氛围灯调成蓝色
+      - 打开阅读灯
+    response_template: "已为您调整氛围灯状态。"
+
+  - name: set_ambient_light_color
+    description: 设置车内氛围灯颜色
+    params:
+      - {name: color, type: enum, required: true, enum: [red, blue, green, white, purple, orange, cyan], description: 氛围灯颜色}
+    aliases: [氛围灯颜色, 灯光颜色, 氛围灯换色, 内饰灯颜色, 灯色]
+    utterances:
+      - 氛围灯调成蓝色
+      - 把氛围灯换成红色
+      - 氛围灯设成紫色
+      - 灯光颜色改成白色
+      - 氛围灯来点绿色
+      - 换个橙色氛围灯
+      - 氛围灯调成青色
+      - 灯颜色改成蓝的
+    hard_negatives:
+      - 打开氛围灯
+      - 氛围灯亮度调到50%
+    response_template: "已切换氛围灯颜色。"
+
+  - name: set_ambient_light_brightness
+    description: 设置车内氛围灯亮度
+    params:
+      - {name: percent, type: integer, required: true, minimum: 0, maximum: 100, unit: percent, description: 氛围灯亮度}
+    aliases: [氛围灯亮度, 灯光亮度, 氛围灯明暗, 内饰灯亮度, 灯亮度]
+    utterances:
+      - 氛围灯亮度调到50%
+      - 氛围灯暗一点
+      - 把氛围灯调亮
+      - 氛围灯亮度设成百分之三十
+      - 氛围灯亮度开到最大
+      - 灯光亮度调低一点
+      - 氛围灯调到80%
+      - 氛围灯亮度减小
+    hard_negatives:
+      - 氛围灯调成蓝色
+      - 屏幕亮度调到50%
+    response_template: "已将氛围灯亮度调整到{percent}%。"
