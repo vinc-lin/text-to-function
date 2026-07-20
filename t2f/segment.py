@@ -1,7 +1,7 @@
 import re
 
-# delimiter punctuation always splits
-_PUNCT = re.compile(r"[,;.]")
+# delimiter punctuation always splits; a "." between digits (decimals, "FM101.7") is NOT a delimiter
+_PUNCT = re.compile(r"[,;]|(?<!\d)\.(?!\d)")
 # conjunctions that split when surrounded by non-trivial text
 _CONJ = ["然后", "还有", "并且", "同时", "接着", "并"]
 _MIN_FRAG = 2  # a fragment shorter than this is not a standalone intent

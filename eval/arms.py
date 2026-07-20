@@ -25,6 +25,7 @@ def predict(pipeline: Pipeline, row: dict) -> dict:
     gold = row.get("expected_functions", [])
     exp_params = row.get("expected_params", {})
     ranked, preds, bands, tcs, executed, needs, params, exec_ok = [], [], [], [], [], [], [], []
+    verrs = []
     for cl in res.clauses:
         names = [c.function for c in cl.decision.candidates]
         ranked.append(names)
@@ -36,9 +37,10 @@ def predict(pipeline: Pipeline, row: dict) -> dict:
         needs.append(cl.needs_llm)
         p = cl.tool_call.parameters if cl.tool_call else {}
         params.append(p)
+        verrs.append(list(cl.validation_errors))
         ok = (top1 in gold) and _params_match(p, exp_params.get(top1))
         exec_ok.append(ok)
     return {"row": row, "ranked_per_clause": ranked, "predicted_functions": preds,
             "bands": bands, "tool_calls": tcs, "executed": executed, "needs_llm": needs,
-            "params_per_clause": params, "exec_correct": exec_ok,
+            "params_per_clause": params, "exec_correct": exec_ok, "val_errors": verrs,
             "latencies": [cl.latency_ms for cl in res.clauses]}

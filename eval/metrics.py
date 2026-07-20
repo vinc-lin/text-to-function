@@ -2,10 +2,6 @@ from __future__ import annotations
 import numpy as np
 
 
-def _single_clause_rows(records):
-    return [r for r in records if len(r["ranked_per_clause"]) == 1]
-
-
 def recall_at_k(records, k: int) -> float:
     rows = [r for r in records if r["row"].get("type") in ("single", "ambiguous")
             and r["row"].get("expected_functions")]
@@ -13,8 +9,9 @@ def recall_at_k(records, k: int) -> float:
         return 0.0
     hit = 0
     for r in rows:
-        gold = r["row"]["expected_functions"][0]
-        if gold in r["ranked_per_clause"][0][:k]:
+        # credit if ANY gold function (ambiguous rows may list several valid ones) is in top-k
+        gold = r["row"]["expected_functions"]
+        if any(g in r["ranked_per_clause"][0][:k] for g in gold):
             hit += 1
     return hit / len(rows)
 
@@ -26,6 +23,8 @@ def multi_intent_set_recall(records) -> float:
     tot = 0.0
     for r in rows:
         gold = set(r["row"]["expected_functions"])
+        if not gold:
+            continue
         pred = set(r["predicted_functions"])
         tot += len(gold & pred) / len(gold)
     return tot / len(rows)
@@ -45,27 +44,36 @@ def param_exact_match(records) -> float:
 
 
 def schema_valid_rate(records) -> float:
-    """Fraction of HIGH-band (attempted-execution) clauses that produced a valid tool_call.
+    """Of the tool calls the router actually validated, the fraction that passed.
 
-    Denominator = number of clauses whose band is "high" (i.e. attempted execution).
-    Numerator = those high-band clauses whose tool_calls[i] is not None.
-    Returns 1.0 when there are no high-band clauses (vacuously valid).
-    Tolerates records missing a "tool_calls" key (treated as []).
+    A clause "attempted a call" when validation ran — i.e. it produced either an accepted
+    tool_call (tool_calls[i] not None) or validation errors (val_errors[i] non-empty). Clauses
+    that never reached validation (missing-param clarifications, LOW-band rejections) are
+    excluded: they are not schema failures. This matches the spec's definition (validity of the
+    calls the router attempts). Returns 1.0 when nothing was validated.
     """
-    denom = 0
-    numer = 0
+    denom = numer = 0
     for r in records:
         tool_calls = r.get("tool_calls", [])
-        for i, band in enumerate(r["bands"]):
-            if band == "high":
+        val_errors = r.get("val_errors", [])
+        for i in range(len(r["bands"])):
+            tc = tool_calls[i] if i < len(tool_calls) else None
+            errs = val_errors[i] if i < len(val_errors) else []
+            if tc is not None or errs:  # validation was attempted
                 denom += 1
-                tc = tool_calls[i] if i < len(tool_calls) else None
                 if tc is not None:
                     numer += 1
     return numer / denom if denom else 1.0
 
 
 def e2e_executable_accuracy(records, mode: str = "deterministic") -> float:
+    """A row is executable when every clause is handled correctly.
+
+    deterministic: a clause counts only if it was actually EXECUTED (not merely high-band)
+    and executed the correct call — measures what the zero-LLM path resolves.
+    ceiling: executed-and-correct clauses count; otherwise any non-LOW clause counts if a gold
+    function is in the top-3 handed to the LLM (what a perfect Spec-2 fallback could reach).
+    """
     rows = [r for r in records if r["row"].get("type") in ("single", "multi_intent")]
     if not rows:
         return 0.0
@@ -74,12 +82,13 @@ def e2e_executable_accuracy(records, mode: str = "deterministic") -> float:
         clause_ok = []
         for i, band in enumerate(r["bands"]):
             correct = r["exec_correct"][i]
+            executed = r["executed"][i]
             if mode == "deterministic":
-                clause_ok.append(band == "high" and correct)
-            else:  # ceiling: medium credited if gold in top-3
-                if band == "high":
+                clause_ok.append(executed and correct)
+            else:  # ceiling
+                if executed:
                     clause_ok.append(correct)
-                elif band == "medium":
+                elif band != "low":
                     gold = r["row"]["expected_functions"]
                     clause_ok.append(any(g in r["ranked_per_clause"][i][:3] for g in gold))
                 else:

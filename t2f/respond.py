@@ -14,10 +14,17 @@ class _SafeDict(dict):
         return ""
 
 
+def _fmt_num(v):
+    """Render integral floats without a trailing ".0" (25.0 -> 25)."""
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    return v
+
+
 def render_response(card: FunctionCard, tool_call: ToolCall) -> str:
     if not card.response_template:
         return f"已执行{card.name}。"
-    params = dict(tool_call.parameters)
+    params = {k: _fmt_num(v) for k, v in tool_call.parameters.items()}
     if "position" in params:
         params["position"] = _POSITION_CN.get(params["position"], params["position"])
     elif card.param("position"):
@@ -30,3 +37,8 @@ def build_clarification(card: FunctionCard, missing: list[str]) -> Clarification
     question = _CLARIFY.get(first, "请补充更多信息。")
     pending = PendingState(pending_function=card.name, known_parameters={}, missing_parameters=missing)
     return ClarificationRequest(question=question, pending=pending)
+
+
+def build_low_confidence_clarification() -> ClarificationRequest:
+    """Clarification for LOW-band / out-of-scope requests where no function is chosen."""
+    return ClarificationRequest(question="抱歉，我不太确定您的意思，可以换个说法吗？", pending=None)

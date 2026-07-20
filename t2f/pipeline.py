@@ -7,7 +7,7 @@ from .lexical import extract_features
 from .retrieve import PrototypeStore, Retriever
 from .params.extract import ParameterExtractor
 from .validate import validate_tool_call
-from .respond import render_response, build_clarification
+from .respond import render_response, build_clarification, build_low_confidence_clarification
 from .execute import MockExecutor
 
 
@@ -20,9 +20,9 @@ class DeterministicResolver:
     def resolve(self, clause, features, decision) -> ClauseResult:
         cand_names = [c.function for c in decision.candidates]
         if decision.band == Band.LOW or decision.chosen is None:
-            card = self.cards.get(decision.chosen) if decision.chosen else None
-            clar = build_clarification(card, ["intent"]) if card else None
-            return ClauseResult(clause=clause, decision=decision, clarification=clar, needs_llm=False)
+            return ClauseResult(clause=clause, decision=decision,
+                                clarification=build_low_confidence_clarification(),
+                                needs_llm=False)
         card = self.cards[decision.chosen]
         params, missing = self.extractor.extract(clause, features, card)
         if missing and decision.band == Band.HIGH:
