@@ -8,3 +8,4 @@ venv/
 data/gen/cache/
 models/
 *.gguf
+eval_report_*.json
