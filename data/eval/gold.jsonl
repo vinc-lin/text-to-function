@@ -1,0 +1,312 @@
+{"utterance": "副驾这边冷，帮我升到26度", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 26, "position": "passenger"}}, "type": "single", "split": "dev"}
+{"utterance": "车里温度给我定在23度吧", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 23}}, "type": "single", "split": "dev"}
+{"utterance": "主驾温度弄到20度", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 20, "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "空调风开到四档", "expected_functions": ["set_fan_speed"], "expected_params": {"set_fan_speed": {"level": 4}}, "type": "single", "split": "test"}
+{"utterance": "后排风量给到最大", "expected_functions": ["set_fan_speed"], "expected_params": {"set_fan_speed": {"level": 7, "position": "rear"}}, "type": "single", "split": "test"}
+{"utterance": "风太猛了，降到两档", "expected_functions": ["set_fan_speed"], "expected_params": {"set_fan_speed": {"level": 2}}, "type": "single", "split": "dev"}
+{"utterance": "空调给我开起来", "expected_functions": ["set_ac_power"], "expected_params": {"set_ac_power": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "不热了，把空调断了吧", "expected_functions": ["set_ac_power"], "expected_params": {"set_ac_power": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "有点热，把空调打开吧", "expected_functions": ["set_ac_power"], "expected_params": {"set_ac_power": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "空调切到制热", "expected_functions": ["set_ac_mode"], "expected_params": {"set_ac_mode": {"mode": "heat"}}, "type": "single", "split": "test"}
+{"utterance": "玻璃有点雾，来个除湿模式", "expected_functions": ["set_ac_mode"], "expected_params": {"set_ac_mode": {"mode": "dry"}}, "type": "single", "split": "dev"}
+{"utterance": "让风往脸上吹", "expected_functions": ["set_air_direction"], "expected_params": {"set_air_direction": {"direction": "face"}}, "type": "single", "split": "dev"}
+{"utterance": "风口对准前挡玻璃", "expected_functions": ["set_air_direction"], "expected_params": {"set_air_direction": {"direction": "windshield"}}, "type": "single", "split": "test"}
+{"utterance": "外面尾气重，切内循环", "expected_functions": ["set_air_recirculation"], "expected_params": {"set_air_recirculation": {"mode": "internal"}}, "type": "single", "split": "test"}
+{"utterance": "车里闷，换外循环吸点新鲜空气", "expected_functions": ["set_air_recirculation"], "expected_params": {"set_air_recirculation": {"mode": "external"}}, "type": "single", "split": "test"}
+{"utterance": "前挡糊了，除雾开一下", "expected_functions": ["set_front_defrost"], "expected_params": {"set_front_defrost": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "视线清楚了，前除霜可以关了", "expected_functions": ["set_front_defrost"], "expected_params": {"set_front_defrost": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "后风挡看不清，开个后除霜", "expected_functions": ["set_rear_defrost"], "expected_params": {"set_rear_defrost": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "后挡加热用不上了，关掉", "expected_functions": ["set_rear_defrost"], "expected_params": {"set_rear_defrost": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "懒得调了，直接上自动空调", "expected_functions": ["set_auto_climate"], "expected_params": {"set_auto_climate": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "别自动了，把自动空调停掉", "expected_functions": ["set_auto_climate"], "expected_params": {"set_auto_climate": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "两边温度同步开一下", "expected_functions": ["set_temperature_sync"], "expected_params": {"set_temperature_sync": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "副驾想单独调，把温度同步取消", "expected_functions": ["set_temperature_sync"], "expected_params": {"set_temperature_sync": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "方向盘冰凉，加热给到最大", "expected_functions": ["set_steering_wheel_heating"], "expected_params": {"set_steering_wheel_heating": {"level": 3}}, "type": "single", "split": "test"}
+{"utterance": "手不冷了，方向盘加热关了", "expected_functions": ["set_steering_wheel_heating"], "expected_params": {"set_steering_wheel_heating": {"level": 0}}, "type": "single", "split": "test"}
+{"utterance": "开个负离子净化一下", "expected_functions": ["set_air_purifier"], "expected_params": {"set_air_purifier": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "空气净化不用了，关掉", "expected_functions": ["set_air_purifier"], "expected_params": {"set_air_purifier": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "中控屏亮度给到七成", "expected_functions": ["set_screen_brightness"], "expected_params": {"set_screen_brightness": {"percent": 70}}, "type": "single", "split": "test"}
+{"utterance": "屏幕晃眼，亮度降到百分之二十", "expected_functions": ["set_screen_brightness"], "expected_params": {"set_screen_brightness": {"percent": 20}}, "type": "single", "split": "test"}
+{"utterance": "屏幕切成白天模式", "expected_functions": ["set_display_mode"], "expected_params": {"set_display_mode": {"mode": "day"}}, "type": "single", "split": "test"}
+{"utterance": "让屏幕自己判断日夜，用自动", "expected_functions": ["set_display_mode"], "expected_params": {"set_display_mode": {"mode": "auto"}}, "type": "single", "split": "dev"}
+{"utterance": "屏幕先黑掉吧", "expected_functions": ["turn_off_screen"], "expected_params": {"turn_off_screen": {"is_off": true}}, "type": "single", "split": "dev"}
+{"utterance": "把屏幕重新点亮", "expected_functions": ["turn_off_screen"], "expected_params": {"turn_off_screen": {"is_off": false}}, "type": "single", "split": "test"}
+{"utterance": "仪表盘太刺眼，亮度调到百分之三十", "expected_functions": ["set_dashboard_brightness"], "expected_params": {"set_dashboard_brightness": {"percent": 30}}, "type": "single", "split": "test"}
+{"utterance": "仪表看不清，亮度提到九十", "expected_functions": ["set_dashboard_brightness"], "expected_params": {"set_dashboard_brightness": {"percent": 90}}, "type": "single", "split": "test"}
+{"utterance": "抬头显示打开看看", "expected_functions": ["set_hud"], "expected_params": {"set_hud": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "HUD晃眼，关了它", "expected_functions": ["set_hud"], "expected_params": {"set_hud": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "把这个画面截下来", "expected_functions": ["take_screenshot"], "type": "single", "split": "test"}
+{"utterance": "帮我抓一张屏", "expected_functions": ["take_screenshot"], "type": "single", "split": "test"}
+{"utterance": "界面换成暗黑主题", "expected_functions": ["set_theme"], "expected_params": {"set_theme": {"theme": "暗黑"}}, "type": "single", "split": "test"}
+{"utterance": "壁纸换成海洋那张", "expected_functions": ["set_theme"], "expected_params": {"set_theme": {"theme": "海洋"}}, "type": "single", "split": "dev"}
+{"utterance": "开车别打扰我，勿扰模式打开", "expected_functions": ["set_do_not_disturb"], "expected_params": {"set_do_not_disturb": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "勿扰模式关掉，我要接电话", "expected_functions": ["set_do_not_disturb"], "expected_params": {"set_do_not_disturb": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "全车门都锁上", "expected_functions": ["lock_doors"], "expected_params": {"lock_doors": {"position": "all"}}, "type": "single", "split": "test"}
+{"utterance": "帮我把车落个锁", "expected_functions": ["lock_doors"], "type": "single", "split": "test"}
+{"utterance": "把全车门解开", "expected_functions": ["unlock_doors"], "expected_params": {"unlock_doors": {"position": "all"}}, "type": "single", "split": "dev"}
+{"utterance": "车锁给我打开", "expected_functions": ["unlock_doors"], "type": "single", "split": "dev"}
+{"utterance": "尾箱打开一下", "expected_functions": ["open_trunk"], "expected_params": {"open_trunk": {"is_open": true}}, "type": "single", "split": "test"}
+{"utterance": "后备箱盖合上", "expected_functions": ["open_trunk"], "expected_params": {"open_trunk": {"is_open": false}}, "type": "single", "split": "test"}
+{"utterance": "准备充电，充电口打开", "expected_functions": ["open_charge_port"], "expected_params": {"open_charge_port": {"is_open": true}}, "type": "single", "split": "test"}
+{"utterance": "充完了，充电盖关上", "expected_functions": ["open_charge_port"], "expected_params": {"open_charge_port": {"is_open": false}}, "type": "single", "split": "dev"}
+{"utterance": "到加油站了，油箱盖开一下", "expected_functions": ["open_fuel_cap"], "expected_params": {"open_fuel_cap": {"is_open": true}}, "type": "single", "split": "dev"}
+{"utterance": "油加好了，油箱盖盖上", "expected_functions": ["open_fuel_cap"], "expected_params": {"open_fuel_cap": {"is_open": false}}, "type": "single", "split": "test"}
+{"utterance": "娃在后座，车门儿童锁锁上", "expected_functions": ["set_door_child_lock"], "expected_params": {"set_door_child_lock": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "车门儿童锁解开吧", "expected_functions": ["set_door_child_lock"], "expected_params": {"set_door_child_lock": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "副驾的门给开开", "expected_functions": ["open_door"], "expected_params": {"open_door": {"is_open": true, "position": "passenger"}}, "type": "single", "split": "dev"}
+{"utterance": "把后排车门合上", "expected_functions": ["open_door"], "expected_params": {"open_door": {"is_open": false, "position": "rear"}}, "type": "single", "split": "dev"}
+{"utterance": "行车自动落锁功能开起来", "expected_functions": ["set_auto_lock"], "expected_params": {"set_auto_lock": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "自动锁车先关了", "expected_functions": ["set_auto_lock"], "expected_params": {"set_auto_lock": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "天有点暗，大灯点亮", "expected_functions": ["set_headlight"], "expected_params": {"set_headlight": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "到家了，大灯熄了吧", "expected_functions": ["set_headlight"], "expected_params": {"set_headlight": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "大灯用自动挡就行", "expected_functions": ["set_headlight_mode"], "expected_params": {"set_headlight_mode": {"mode": "auto"}}, "type": "single", "split": "dev"}
+{"utterance": "市区里切近光", "expected_functions": ["set_headlight_mode"], "expected_params": {"set_headlight_mode": {"mode": "low_beam"}}, "type": "single", "split": "test"}
+{"utterance": "前方空旷，远光打开", "expected_functions": ["set_high_beam"], "expected_params": {"set_high_beam": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "对面来车了，远光收了", "expected_functions": ["set_high_beam"], "expected_params": {"set_high_beam": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "雾有点大，前雾灯点上", "expected_functions": ["set_front_fog_light"], "expected_params": {"set_front_fog_light": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "雾散了，前雾灯灭了", "expected_functions": ["set_front_fog_light"], "expected_params": {"set_front_fog_light": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "后车看不见我，后雾灯开起来", "expected_functions": ["set_rear_fog_light"], "expected_params": {"set_rear_fog_light": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "后雾灯不用了，关闭", "expected_functions": ["set_rear_fog_light"], "expected_params": {"set_rear_fog_light": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "路边停会儿，双闪打开", "expected_functions": ["set_hazard_light"], "expected_params": {"set_hazard_light": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "要走了，双闪关掉", "expected_functions": ["set_hazard_light"], "expected_params": {"set_hazard_light": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "后排要看书，阅读灯打开", "expected_functions": ["set_reading_light"], "expected_params": {"set_reading_light": {"enabled": true, "position": "rear"}}, "type": "single", "split": "dev"}
+{"utterance": "主驾顶灯关一下", "expected_functions": ["set_reading_light"], "expected_params": {"set_reading_light": {"enabled": false, "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "氛围灯点起来有气氛", "expected_functions": ["set_ambient_light"], "expected_params": {"set_ambient_light": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "氛围灯太花，关了", "expected_functions": ["set_ambient_light"], "expected_params": {"set_ambient_light": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "氛围灯换成紫色", "expected_functions": ["set_ambient_light_color"], "expected_params": {"set_ambient_light_color": {"color": "purple"}}, "type": "single", "split": "dev"}
+{"utterance": "把车里的氛围灯弄成青色", "expected_functions": ["set_ambient_light_color"], "expected_params": {"set_ambient_light_color": {"color": "cyan"}}, "type": "single", "split": "dev"}
+{"utterance": "氛围灯太亮，亮度降到四成", "expected_functions": ["set_ambient_light_brightness"], "expected_params": {"set_ambient_light_brightness": {"percent": 40}}, "type": "single", "split": "test"}
+{"utterance": "氛围灯亮度拉到满", "expected_functions": ["set_ambient_light_brightness"], "expected_params": {"set_ambient_light_brightness": {"percent": 100}}, "type": "single", "split": "test"}
+{"utterance": "声音开到二十五", "expected_functions": ["set_volume"], "expected_params": {"set_volume": {"level": 25}}, "type": "single", "split": "test"}
+{"utterance": "太吵了，音量降到八", "expected_functions": ["set_volume"], "expected_params": {"set_volume": {"level": 8}}, "type": "single", "split": "dev"}
+{"utterance": "音量给我拉满", "expected_functions": ["set_volume"], "expected_params": {"set_volume": {"level": 40}}, "type": "single", "split": "dev"}
+{"utterance": "先静音一下", "expected_functions": ["set_mute"], "expected_params": {"set_mute": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "把静音取消，我要听", "expected_functions": ["set_mute"], "expected_params": {"set_mute": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "来首林俊杰的歌", "expected_functions": ["play_music"], "expected_params": {"play_music": {"query": "林俊杰"}}, "type": "single", "split": "test"}
+{"utterance": "随便放点音乐", "expected_functions": ["play_music"], "type": "single", "split": "dev"}
+{"utterance": "放一下晴天这首歌", "expected_functions": ["play_music"], "expected_params": {"play_music": {"query": "晴天"}}, "type": "single", "split": "dev"}
+{"utterance": "音乐先按停", "expected_functions": ["pause_playback"], "type": "single", "split": "test"}
+{"utterance": "把歌暂停一下", "expected_functions": ["pause_playback"], "type": "single", "split": "test"}
+{"utterance": "接着刚才的继续放", "expected_functions": ["resume_playback"], "type": "single", "split": "test"}
+{"utterance": "音乐恢复播放", "expected_functions": ["resume_playback"], "type": "single", "split": "dev"}
+{"utterance": "跳到下一首", "expected_functions": ["next_track"], "type": "single", "split": "dev"}
+{"utterance": "这首腻了，换下一首", "expected_functions": ["next_track"], "type": "single", "split": "test"}
+{"utterance": "退回上一首", "expected_functions": ["previous_track"], "type": "single", "split": "test"}
+{"utterance": "刚那首挺好，切回上一首", "expected_functions": ["previous_track"], "type": "single", "split": "test"}
+{"utterance": "音源切到蓝牙", "expected_functions": ["set_audio_source"], "expected_params": {"set_audio_source": {"source": "bluetooth"}}, "type": "single", "split": "dev"}
+{"utterance": "放U盘里的歌", "expected_functions": ["set_audio_source"], "expected_params": {"set_audio_source": {"source": "usb"}}, "type": "single", "split": "dev"}
+{"utterance": "收音机调到FM101.7", "expected_functions": ["play_radio"], "expected_params": {"play_radio": {"frequency": 101.7, "band": "fm"}}, "type": "single", "split": "test"}
+{"utterance": "打开广播听听", "expected_functions": ["play_radio"], "type": "single", "split": "test"}
+{"utterance": "音效来个爵士", "expected_functions": ["set_equalizer"], "expected_params": {"set_equalizer": {"mode": "jazz"}}, "type": "single", "split": "test"}
+{"utterance": "均衡器切到古典", "expected_functions": ["set_equalizer"], "expected_params": {"set_equalizer": {"mode": "classical"}}, "type": "single", "split": "dev"}
+{"utterance": "声场往主驾偏", "expected_functions": ["set_sound_field"], "expected_params": {"set_sound_field": {"position": "driver"}}, "type": "single", "split": "dev"}
+{"utterance": "声场设成全车均衡", "expected_functions": ["set_sound_field"], "expected_params": {"set_sound_field": {"position": "all"}}, "type": "single", "split": "test"}
+{"utterance": "歌单打乱随机播", "expected_functions": ["set_shuffle"], "expected_params": {"set_shuffle": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "别随机了，按顺序来", "expected_functions": ["set_shuffle"], "expected_params": {"set_shuffle": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "雨大，雨刮开到四档", "expected_functions": ["set_wiper_speed"], "expected_params": {"set_wiper_speed": {"level": 4}}, "type": "single", "split": "dev"}
+{"utterance": "雨停了，雨刮关掉", "expected_functions": ["set_wiper_speed"], "expected_params": {"set_wiper_speed": {"level": 0}}, "type": "single", "split": "dev"}
+{"utterance": "雨刮交给自动感应吧", "expected_functions": ["set_rain_sensing_wiper"], "expected_params": {"set_rain_sensing_wiper": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "自动雨刮先关了", "expected_functions": ["set_rain_sensing_wiper"], "expected_params": {"set_rain_sensing_wiper": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "喷点玻璃水冲一下", "expected_functions": ["spray_washer"], "expected_params": {"spray_washer": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "前挡有灰，喷玻璃水", "expected_functions": ["spray_washer"], "expected_params": {"spray_washer": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "停好了，两个后视镜都收起来", "expected_functions": ["fold_mirror"], "expected_params": {"fold_mirror": {"enabled": true, "position": "all"}}, "type": "single", "split": "dev"}
+{"utterance": "主驾后视镜展开", "expected_functions": ["fold_mirror"], "expected_params": {"fold_mirror": {"enabled": false, "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "主驾后视镜往下偏一点", "expected_functions": ["adjust_mirror"], "expected_params": {"adjust_mirror": {"direction": "down", "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "副驾镜子往右调", "expected_functions": ["adjust_mirror"], "expected_params": {"adjust_mirror": {"direction": "right", "position": "passenger"}}, "type": "single", "split": "test"}
+{"utterance": "后视镜起雾，加热开一下", "expected_functions": ["set_mirror_heating"], "expected_params": {"set_mirror_heating": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "镜子清楚了，加热关掉", "expected_functions": ["set_mirror_heating"], "expected_params": {"set_mirror_heating": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "堵车老溜车，自动驻车打开", "expected_functions": ["set_auto_hold"], "expected_params": {"set_auto_hold": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "自动驻车先关掉", "expected_functions": ["set_auto_hold"], "expected_params": {"set_auto_hold": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "倒车雷达打开", "expected_functions": ["set_parking_sensor"], "expected_params": {"set_parking_sensor": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "雷达一直响，先关了", "expected_functions": ["set_parking_sensor"], "expected_params": {"set_parking_sensor": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "导航去浦东机场", "expected_functions": ["navigate_to"], "expected_params": {"navigate_to": {"destination": "浦东机场"}}, "type": "single", "split": "dev"}
+{"utterance": "帮我导航到杭州东站", "expected_functions": ["navigate_to"], "expected_params": {"navigate_to": {"destination": "杭州东站"}}, "type": "single", "split": "test"}
+{"utterance": "设个目的地，去外滩", "expected_functions": ["navigate_to"], "expected_params": {"navigate_to": {"destination": "外滩"}}, "type": "single", "split": "test"}
+{"utterance": "现在就回家吧，导航走起", "expected_functions": ["navigate_home"], "type": "single", "split": "test"}
+{"utterance": "规划一条回家的路", "expected_functions": ["navigate_home"], "type": "single", "split": "dev"}
+{"utterance": "去单位，导航安排一下", "expected_functions": ["navigate_to_work"], "type": "single", "split": "dev"}
+{"utterance": "上班了，带我去公司", "expected_functions": ["navigate_to_work"], "type": "single", "split": "test"}
+{"utterance": "导航别开了，取消掉", "expected_functions": ["cancel_navigation"], "type": "single", "split": "test"}
+{"utterance": "到了，把导航结束", "expected_functions": ["cancel_navigation"], "type": "single", "split": "test"}
+{"utterance": "附近找个充电站", "expected_functions": ["find_nearby"], "expected_params": {"find_nearby": {"category": "充电站"}}, "type": "single", "split": "dev"}
+{"utterance": "附近有没有停车场", "expected_functions": ["find_nearby"], "expected_params": {"find_nearby": {"category": "停车场"}}, "type": "single", "split": "dev"}
+{"utterance": "路上顺道去趟超市，加个途经点", "expected_functions": ["add_waypoint"], "expected_params": {"add_waypoint": {"waypoint": "超市"}}, "type": "single", "split": "test"}
+{"utterance": "中途先经过我家", "expected_functions": ["add_waypoint"], "expected_params": {"add_waypoint": {"waypoint": "我家"}}, "type": "single", "split": "test"}
+{"utterance": "走个不收费的路线", "expected_functions": ["set_route_preference"], "expected_params": {"set_route_preference": {"mode": "avoid_toll"}}, "type": "single", "split": "test"}
+{"utterance": "别上高速，绕开", "expected_functions": ["set_route_preference"], "expected_params": {"set_route_preference": {"mode": "avoid_highway"}}, "type": "single", "split": "dev"}
+{"utterance": "把实时路况显示出来", "expected_functions": ["set_traffic_display"], "expected_params": {"set_traffic_display": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "路况别显示了，关掉", "expected_functions": ["set_traffic_display"], "expected_params": {"set_traffic_display": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "给媳妇打个电话", "expected_functions": ["make_call"], "expected_params": {"make_call": {"contact": "媳妇"}}, "type": "single", "split": "test"}
+{"utterance": "拨给王经理", "expected_functions": ["make_call"], "expected_params": {"make_call": {"contact": "王经理"}}, "type": "single", "split": "test"}
+{"utterance": "拨个电话给120", "expected_functions": ["make_call"], "expected_params": {"make_call": {"contact": "120"}}, "type": "single", "split": "dev"}
+{"utterance": "电话接一下", "expected_functions": ["answer_call"], "type": "single", "split": "dev"}
+{"utterance": "帮我把来电接了", "expected_functions": ["answer_call"], "type": "single", "split": "test"}
+{"utterance": "这个电话挂掉", "expected_functions": ["reject_call"], "type": "single", "split": "test"}
+{"utterance": "不想接，拒了吧", "expected_functions": ["reject_call"], "type": "single", "split": "test"}
+{"utterance": "刚才那个号再拨一遍", "expected_functions": ["redial"], "type": "single", "split": "dev"}
+{"utterance": "没打通，重拨", "expected_functions": ["redial"], "type": "single", "split": "dev"}
+{"utterance": "给老妈发条短信", "expected_functions": ["send_message"], "expected_params": {"send_message": {"contact": "老妈"}}, "type": "single", "split": "test"}
+{"utterance": "微信告诉张三我马上到", "expected_functions": ["send_message"], "expected_params": {"send_message": {"contact": "张三", "content": "我马上到"}}, "type": "single", "split": "test"}
+{"utterance": "有新短信吗，念给我听", "expected_functions": ["read_messages"], "type": "single", "split": "test"}
+{"utterance": "把未读消息读一读", "expected_functions": ["read_messages"], "type": "single", "split": "dev"}
+{"utterance": "屁股凉，座椅加热来到三档", "expected_functions": ["set_seat_heating"], "expected_params": {"set_seat_heating": {"level": 3}}, "type": "single", "split": "dev"}
+{"utterance": "副驾座椅加热开一档", "expected_functions": ["set_seat_heating"], "expected_params": {"set_seat_heating": {"level": 1, "position": "passenger"}}, "type": "single", "split": "test"}
+{"utterance": "主驾这边座椅通风给到最大档", "expected_functions": ["set_seat_ventilation"], "expected_params": {"set_seat_ventilation": {"level": 3, "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "座椅通风调成二档", "expected_functions": ["set_seat_ventilation"], "expected_params": {"set_seat_ventilation": {"level": 2}}, "type": "single", "split": "test"}
+{"utterance": "腰酸，座椅按摩来个四档", "expected_functions": ["set_seat_massage"], "expected_params": {"set_seat_massage": {"level": 4}}, "type": "single", "split": "dev"}
+{"utterance": "副驾座椅按摩关掉", "expected_functions": ["set_seat_massage"], "expected_params": {"set_seat_massage": {"level": 0, "position": "passenger"}}, "type": "single", "split": "dev"}
+{"utterance": "主驾座椅往后退退", "expected_functions": ["move_seat"], "expected_params": {"move_seat": {"direction": "back", "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "副驾座位往前挪", "expected_functions": ["move_seat"], "expected_params": {"move_seat": {"direction": "front", "position": "passenger"}}, "type": "single", "split": "test"}
+{"utterance": "主驾靠背竖直一点", "expected_functions": ["adjust_backrest"], "expected_params": {"adjust_backrest": {"direction": "upright", "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "后排靠背放平躺一会", "expected_functions": ["adjust_backrest"], "expected_params": {"adjust_backrest": {"direction": "recline", "position": "rear"}}, "type": "single", "split": "dev"}
+{"utterance": "坐太高了，主驾座椅降下来", "expected_functions": ["adjust_seat_height"], "expected_params": {"adjust_seat_height": {"direction": "down", "position": "driver"}}, "type": "single", "split": "dev"}
+{"utterance": "副驾座椅抬高点", "expected_functions": ["adjust_seat_height"], "expected_params": {"adjust_seat_height": {"direction": "up", "position": "passenger"}}, "type": "single", "split": "test"}
+{"utterance": "头枕顶脖子，往下降降", "expected_functions": ["adjust_headrest"], "expected_params": {"adjust_headrest": {"direction": "down"}}, "type": "single", "split": "test"}
+{"utterance": "后排头枕升高一些", "expected_functions": ["adjust_headrest"], "expected_params": {"adjust_headrest": {"direction": "up", "position": "rear"}}, "type": "single", "split": "test"}
+{"utterance": "腰托加到三档撑一下", "expected_functions": ["set_lumbar_support"], "expected_params": {"set_lumbar_support": {"level": 3}}, "type": "single", "split": "dev"}
+{"utterance": "主驾腰部支撑调到最大", "expected_functions": ["set_lumbar_support"], "expected_params": {"set_lumbar_support": {"level": 4, "position": "driver"}}, "type": "single", "split": "dev"}
+{"utterance": "调出我的二号座椅记忆", "expected_functions": ["recall_seat_memory"], "expected_params": {"recall_seat_memory": {"index": 2}}, "type": "single", "split": "test"}
+{"utterance": "副驾座椅恢复到记忆一", "expected_functions": ["recall_seat_memory"], "expected_params": {"recall_seat_memory": {"index": 1, "position": "passenger"}}, "type": "single", "split": "test"}
+{"utterance": "这个坐姿存成记忆二", "expected_functions": ["save_seat_memory"], "expected_params": {"save_seat_memory": {"index": 2}}, "type": "single", "split": "test"}
+{"utterance": "主驾座椅保存到记忆位置三", "expected_functions": ["save_seat_memory"], "expected_params": {"save_seat_memory": {"index": 3, "position": "driver"}}, "type": "single", "split": "dev"}
+{"utterance": "后排右边座椅放倒装货", "expected_functions": ["fold_rear_seat"], "expected_params": {"fold_rear_seat": {"enabled": true, "position": "right"}}, "type": "single", "split": "dev"}
+{"utterance": "后排座椅重新立起来", "expected_functions": ["fold_rear_seat"], "expected_params": {"fold_rear_seat": {"enabled": false, "position": "rear"}}, "type": "single", "split": "test"}
+{"utterance": "上下车方便点，便捷进出开一下", "expected_functions": ["set_easy_entry"], "expected_params": {"set_easy_entry": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "便捷进出功能关掉", "expected_functions": ["set_easy_entry"], "expected_params": {"set_easy_entry": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "主驾车窗降下去透透气", "expected_functions": ["open_window"], "expected_params": {"open_window": {"is_open": true, "position": "driver"}}, "type": "single", "split": "dev"}
+{"utterance": "全车窗户都升上来", "expected_functions": ["open_window"], "expected_params": {"open_window": {"is_open": false, "position": "all"}}, "type": "single", "split": "dev"}
+{"utterance": "后排车窗开到底", "expected_functions": ["open_window"], "expected_params": {"open_window": {"is_open": true, "position": "rear"}}, "type": "single", "split": "test"}
+{"utterance": "副驾车窗开到四成", "expected_functions": ["set_window_position"], "expected_params": {"set_window_position": {"percent": 40, "position": "passenger"}}, "type": "single", "split": "test"}
+{"utterance": "主驾车窗留条缝，开一成", "expected_functions": ["set_window_position"], "expected_params": {"set_window_position": {"percent": 10, "position": "driver"}}, "type": "single", "split": "test"}
+{"utterance": "天气好，天窗拉开", "expected_functions": ["open_sunroof"], "expected_params": {"open_sunroof": {"is_open": true}}, "type": "single", "split": "dev"}
+{"utterance": "起风了，天窗合上", "expected_functions": ["open_sunroof"], "expected_params": {"open_sunroof": {"is_open": false}}, "type": "single", "split": "dev"}
+{"utterance": "天窗开个三成就行", "expected_functions": ["set_sunroof_position"], "expected_params": {"set_sunroof_position": {"percent": 30}}, "type": "single", "split": "test"}
+{"utterance": "天窗全开", "expected_functions": ["set_sunroof_position"], "expected_params": {"set_sunroof_position": {"percent": 100}}, "type": "single", "split": "test"}
+{"utterance": "天窗翘起来透气", "expected_functions": ["vent_sunroof"], "expected_params": {"vent_sunroof": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "天窗通风取消", "expected_functions": ["vent_sunroof"], "expected_params": {"vent_sunroof": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "遮阳帘拉开看天", "expected_functions": ["open_sunshade"], "expected_params": {"open_sunshade": {"is_open": true}}, "type": "single", "split": "dev"}
+{"utterance": "太阳晒，遮阳帘合上", "expected_functions": ["open_sunshade"], "expected_params": {"open_sunshade": {"is_open": false}}, "type": "single", "split": "test"}
+{"utterance": "后排别乱开窗，车窗儿童锁锁上", "expected_functions": ["set_window_child_lock"], "expected_params": {"set_window_child_lock": {"enabled": true}}, "type": "single", "split": "test"}
+{"utterance": "车窗儿童锁解开", "expected_functions": ["set_window_child_lock"], "expected_params": {"set_window_child_lock": {"enabled": false}}, "type": "single", "split": "test"}
+{"utterance": "下雨自动关窗功能开起来", "expected_functions": ["set_rain_close_window"], "expected_params": {"set_rain_close_window": {"enabled": true}}, "type": "single", "split": "dev"}
+{"utterance": "雨天自动关窗关掉", "expected_functions": ["set_rain_close_window"], "expected_params": {"set_rain_close_window": {"enabled": false}}, "type": "single", "split": "dev"}
+{"utterance": "打开车窗，再把空调调到25度", "expected_functions": ["open_window", "set_temperature"], "expected_params": {"open_window": {"is_open": true}, "set_temperature": {"temperature": 25}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "先锁车门，然后把车窗全关上", "expected_functions": ["lock_doors", "open_window"], "expected_params": {"open_window": {"is_open": false, "position": "all"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "导航回家，顺便放点音乐", "expected_functions": ["navigate_home", "play_music"], "type": "multi_intent", "split": "test"}
+{"utterance": "把空调开到22度，座椅加热开到二挡", "expected_functions": ["set_temperature", "set_seat_heating"], "expected_params": {"set_temperature": {"temperature": 22}, "set_seat_heating": {"level": 2}}, "type": "multi_intent", "split": "test"}
+{"utterance": "音量调到20，然后放周杰伦的歌", "expected_functions": ["set_volume", "play_music"], "expected_params": {"set_volume": {"level": 20}, "play_music": {"query": "周杰伦"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开大灯，再开个前雾灯", "expected_functions": ["set_headlight", "set_front_fog_light"], "expected_params": {"set_headlight": {"enabled": true}, "set_front_fog_light": {"enabled": true}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "关闭导航，把音乐也停了", "expected_functions": ["cancel_navigation", "pause_playback"], "type": "multi_intent", "split": "dev"}
+{"utterance": "主驾座椅往后一点，靠背也放倒些", "expected_functions": ["move_seat", "adjust_backrest"], "expected_params": {"move_seat": {"direction": "back", "position": "driver"}, "adjust_backrest": {"direction": "recline", "position": "driver"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "开天窗透气，顺便开下氛围灯", "expected_functions": ["open_sunroof", "set_ambient_light"], "expected_params": {"open_sunroof": {"is_open": true}, "set_ambient_light": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "把温度降到20度，风速开到三档", "expected_functions": ["set_temperature", "set_fan_speed"], "expected_params": {"set_temperature": {"temperature": 20}, "set_fan_speed": {"level": 3}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开除雾，雨刮也开到二挡", "expected_functions": ["set_front_defrost", "set_wiper_speed"], "expected_params": {"set_front_defrost": {"enabled": true}, "set_wiper_speed": {"level": 2}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "先把音乐暂停，给老婆打电话", "expected_functions": ["pause_playback", "make_call"], "expected_params": {"make_call": {"contact": "老婆"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "开空调，切到制冷模式", "expected_functions": ["set_ac_power", "set_ac_mode"], "expected_params": {"set_ac_power": {"enabled": true}, "set_ac_mode": {"mode": "cool"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "把后备箱打开，解锁车门", "expected_functions": ["open_trunk", "unlock_doors"], "expected_params": {"open_trunk": {"is_open": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "屏幕换夜间模式，亮度也调低到30%", "expected_functions": ["set_display_mode", "set_screen_brightness"], "expected_params": {"set_display_mode": {"mode": "night"}, "set_screen_brightness": {"percent": 30}}, "type": "multi_intent", "split": "test"}
+{"utterance": "座椅通风开到二挡，再开空气净化", "expected_functions": ["set_seat_ventilation", "set_air_purifier"], "expected_params": {"set_seat_ventilation": {"level": 2}, "set_air_purifier": {"enabled": true}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "导航去公司，路上避开高速", "expected_functions": ["navigate_to_work", "set_route_preference"], "expected_params": {"set_route_preference": {"mode": "avoid_highway"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "打开阅读灯，把车门锁上", "expected_functions": ["set_reading_light", "lock_doors"], "expected_params": {"set_reading_light": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "静音一下，然后接电话", "expected_functions": ["set_mute", "answer_call"], "expected_params": {"set_mute": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "方向盘加热开到最大，座椅加热也开三档", "expected_functions": ["set_steering_wheel_heating", "set_seat_heating"], "expected_params": {"set_steering_wheel_heating": {"level": 3}, "set_seat_heating": {"level": 3}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开天窗遮阳帘，再把氛围灯调成蓝色", "expected_functions": ["open_sunshade", "set_ambient_light_color"], "expected_params": {"open_sunshade": {"is_open": true}, "set_ambient_light_color": {"color": "blue"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "副驾车窗开一半，空调温度调到24度", "expected_functions": ["set_window_position", "set_temperature"], "expected_params": {"set_window_position": {"percent": 50, "position": "passenger"}, "set_temperature": {"temperature": 24}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "关掉双闪，把大灯打开", "expected_functions": ["set_hazard_light", "set_headlight"], "expected_params": {"set_hazard_light": {"enabled": false}, "set_headlight": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "放首歌，音量开到30", "expected_functions": ["play_music", "set_volume"], "expected_params": {"set_volume": {"level": 30}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开自动驻车，再开倒车雷达", "expected_functions": ["set_auto_hold", "set_parking_sensor"], "expected_params": {"set_auto_hold": {"enabled": true}, "set_parking_sensor": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "帮我导航到虹桥机场，再查下附近的加油站", "expected_functions": ["navigate_to", "find_nearby"], "expected_params": {"navigate_to": {"destination": "虹桥机场"}, "find_nearby": {"category": "加油站"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "把座椅按摩打开三档，靠背放倒", "expected_functions": ["set_seat_massage", "adjust_backrest"], "expected_params": {"set_seat_massage": {"level": 3}, "adjust_backrest": {"direction": "recline"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "开内循环，温度调到26度", "expected_functions": ["set_air_recirculation", "set_temperature"], "expected_params": {"set_air_recirculation": {"mode": "internal"}, "set_temperature": {"temperature": 26}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开后除霜，后视镜加热也开一下", "expected_functions": ["set_rear_defrost", "set_mirror_heating"], "expected_params": {"set_rear_defrost": {"enabled": true}, "set_mirror_heating": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "把音源切到蓝牙，随机播放打开", "expected_functions": ["set_audio_source", "set_shuffle"], "expected_params": {"set_audio_source": {"source": "bluetooth"}, "set_shuffle": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开氛围灯，把车窗关上", "expected_functions": ["set_ambient_light", "open_window"], "expected_params": {"set_ambient_light": {"enabled": true}, "open_window": {"is_open": false}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "导航去外滩，避开收费站", "expected_functions": ["navigate_to", "set_route_preference"], "expected_params": {"navigate_to": {"destination": "外滩"}, "set_route_preference": {"mode": "avoid_toll"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "座椅往前挪，靠背立起来", "expected_functions": ["move_seat", "adjust_backrest"], "expected_params": {"move_seat": {"direction": "front"}, "adjust_backrest": {"direction": "upright"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "打开勿扰模式，把屏幕也息了", "expected_functions": ["set_do_not_disturb", "turn_off_screen"], "expected_params": {"set_do_not_disturb": {"enabled": true}, "turn_off_screen": {"is_off": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "空调风开大到五档，切成制冷", "expected_functions": ["set_fan_speed", "set_ac_mode"], "expected_params": {"set_fan_speed": {"level": 5}, "set_ac_mode": {"mode": "cool"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "音乐停一下，回拨刚才的电话", "expected_functions": ["pause_playback", "redial"], "type": "multi_intent", "split": "dev"}
+{"utterance": "打开充电口，解锁车门", "expected_functions": ["open_charge_port", "unlock_doors"], "expected_params": {"open_charge_port": {"is_open": true}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "把主驾座椅升高，头枕也往上调", "expected_functions": ["adjust_seat_height", "adjust_headrest"], "expected_params": {"adjust_seat_height": {"direction": "up", "position": "driver"}, "adjust_headrest": {"direction": "up", "position": "driver"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "天窗开到一半，遮阳帘拉开", "expected_functions": ["set_sunroof_position", "open_sunshade"], "expected_params": {"set_sunroof_position": {"percent": 50}, "open_sunshade": {"is_open": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "发短信给老板说我迟到，导航去公司", "expected_functions": ["send_message", "navigate_to_work"], "expected_params": {"send_message": {"contact": "老板", "content": "我迟到"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "音效换成摇滚，音量提到28", "expected_functions": ["set_equalizer", "set_volume"], "expected_params": {"set_equalizer": {"mode": "rock"}, "set_volume": {"level": 28}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "关掉空调，把车窗降下来", "expected_functions": ["set_ac_power", "open_window"], "expected_params": {"set_ac_power": {"enabled": false}, "open_window": {"is_open": true}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "雨刮开到三档，喷点玻璃水", "expected_functions": ["set_wiper_speed", "spray_washer"], "expected_params": {"set_wiper_speed": {"level": 3}, "spray_washer": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "近光切一下，前雾灯打开", "expected_functions": ["set_headlight_mode", "set_front_fog_light"], "expected_params": {"set_headlight_mode": {"mode": "low_beam"}, "set_front_fog_light": {"enabled": true}}, "type": "multi_intent", "split": "test"}
+{"utterance": "腰托加到二档，座椅通风也开一下", "expected_functions": ["set_lumbar_support", "set_seat_ventilation"], "expected_params": {"set_lumbar_support": {"level": 2}}, "type": "multi_intent", "split": "test"}
+{"utterance": "把仪表盘调亮到80%，屏幕切日间模式", "expected_functions": ["set_dashboard_brightness", "set_display_mode"], "expected_params": {"set_dashboard_brightness": {"percent": 80}, "set_display_mode": {"mode": "day"}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "导航回家，把空调温度设成23度", "expected_functions": ["navigate_home", "set_temperature"], "expected_params": {"set_temperature": {"temperature": 23}}, "type": "multi_intent", "split": "dev"}
+{"utterance": "打开HUD，声场调到主驾", "expected_functions": ["set_hud", "set_sound_field"], "expected_params": {"set_hud": {"enabled": true}, "set_sound_field": {"position": "driver"}}, "type": "multi_intent", "split": "test"}
+{"utterance": "今天天气怎么样", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "讲个笑话听听", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "你叫什么名字", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "现在几点了", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "给我讲个故事吧", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "你觉得今晚哪个球队会赢", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "帮我算一下三加五等于几", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "明天会下雨吗", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "你会唱歌吗", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "北京到上海大概有多远", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "我有点无聊，陪我聊聊天", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "推荐一部好看的电影", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "一公里等于多少米", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "你今年多大了", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "帮我写一首七言绝句", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "世界上最高的山是哪座", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "晚饭吃点什么好呢", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "教我做个番茄炒蛋", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "语音助手你还在吗", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "背一首李白的诗给我听", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "现在美国总统是谁", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "把你好翻译成英文", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "现在油价多少钱一升", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "股市今天涨了还是跌了", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "帮我打开车载WiFi热点", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "查一下四个轮胎的胎压", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "现在车速是多少", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "这箱油还能跑多少公里", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "打开行车记录仪", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "启动自动驾驶功能", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "帮我预约一次保养", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "把电子手刹拉起来", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "打开发动机盖", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "查一下今天的限行尾号", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "帮我续一下车险", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "打开车载卡拉OK唱歌", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "把悬架高度调低一点", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "打开哨兵模式", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "远程启动一下车辆", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "帮我叫个代驾", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "把方向盘位置往下调", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "打开车里的小冰箱", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "报一下现在还剩多少电", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "帮我设一个明早七点的闹钟", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "打开车顶的行李架", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "现在电池温度多少度", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "帮我导出一下行车数据", "expected_functions": [], "type": "ood", "split": "dev"}
+{"utterance": "打开自动泊车帮我停进去", "expected_functions": [], "type": "ood", "split": "test"}
+{"utterance": "调一下温度", "expected_functions": ["set_temperature"], "type": "ambiguous", "split": "dev"}
+{"utterance": "打开", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "开一下", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "声音弄一下", "expected_functions": ["set_volume"], "type": "ambiguous", "split": "test"}
+{"utterance": "把它关掉", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "调高一点", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "开个灯", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "座椅调一下", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "有点冷", "expected_functions": ["set_temperature"], "type": "ambiguous", "split": "test"}
+{"utterance": "热死了", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "窗户", "expected_functions": ["open_window"], "type": "ambiguous", "split": "dev"}
+{"utterance": "导航一下呗", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "亮度调一下", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "风再大点", "expected_functions": ["set_fan_speed"], "type": "ambiguous", "split": "test"}
+{"utterance": "把那个打开", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "调到最大", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "座椅往那边挪挪", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "灯光调暗点", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "帮我设置一下", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "音乐", "expected_functions": [], "type": "ambiguous", "split": "test"}
+{"utterance": "后排弄一下", "expected_functions": [], "type": "ambiguous", "split": "dev"}
+{"utterance": "温度弄弄", "expected_functions": ["set_temperature"], "type": "ambiguous", "split": "dev"}
+{"utterance": "锁一下", "expected_functions": ["lock_doors"], "type": "ambiguous", "split": "test"}
+{"utterance": "凉快点", "expected_functions": [], "type": "ambiguous", "split": "test"}
