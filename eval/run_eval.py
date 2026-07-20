@@ -2,31 +2,36 @@ from __future__ import annotations
 import argparse, json
 from t2f.cards import load_catalog
 from t2f.config import Config
-from t2f.gate import Thresholds, calibrate_gate
+from t2f.gate import Thresholds, calibrate_gate, ConfidenceGate
 from t2f.embed import FakeEmbedder
 from eval.dataset import load_dataset
 from eval import arms as A
 from eval import metrics as M
 
 
-def _embedder(config, fake: bool):
+def _embedder(config, fake: bool, backend: str = "transformers"):
     if fake:
         return FakeEmbedder(256)
-    from t2f.embed import SentenceTransformerEmbedder
-    return SentenceTransformerEmbedder(config.model_id, mrl_dim=config.mrl_dim)
+    if backend == "st":
+        from t2f.embed import SentenceTransformerEmbedder
+        return SentenceTransformerEmbedder(config.model_id, mrl_dim=config.mrl_dim)
+    from t2f.embed import TransformersEmbedder
+    return TransformersEmbedder(config.model_id, mrl_dim=config.mrl_dim)
 
 
 def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
-        config="config.yaml", fake=False, calibrate=False, permissive=False) -> dict:
+        config="config.yaml", fake=False, calibrate=False, permissive=False,
+        backend="transformers", embedder=None) -> dict:
     cfg = Config.load(config) if not permissive else Config.default()
     if permissive:
         cfg.thresholds = Thresholds(0.2, 0.0, 0.05)
     cards = load_catalog(catalog)
-    embedder = _embedder(cfg, fake)
+    if embedder is None:
+        embedder = _embedder(cfg, fake, backend)
     rows = load_dataset(dataset)
 
     build = A.build_arm_c if arm == "C" else A.build_arm_c_baseline
-    pipe = build(cards, embedder, cfg)
+    pipe = build(cards, embedder, cfg)  # builds the prototype store once
 
     if calibrate:
         dev = [r for r in rows if r.get("split") == "dev"]
@@ -34,7 +39,8 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
             def route_top(utt):
                 return pipe.route(utt).clauses[0].decision.candidates
             cfg.thresholds = calibrate_gate(dev, route_top)
-            pipe = build(cards, embedder, cfg)
+            # swap only the gate — do NOT rebuild the pipeline (avoids re-encoding prototypes)
+            pipe.gate = ConfidenceGate(cfg.thresholds)
         rows = [r for r in rows if r.get("split") != "dev"]  # report on test only
 
     records = [A.predict(pipe, r) for r in rows]
@@ -55,7 +61,9 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         "p50_latency_ms": lp[50], "p95_latency_ms": lp[95],
         "n_rows": len(rows),
     }
-    report = {"arm": arm, "dataset": dataset, "fake": fake, "metrics": metrics}
+    report = {"arm": arm, "dataset": dataset, "fake": fake,
+              "backend": "fake" if fake else backend,
+              "thresholds": vars(cfg.thresholds), "metrics": metrics}
     _print_markdown(report)
     with open(f"eval_report_{arm}.json", "w", encoding="utf-8") as fh:
         json.dump(report, fh, ensure_ascii=False, indent=2)
@@ -78,8 +86,9 @@ def main():
     ap.add_argument("--fake", action="store_true")
     ap.add_argument("--calibrate", action="store_true")
     ap.add_argument("--permissive", action="store_true")
+    ap.add_argument("--backend", default="transformers", choices=["transformers", "st"])
     a = ap.parse_args()
-    run(a.arm, a.dataset, a.catalog, a.config, a.fake, a.calibrate, a.permissive)
+    run(a.arm, a.dataset, a.catalog, a.config, a.fake, a.calibrate, a.permissive, a.backend)
 
 
 if __name__ == "__main__":

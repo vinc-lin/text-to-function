@@ -1,8 +1,17 @@
 model_id: Qwen/Qwen3-Embedding-0.6B
 mrl_dim: 512
 top_k: 5
-weights: {embedding: 0.55, keyword_alias: 0.15, param_compat: 0.25, domain_prior: 0.05}
-thresholds: {high_top1: 0.60, high_margin: 0.08, low_top1: 0.35}
+# Embedding-dominant fusion. A dev-set weight sweep against the real Qwen3-Embedding-0.6B
+# showed the coarse lexical signals (keyword_alias, param_compat) do NOT improve ranking over
+# the embedder alone and, at large weights, hurt it — so embedding carries the ranking and the
+# signals only nudge genuine near-ties (and still feed the gate's param_compat feature). They
+# remain available for a weaker on-device backend. See docs/superpowers/RESULTS.md.
+weights: {embedding: 0.88, keyword_alias: 0.04, param_compat: 0.05, domain_prior: 0.03}
+# Calibrated on the gold dev split (see RESULTS.md). Conservative HIGH band keeps incorrect
+# execution low at the cost of coverage; the medium band is what the Spec-2 LLM will resolve.
+# The binding constraint is high_margin: on confusable clusters top1/top2 are close, so only
+# clear-margin cases go HIGH — a deliberate precision-over-coverage choice for zero-LLM safety.
+thresholds: {high_top1: 0.35, high_margin: 0.12, low_top1: 0.15}
 domain_keywords:
   climate: [空调, 温度, 风速, 风量, 制冷, 制热, 暖风, 冷风]
   window: [车窗, 窗户, 天窗, 玻璃]

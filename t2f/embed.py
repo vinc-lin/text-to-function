@@ -57,6 +57,60 @@ class SentenceTransformerEmbedder(Embedder):
         return _l2(v.astype(np.float32))
 
 
+class TransformersEmbedder(Embedder):
+    """Qwen3-Embedding via the transformers library with last-token pooling.
+
+    Uses the GPU when available. Neutralizes a broken torchvision install (whose C++
+    ops fail to register) so transformers' text path imports cleanly, and bypasses
+    sentence-transformers entirely. This is the FP reference backend; on-device it is
+    replaced by the GGUF/llama.cpp path (Spec 3), hence the shared Embedder interface.
+    """
+
+    def __init__(self, model_id: str = "Qwen/Qwen3-Embedding-0.6B",
+                 instruction: str = DEFAULT_QUERY_INSTRUCTION, mrl_dim: int | None = None,
+                 max_length: int = 256, batch_size: int = 64, device: str | None = None,
+                 dtype: str = "float16"):
+        import sys as _sys
+        _sys.modules.setdefault("torchvision", None)  # dodge broken torchvision::nms
+        import torch
+        from transformers import AutoTokenizer, AutoModel
+        self._torch = torch
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        td = torch.float16 if (dtype == "float16" and self.device == "cuda") else torch.float32
+        self._tok = AutoTokenizer.from_pretrained(model_id, padding_side="left")
+        self._model = AutoModel.from_pretrained(model_id, torch_dtype=td).to(self.device).eval()
+        self.instruction = instruction
+        self.mrl_dim = mrl_dim
+        self.max_length = max_length
+        self.batch_size = batch_size
+        self.dim = mrl_dim or self._model.config.hidden_size
+
+    def _pool(self, h, mask):
+        # last-token pooling; handles left- or right-padding
+        if bool((mask[:, -1].sum() == mask.shape[0]).item()):
+            return h[:, -1]
+        lengths = mask.sum(dim=1) - 1
+        return h[self._torch.arange(h.shape[0], device=h.device), lengths]
+
+    def encode(self, texts: list[str], is_query: bool = False) -> np.ndarray:
+        torch = self._torch
+        if is_query:
+            texts = [self.instruction + t for t in texts]
+        chunks = []
+        with torch.no_grad():
+            for i in range(0, len(texts), self.batch_size):
+                batch = texts[i:i + self.batch_size]
+                enc = self._tok(batch, padding=True, truncation=True,
+                                max_length=self.max_length, return_tensors="pt").to(self.device)
+                h = self._model(**enc).last_hidden_state
+                emb = self._pool(h, enc["attention_mask"])
+                chunks.append(emb.float().cpu().numpy())
+        v = np.vstack(chunks)
+        if self.mrl_dim:
+            v = v[:, :self.mrl_dim]
+        return _l2(v.astype(np.float32))
+
+
 class GgufEmbedder(Embedder):  # Spec 3
     def __init__(self, *a, **k):
         raise NotImplementedError("GGUF/llama.cpp embedder is Spec 3")
