@@ -1,0 +1,15 @@
+domain: window
+functions:
+  - name: open_window
+    description: 打开或关闭车窗
+    params:
+      - {name: is_open, type: boolean, required: true, description: 开启为true，关闭为false}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 车窗位置}
+    aliases: [车窗, 开车窗, 关车窗]
+    utterances:
+      - 开车窗
+      - 把窗户打开
+      - 关闭车窗
+    hard_negatives:
+      - 打开天窗
+    response_template: "已为您调整{position}车窗状态。"

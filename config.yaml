@@ -1,0 +1,13 @@
+model_id: Qwen/Qwen3-Embedding-0.6B
+mrl_dim: 512
+top_k: 5
+weights: {embedding: 0.55, keyword_alias: 0.15, param_compat: 0.25, domain_prior: 0.05}
+thresholds: {high_top1: 0.60, high_margin: 0.08, low_top1: 0.35}
+domain_keywords:
+  climate: [空调, 温度, 风速, 风量, 制冷, 制热, 暖风, 冷风]
+  window: [车窗, 窗户, 天窗, 玻璃]
+  seat: [座椅, 加热, 通风, 靠背, 座位]
+  media: [音乐, 音量, 播放, 歌, 电台, 声音]
+  light: [车灯, 大灯, 氛围灯, 阅读灯, 灯光]
+  door: [车门, 门锁, 后备箱, 尾门, 上锁, 解锁]
+  navigation: [导航, 回家, 去, 路线, 地图]
