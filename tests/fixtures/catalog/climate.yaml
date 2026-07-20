@@ -1,0 +1,29 @@
+domain: climate
+functions:
+  - name: set_temperature
+    description: 设置空调温度到指定摄氏度
+    params:
+      - {name: temperature, type: number, required: true, minimum: 16, maximum: 32, unit: celsius,
+         description: 目标温度}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all], description: 温区}
+    aliases: [空调温度, 温度, 调温度, 制冷温度]
+    utterances:
+      - 把空调调到25度
+      - 温度设成22度
+      - 主驾这边热，调低到20度
+    hard_negatives:
+      - 风速调到三档          # belongs to set_fan_speed
+    response_template: "已将{position}温度设置为{temperature}°C。"
+  - name: set_fan_speed
+    description: 设置空调风速档位
+    params:
+      - {name: level, type: integer, required: true, minimum: 1, maximum: 7, unit: level}
+      - {name: position, type: enum, enum: [driver, passenger, rear, all]}
+    aliases: [风速, 风量, 空调风, 吹风]
+    utterances:
+      - 风速调到三档
+      - 风大一点
+      - 后排风量开到最大
+    hard_negatives:
+      - 把温度调到25度
+    response_template: "已将{position}风速设置为{level}档。"
