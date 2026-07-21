@@ -117,3 +117,17 @@ class ClauseResult:
 class RouteResult:
     utterance: str
     clauses: list[ClauseResult] = field(default_factory=list)
+
+
+@dataclass
+class LLMResult:
+    tool_call: Optional[ToolCall] = None
+    clarification: Optional[str] = None
+    raw: str = ""
+    error: Optional[str] = None
+
+
+@dataclass
+class SessionState:
+    pending: Optional[PendingState] = None
+    turn_count: int = 0
