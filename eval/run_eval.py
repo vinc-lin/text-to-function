@@ -1,9 +1,13 @@
 from __future__ import annotations
 import argparse, json
+from pathlib import Path
 from t2f.cards import load_catalog
 from t2f.config import Config
 from t2f.gate import Thresholds, calibrate_gate, ConfidenceGate
 from t2f.embed import FakeEmbedder
+from t2f.types import LLMResult, ToolCall
+from t2f.llm.client import FakeLLMClient, TransformersXGrammarClient
+from t2f.classify.classifiers import CharNgramLRClassifier
 from eval.dataset import load_dataset
 from eval import arms as A
 from eval import metrics as M
@@ -19,6 +23,21 @@ def _embedder(config, fake: bool, backend: str = "transformers"):
     return TransformersEmbedder(config.model_id, mrl_dim=config.mrl_dim)
 
 
+def _llm_client(config, fake: bool, permissive: bool):
+    if fake or permissive:
+        return FakeLLMClient(default=LLMResult(tool_call=ToolCall(name="noop", parameters={})))
+    return TransformersXGrammarClient(model_id=config.llm.get("model_id", "Qwen/Qwen3-0.6B"),
+                                      max_new_tokens=config.llm.get("max_new_tokens", 128))
+
+
+def _classifier(config):
+    """Load the char-ngram classifier for Arm D; skip (return None) if it hasn't been trained yet."""
+    path = config.classifier.get("char_ngram_path")
+    if not path or not Path(path).exists():
+        return None
+    return CharNgramLRClassifier.load(path)
+
+
 def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         config="config.yaml", fake=False, calibrate=False, permissive=False,
         backend="transformers", embedder=None) -> dict:
@@ -30,8 +49,21 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         embedder = _embedder(cfg, fake, backend)
     rows = load_dataset(dataset)
 
-    build = A.build_arm_c if arm == "C" else A.build_arm_c_baseline
-    pipe = build(cards, embedder, cfg)  # builds the prototype store once
+    if arm == "C":
+        pipe = A.build_arm_c(cards, embedder, cfg)  # builds the prototype store once
+    elif arm == "baseline":
+        pipe = A.build_arm_c_baseline(cards, embedder, cfg)
+    elif arm == "C_llm":
+        pipe = A.build_arm_c_llm(cards, embedder, cfg, _llm_client(cfg, fake, permissive))
+    elif arm == "D":
+        classifier = _classifier(cfg)
+        client = _llm_client(cfg, fake, permissive)
+        if classifier is not None:
+            pipe = A.build_arm_d(cards, embedder, cfg, client, classifier)
+        else:  # classifier not trained yet — fall back to C+LLM (no candidate augmentation)
+            pipe = A.build_arm_c_llm(cards, embedder, cfg, client)
+    else:
+        raise ValueError(f"unknown arm: {arm}")
 
     if calibrate:
         dev = [r for r in rows if r.get("split") == "dev"]
@@ -58,6 +90,8 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         "incorrect_execution_rate": M.incorrect_execution_rate(records),
         "clarification_rate": M.clarification_rate(records),
         "avg_llm_calls_single": M.avg_llm_calls(records),
+        "json_valid_rate": M.json_valid_rate(records),
+        "candidate_gen_recall@3": M.candidate_gen_recall(records, 3),
         "p50_latency_ms": lp[50], "p95_latency_ms": lp[95],
         "n_rows": len(rows),
     }
@@ -79,7 +113,7 @@ def _print_markdown(report: dict) -> None:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--arm", default="C", choices=["C", "baseline"])
+    ap.add_argument("--arm", default="C", choices=["C", "baseline", "C_llm", "D"])
     ap.add_argument("--dataset", default="data/eval/gold.jsonl")
     ap.add_argument("--catalog", default="data/catalog")
     ap.add_argument("--config", default="config.yaml")

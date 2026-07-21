@@ -1,7 +1,8 @@
 from __future__ import annotations
-from t2f.pipeline import Pipeline
+from t2f.pipeline import Pipeline, LLMResolver
 from t2f.score import Scorer, EmbeddingOnlyScorer
 from t2f.gate import ConfidenceGate
+from t2f.classify.source import ClassifierCandidateSource
 
 
 def build_arm_c(cards, embedder, config) -> Pipeline:
@@ -12,6 +13,22 @@ def build_arm_c(cards, embedder, config) -> Pipeline:
 def build_arm_c_baseline(cards, embedder, config) -> Pipeline:
     return Pipeline(cards, embedder, EmbeddingOnlyScorer(),
                     ConfidenceGate(config.thresholds), config)
+
+
+def build_arm_c_llm(cards, embedder, config, llm_client) -> Pipeline:
+    medium = LLMResolver(llm_client, max_candidates=config.llm.get("max_candidates", 3),
+                         max_retries=config.llm.get("max_retries", 1))
+    return Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
+                    ConfidenceGate(config.thresholds), config, medium_resolver=medium)
+
+
+def build_arm_d(cards, embedder, config, llm_client, classifier) -> Pipeline:
+    medium = LLMResolver(llm_client, max_candidates=config.llm.get("max_candidates", 3),
+                         max_retries=config.llm.get("max_retries", 1))
+    source = ClassifierCandidateSource(classifier, config.classifier.get("topk", 3))
+    return Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
+                    ConfidenceGate(config.thresholds), config, medium_resolver=medium,
+                    classifier_source=source)
 
 
 def _params_match(got: dict, exp: dict | None) -> bool:
@@ -26,6 +43,7 @@ def predict(pipeline: Pipeline, row: dict) -> dict:
     exp_params = row.get("expected_params", {})
     ranked, preds, bands, tcs, executed, needs, params, exec_ok = [], [], [], [], [], [], [], []
     verrs = []
+    llm_json_ok = []
     for cl in res.clauses:
         names = [c.function for c in cl.decision.candidates]
         ranked.append(names)
@@ -40,7 +58,9 @@ def predict(pipeline: Pipeline, row: dict) -> dict:
         verrs.append(list(cl.validation_errors))
         ok = (top1 in gold) and _params_match(p, exp_params.get(top1))
         exec_ok.append(ok)
+        llm_json_ok.append(cl.needs_llm and cl.tool_call is not None)
     return {"row": row, "ranked_per_clause": ranked, "predicted_functions": preds,
             "bands": bands, "tool_calls": tcs, "executed": executed, "needs_llm": needs,
             "params_per_clause": params, "exec_correct": exec_ok, "val_errors": verrs,
+            "llm_json_ok": llm_json_ok,
             "latencies": [cl.latency_ms for cl in res.clauses]}
