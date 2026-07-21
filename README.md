@@ -36,7 +36,20 @@ The real embedder runs via `t2f.embed.TransformersEmbedder` (last-token pooling,
 Note: on this box a broken `torchvision` install breaks `sentence-transformers`; the transformers
 backend neutralizes it (`sys.modules["torchvision"] = None`) and is the default `--backend`.
 
+## Spec 2 — LLM fallback + classifier + multi-turn
+The medium band is resolved by Qwen3-0.6B via `transformers` + **xgrammar** (JSON-schema-constrained,
+single-shot), behind `t2f.llm.LLMClient`. A supervised classifier (`t2f/classify/`) augments retrieval
+candidates (Arm D), and `t2f/dialog.py` completes clarifications over turns. Out-of-domain safety uses
+`__ood__` negative prototypes (`data/ood/prototypes.txt`) + an OOD-aware gate + an LLM reject option.
+
+```
+python3 -m pip install --user scikit-learn joblib xgrammar   # one-time
+python3 -m t2f.classify.train --embedding                    # train classifiers -> models/
+python3 -m eval.run_eval --arm C_llm --dataset data/eval/gold.jsonl --calibrate
+python3 -m eval.run_eval --arm D     --dataset data/eval/gold.jsonl --calibrate
+```
+See `docs/superpowers/specs/2026-07-21-spec2-*.md` and the Spec 2 section of `RESULTS.md`.
+
 ## Scope
-Spec 1 is the deterministic fast path. The Qwen3-0.6B single-shot LLM fallback + supervised
-classifier (Arm D) + multi-turn clarification are Spec 2; the SA8797 / GGUF-llama.cpp on-device
-port is Spec 3.
+Spec 1 (deterministic fast path) and Spec 2 (LLM fallback + classifier + multi-turn) are complete.
+The SA8797 / GGUF-llama.cpp on-device port (GBNF replaces xgrammar) is Spec 3.
