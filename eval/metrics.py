@@ -127,6 +127,38 @@ def avg_llm_calls(records) -> float:
     return sum(sum(1 for n in r["needs_llm"] if n) for r in single) / len(single)
 
 
+def candidate_gen_recall(records, k: int) -> float:
+    rows = [r for r in records if r["row"].get("type") in ("single", "ambiguous")
+            and r["row"].get("expected_functions")]
+    if not rows:
+        return 0.0
+    hit = 0
+    for r in rows:
+        gold = r["row"]["expected_functions"]
+        if any(g in r["ranked_per_clause"][0][:k] for g in gold):
+            hit += 1
+    return hit / len(rows)
+
+
+def json_valid_rate(records) -> float:
+    denom = numer = 0
+    for r in records:
+        oks = r.get("llm_json_ok", [])
+        for i, need in enumerate(r.get("needs_llm", [])):
+            if need:
+                denom += 1
+                if i < len(oks) and oks[i]:
+                    numer += 1
+    return numer / denom if denom else 1.0
+
+
+def clarification_followup_success(results) -> float:
+    if not results:
+        return 0.0
+    ok = sum(1 for r in results if r.get("got") == r.get("expected"))
+    return ok / len(results)
+
+
 def latency_percentiles(latencies, ps=(50, 95)) -> dict:
     if not latencies:
         return {p: 0.0 for p in ps}
