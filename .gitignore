@@ -6,6 +6,7 @@ venv/
 *.egg-info/
 .mypy_cache/
 data/gen/cache/
-models/
+models/*
+!models/.gitkeep
 *.gguf
 eval_report_*.json
