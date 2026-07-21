@@ -78,18 +78,20 @@ Spec 1 delivers a working, tested (72 automated tests), fully-measured retrieval
 | multi-intent set recall | 0.929 | 0.929 | **0.964** | — | Arm D helps multi-intent |
 | **JSON-valid rate (LLM)** | n/a | **~1.0** (0.83*) | ~1.0 (0.83*) | — | *xgrammar guarantees valid JSON; 0.83 counts LLM **rejects** as "not a tool-call" |
 | **schema-valid rate** | 0.50 | **0.995** | 0.995 | ≥ 0.99 | ✅ constrained + validated |
-| **param exact-match** | 0.356 | **0.622** | 0.597 | — | LLM completes params rules miss |
-| **e2e executable (real, with LLM)** | 0.07 (det-only) | **0.444** | 0.444 | ≥ 0.80 | 6× over Spec-1 deterministic; below target (recall ceiling) |
+| **param exact-match** | 0.356 | **0.633** | 0.608 | — | LLM completes params rules miss |
+| **e2e executable (real, with LLM)** | 0.07 (det-only) | **0.458** | 0.458 | ≥ 0.80 | 6.5× over Spec-1 deterministic; below target (recall ceiling) |
 | **multi-turn follow-up success** | n/a | **1.000** (n=46) | 1.000 | — | ✅ rules-first completion works |
 | OOD false-execution | 0.000 | **0.321** | 0.321 | ≈ 0 | ✗ — see safety analysis |
-| incorrect-execution | 0.039 | 0.360 | 0.354 | ≈ 0 | ✗ — same root cause |
+| incorrect-execution | 0.039 | 0.344 | 0.337 | ≈ 0 | ✗ — same root cause |
+
+*(All correctness/e2e/param metrics for the LLM arms are scored against the function the LLM actually **executed** — which it selects from the top-2/3 — not the retrieval top-1.)*
 | avg LLM calls / single | 0.0 | 1.16 | 1.11 | ≤ 0.5 | most traffic uses the LLM |
 | P50 / P95 latency (ms) | 52 / 72 | 835 / 1184 | 932 / 1390 | < 1500 | ✅ LLM in the loop, still < 1.5 s |
 
 ## What Spec 2 delivered
 - **Guaranteed-valid tool calls.** xgrammar makes syntactically-invalid JSON impossible; combined with the reused Spec-1 validator, **schema-valid rate hits 0.995** (met the ≥0.99 target) — the constrained 0.6B never emits an out-of-schema call.
-- **Parameter completion.** The LLM fills params the deterministic rules can't (relative operations, phrasings the extractors miss): **param exact-match 0.36 → 0.62**.
-- **The medium band now resolves.** End-to-end executable accuracy went from **0.07 (Spec-1 zero-LLM) to 0.44** with the real LLM — a 6× lift, realizing much of the 0.845 retrieval ceiling.
+- **Parameter completion.** The LLM fills params the deterministic rules can't (relative operations, phrasings the extractors miss): **param exact-match 0.36 → 0.63**.
+- **The medium band now resolves.** End-to-end executable accuracy went from **0.07 (Spec-1 zero-LLM) to 0.46** with the real LLM — a 6.5× lift, realizing much of the 0.845 retrieval ceiling.
 - **Multi-turn works.** Rules-first follow-up completion resolves **100%** of the 46 in-scope clarification follow-ups.
 - **Arm D** (classifier candidate union) lifted **multi-intent set recall 0.929 → 0.964** but did **not** raise single-intent candidate recall — consistent with Spec-1's finding that the strong embedder is hard to beat; the classifier partly replicates it (silver-leakage caveat).
 
@@ -99,7 +101,7 @@ Executing the medium band via a **constrained** LLM introduces a risk Spec 1 did
 2. **OOD negative prototypes** — 96 chitchat/unsupported prototypes seeded in the index; when the `__ood__` marker wins retrieval the gate rejects. Captures **57%** of test OOD at **0.8%** in-domain false-rejection.
 3. **OOD-aware conservative gate calibration** — when the medium band executes, `low_top1` becomes an OOD floor tuned to keep OOD out of the executing bands (biasing toward rejection, per the PRD).
 
-**Residual gap (honest):** OOD 0.32 and incorrect-execution 0.36 still miss "≈ 0". The residual is the hard tail of OOD/wrong-top-1 inputs whose retrieval score overlaps the in-domain range (in-domain median 0.74 vs OOD median 0.56, overlapping ~0.65–0.71), which a single threshold can't separate and a 0.6B can't reliably reject. **Levers to close it:** (a) more/broader OOD prototypes — capture scaled 46%→57% just by 54→96, and keeps scaling; (b) a dedicated binary in-domain/OOD detector (a natural extension of the Arm-D classifier); (c) a conservative operating point (raise `low_top1`, trading e2e for safety — the PRD's stated "clarify rather than incorrectly execute" preference); (d) a larger fallback (Qwen3-1.7B) whose reject/tool-calling is far more reliable (1.38%→16.88% multi-turn BFCL, per the Spec-1 research). For a production safety-critical deployment, (b)+(c) are recommended before trusting medium-band LLM execution.
+**Residual gap (honest):** OOD 0.32 and incorrect-execution 0.34 still miss "≈ 0". The residual is the hard tail of OOD/wrong-top-1 inputs whose retrieval score overlaps the in-domain range (in-domain median 0.74 vs OOD median 0.56, overlapping ~0.65–0.71), which a single threshold can't separate and a 0.6B can't reliably reject. **Levers to close it:** (a) more/broader OOD prototypes — capture scaled 46%→57% just by 54→96, and keeps scaling; (b) a dedicated binary in-domain/OOD detector (a natural extension of the Arm-D classifier); (c) a conservative operating point (raise `low_top1`, trading e2e for safety — the PRD's stated "clarify rather than incorrectly execute" preference); (d) a larger fallback (Qwen3-1.7B) whose reject/tool-calling is far more reliable (1.38%→16.88% multi-turn BFCL, per the Spec-1 research). For a production safety-critical deployment, (b)+(c) are recommended before trusting medium-band LLM execution.
 
 ## Bottom line
 Spec 2 turns the retrieval router into an executing system: **guaranteed-valid, param-complete tool calls, 6× end-to-end executable accuracy, and flawless multi-turn completion**, all with the LLM in the loop under 1.5 s. Its honest cost is that executing the medium band reintroduces OOD/incorrect-execution risk; three principled mechanisms cut OOD false-execution 3× (1.0→0.32), and the remaining gap has clear, identified levers rather than hand-waving. Retrieval recall and the ≤0.5-LLM-call target remain Spec-1-bounded and need the classifier/data work already scoped.
