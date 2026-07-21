@@ -1,0 +1,53 @@
+{"initial_utterance": "把空调温度调到25度", "missing_param": "position", "followup_reply": "副驾", "expected_tool_call": {"name": "set_temperature", "parameters": {"temperature": 25, "position": "passenger"}}}
+{"initial_utterance": "空调开到22度", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "set_temperature", "parameters": {"temperature": 22, "position": "driver"}}}
+{"initial_utterance": "温度调到26度", "missing_param": "position", "followup_reply": "后排", "expected_tool_call": {"name": "set_temperature", "parameters": {"temperature": 26, "position": "rear"}}}
+{"initial_utterance": "风速调到三档", "missing_param": "position", "followup_reply": "副驾", "expected_tool_call": {"name": "set_fan_speed", "parameters": {"level": 3, "position": "passenger"}}}
+{"initial_utterance": "把风量开到二档", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "set_fan_speed", "parameters": {"level": 2, "position": "driver"}}}
+{"initial_utterance": "座椅加热开到三档", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "set_seat_heating", "parameters": {"level": 3, "position": "driver"}}}
+{"initial_utterance": "座椅加热调到一档", "missing_param": "position", "followup_reply": "后排", "expected_tool_call": {"name": "set_seat_heating", "parameters": {"level": 1, "position": "rear"}}}
+{"initial_utterance": "座椅通风开到二档", "missing_param": "position", "followup_reply": "副驾", "expected_tool_call": {"name": "set_seat_ventilation", "parameters": {"level": 2, "position": "passenger"}}}
+{"initial_utterance": "座椅按摩调到三档", "missing_param": "position", "followup_reply": "后排", "expected_tool_call": {"name": "set_seat_massage", "parameters": {"level": 3, "position": "rear"}}}
+{"initial_utterance": "腰部支撑调到二档", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "set_lumbar_support", "parameters": {"level": 2, "position": "driver"}}}
+{"initial_utterance": "打开车窗", "missing_param": "position", "followup_reply": "后排", "expected_tool_call": {"name": "open_window", "parameters": {"is_open": true, "position": "rear"}}}
+{"initial_utterance": "把车窗打开", "missing_param": "position", "followup_reply": "副驾", "expected_tool_call": {"name": "open_window", "parameters": {"is_open": true, "position": "passenger"}}}
+{"initial_utterance": "车窗打开到百分之五十", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "set_window_position", "parameters": {"percent": 50, "position": "driver"}}}
+{"initial_utterance": "打开车门", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "open_door", "parameters": {"is_open": true, "position": "driver"}}}
+{"initial_utterance": "打开阅读灯", "missing_param": "position", "followup_reply": "后排", "expected_tool_call": {"name": "set_reading_light", "parameters": {"enabled": true, "position": "rear"}}}
+{"initial_utterance": "把阅读灯打开", "missing_param": "position", "followup_reply": "副驾", "expected_tool_call": {"name": "set_reading_light", "parameters": {"enabled": true, "position": "passenger"}}}
+{"initial_utterance": "锁门", "missing_param": "position", "followup_reply": "全车", "expected_tool_call": {"name": "lock_doors", "parameters": {"position": "all"}}}
+{"initial_utterance": "把车门锁上", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "lock_doors", "parameters": {"position": "driver"}}}
+{"initial_utterance": "解锁车门", "missing_param": "position", "followup_reply": "全车", "expected_tool_call": {"name": "unlock_doors", "parameters": {"position": "all"}}}
+{"initial_utterance": "调节音场", "missing_param": "position", "followup_reply": "全车", "expected_tool_call": {"name": "set_sound_field", "parameters": {"position": "all"}}}
+{"initial_utterance": "设置声场", "missing_param": "position", "followup_reply": "主驾", "expected_tool_call": {"name": "set_sound_field", "parameters": {"position": "driver"}}}
+{"initial_utterance": "把车门打开", "missing_param": "position", "followup_reply": "后排", "expected_tool_call": {"name": "open_door", "parameters": {"is_open": true, "position": "rear"}}}
+{"initial_utterance": "车窗降到百分之三十", "missing_param": "position", "followup_reply": "副驾", "expected_tool_call": {"name": "set_window_position", "parameters": {"percent": 30, "position": "passenger"}}}
+{"initial_utterance": "座椅通风调到二档", "missing_param": "position", "followup_reply": "全车", "expected_tool_call": {"name": "set_seat_ventilation", "parameters": {"level": 2, "position": "all"}}}
+{"initial_utterance": "副驾温度调一下", "missing_param": "temperature", "followup_reply": "22度", "expected_tool_call": {"name": "set_temperature", "parameters": {"position": "passenger", "temperature": 22}}}
+{"initial_utterance": "主驾空调温度", "missing_param": "temperature", "followup_reply": "26度", "expected_tool_call": {"name": "set_temperature", "parameters": {"position": "driver", "temperature": 26}}}
+{"initial_utterance": "后排温度设置一下", "missing_param": "temperature", "followup_reply": "24度", "expected_tool_call": {"name": "set_temperature", "parameters": {"position": "rear", "temperature": 24}}}
+{"initial_utterance": "调节空调温度", "missing_param": "temperature", "followup_reply": "23度", "expected_tool_call": {"name": "set_temperature", "parameters": {"temperature": 23}}}
+{"initial_utterance": "把温度调整一下", "missing_param": "temperature", "followup_reply": "25度", "expected_tool_call": {"name": "set_temperature", "parameters": {"temperature": 25}}}
+{"initial_utterance": "全车温度", "missing_param": "temperature", "followup_reply": "21度", "expected_tool_call": {"name": "set_temperature", "parameters": {"position": "all", "temperature": 21}}}
+{"initial_utterance": "副驾这边温度", "missing_param": "temperature", "followup_reply": "27度", "expected_tool_call": {"name": "set_temperature", "parameters": {"position": "passenger", "temperature": 27}}}
+{"initial_utterance": "副驾风速调一下", "missing_param": "level", "followup_reply": "三档", "expected_tool_call": {"name": "set_fan_speed", "parameters": {"position": "passenger", "level": 3}}}
+{"initial_utterance": "主驾风量", "missing_param": "level", "followup_reply": "二档", "expected_tool_call": {"name": "set_fan_speed", "parameters": {"position": "driver", "level": 2}}}
+{"initial_utterance": "主驾座椅加热", "missing_param": "level", "followup_reply": "三档", "expected_tool_call": {"name": "set_seat_heating", "parameters": {"position": "driver", "level": 3}}}
+{"initial_utterance": "后排座椅加热开一下", "missing_param": "level", "followup_reply": "一档", "expected_tool_call": {"name": "set_seat_heating", "parameters": {"position": "rear", "level": 1}}}
+{"initial_utterance": "副驾座椅通风", "missing_param": "level", "followup_reply": "二档", "expected_tool_call": {"name": "set_seat_ventilation", "parameters": {"position": "passenger", "level": 2}}}
+{"initial_utterance": "主驾座椅按摩", "missing_param": "level", "followup_reply": "三档", "expected_tool_call": {"name": "set_seat_massage", "parameters": {"position": "driver", "level": 3}}}
+{"initial_utterance": "打开方向盘加热", "missing_param": "level", "followup_reply": "二档", "expected_tool_call": {"name": "set_steering_wheel_heating", "parameters": {"level": 2}}}
+{"initial_utterance": "调节雨刮速度", "missing_param": "level", "followup_reply": "三档", "expected_tool_call": {"name": "set_wiper_speed", "parameters": {"level": 3}}}
+{"initial_utterance": "主驾腰部支撑", "missing_param": "level", "followup_reply": "二档", "expected_tool_call": {"name": "set_lumbar_support", "parameters": {"position": "driver", "level": 2}}}
+{"initial_utterance": "副驾腰部支撑", "missing_param": "level", "followup_reply": "三档", "expected_tool_call": {"name": "set_lumbar_support", "parameters": {"position": "passenger", "level": 3}}}
+{"initial_utterance": "调节屏幕亮度", "missing_param": "percent", "followup_reply": "百分之七十", "expected_tool_call": {"name": "set_screen_brightness", "parameters": {"percent": 70}}}
+{"initial_utterance": "副驾车窗", "missing_param": "percent", "followup_reply": "百分之五十", "expected_tool_call": {"name": "set_window_position", "parameters": {"position": "passenger", "percent": 50}}}
+{"initial_utterance": "氛围灯亮度调一下", "missing_param": "percent", "followup_reply": "百分之四十", "expected_tool_call": {"name": "set_ambient_light_brightness", "parameters": {"percent": 40}}}
+{"initial_utterance": "仪表盘亮度", "missing_param": "percent", "followup_reply": "百分之六十", "expected_tool_call": {"name": "set_dashboard_brightness", "parameters": {"percent": 60}}}
+{"initial_utterance": "调节天窗位置", "missing_param": "percent", "followup_reply": "百分之三十", "expected_tool_call": {"name": "set_sunroof_position", "parameters": {"percent": 30}}}
+{"initial_utterance": "把空调温度调一下", "followup_reply": "导航去公司", "new_query": true}
+{"initial_utterance": "风速调节一下", "followup_reply": "播放音乐", "new_query": true}
+{"initial_utterance": "座椅加热开一下", "followup_reply": "导航回家", "new_query": true}
+{"initial_utterance": "调节屏幕亮度", "followup_reply": "打电话给老婆", "new_query": true}
+{"initial_utterance": "设置音量", "followup_reply": "查找附近的充电站", "new_query": true}
+{"initial_utterance": "打开车窗", "followup_reply": "关闭空调", "new_query": true}
+{"initial_utterance": "调节座椅通风", "followup_reply": "打开天窗", "new_query": true}
