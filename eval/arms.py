@@ -47,19 +47,24 @@ def predict(pipeline: Pipeline, row: dict) -> dict:
     llm_json_ok = []
     for cl in res.clauses:
         names = [c.function for c in cl.decision.candidates]
-        ranked.append(names)
+        ranked.append(names)          # retrieval order — recall metrics read this
         top1 = names[0] if names else None
-        preds.append(top1)
+        tc = cl.tool_call
+        # the function actually ACTED ON: the executed/validated tool_call (which the LLM may pick
+        # from the top-2/3, not necessarily top1), else the retrieval top1. Correctness/params must
+        # be scored against this, not top1 — otherwise a wrong LLM execution is mis-scored.
+        acted = tc.name if tc is not None else top1
+        preds.append(acted)
         bands.append(cl.decision.band.value)
-        tcs.append(cl.tool_call)
-        executed.append(cl.tool_call is not None and cl.response is not None)
+        tcs.append(tc)
+        executed.append(tc is not None and cl.response is not None)
         needs.append(cl.needs_llm)
-        p = cl.tool_call.parameters if cl.tool_call else {}
+        p = tc.parameters if tc else {}
         params.append(p)
         verrs.append(list(cl.validation_errors))
-        ok = (top1 in gold) and _params_match(p, exp_params.get(top1))
+        ok = (acted in gold) and _params_match(p, exp_params.get(acted))
         exec_ok.append(ok)
-        llm_json_ok.append(cl.needs_llm and cl.tool_call is not None)
+        llm_json_ok.append(cl.needs_llm and tc is not None)
     return {"row": row, "ranked_per_clause": ranked, "predicted_functions": preds,
             "bands": bands, "tool_calls": tcs, "executed": executed, "needs_llm": needs,
             "params_per_clause": params, "exec_correct": exec_ok, "val_errors": verrs,

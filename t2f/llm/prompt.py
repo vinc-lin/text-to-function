@@ -10,8 +10,12 @@ _SYS = ("你是车载语音指令解析器。从给定候选功能中选择唯�
 def _param_str(p: ParamSpec) -> str:
     if p.type == "enum":
         rng = "|".join(p.enum or [])
-    elif p.minimum is not None or p.maximum is not None:
+    elif p.minimum is not None and p.maximum is not None:
         rng = f"{p.minimum}-{p.maximum}"
+    elif p.minimum is not None:
+        rng = f">={p.minimum}"
+    elif p.maximum is not None:
+        rng = f"<={p.maximum}"
     else:
         rng = p.type
     req = "*" if p.required else ""

@@ -33,6 +33,9 @@ class LLMResolver:
         extractor = extractor or ParameterExtractor()
         cand_names = [c.function for c in decision.candidates]
         cards = [cards_by_name[n] for n in cand_names[:self.max_candidates] if n in cards_by_name]
+        # validate against exactly the set offered to the LLM (defense-in-depth: never execute a
+        # name that wasn't shown to the decoder, even if a lenient backend emits one)
+        offered_names = [c.name for c in cards]
         chosen_card = cards_by_name[decision.chosen]
         extracted, _ = extractor.extract(clause, features, chosen_card)
         attempts = 0
@@ -50,7 +53,7 @@ class LLMResolver:
                     continue
                 return ClauseResult(clause=clause, decision=decision, needs_llm=True,
                                     validation_errors=[ValidationError("llm_no_toolcall", res.error or "no tool_call")])
-            tc, errs = validate_tool_call(res.tool_call.name, res.tool_call.parameters, cards_by_name, cand_names)
+            tc, errs = validate_tool_call(res.tool_call.name, res.tool_call.parameters, cards_by_name, offered_names)
             if tc is not None:
                 card = cards_by_name[tc.name]
                 if executor is not None:

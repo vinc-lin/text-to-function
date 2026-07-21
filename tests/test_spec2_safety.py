@@ -72,3 +72,38 @@ def test_ood_marker_top1_is_rejected():
     assert cands[0].function == OOD_MARKER
     d = gate.decide(cands, LexFeatures(), {})
     assert d.band == Band.LOW and d.chosen is None
+
+
+class _StubPipe:
+    def __init__(self, clause_result):
+        self._cr = clause_result
+    def route(self, utterance):
+        from t2f.types import RouteResult
+        return RouteResult(utterance=utterance, clauses=[self._cr])
+
+
+def test_predict_scores_executed_function_not_top1():
+    """exec_correct/incorrect-execution must reflect the function the LLM EXECUTED, not retrieval top1."""
+    from t2f.types import ClauseResult, ToolCall
+    from eval.arms import predict
+    from eval.metrics import incorrect_execution_rate
+    # top1 is the WRONG function; the LLM executed the CORRECT non-top1 candidate -> should score right
+    dec = Decision(Band.MEDIUM, "set_fan_speed",
+                   [Candidate("set_fan_speed", 0.5), Candidate("set_temperature", 0.45)])
+    cr = ClauseResult(clause="x", decision=dec,
+                      tool_call=ToolCall("set_temperature", {"temperature": 25}),
+                      response="ok", needs_llm=True)
+    rec = predict(_StubPipe(cr), {"utterance": "x", "expected_functions": ["set_temperature"],
+                                  "expected_params": {"set_temperature": {"temperature": 25}}, "type": "single"})
+    assert rec["predicted_functions"][0] == "set_temperature"
+    assert rec["exec_correct"][0] is True
+    assert incorrect_execution_rate([rec]) == 0.0
+
+    # top1 is the gold function but the LLM executed a WRONG candidate -> counts as incorrect execution
+    dec2 = Decision(Band.MEDIUM, "set_temperature",
+                    [Candidate("set_temperature", 0.5), Candidate("set_fan_speed", 0.45)])
+    cr2 = ClauseResult(clause="x", decision=dec2, tool_call=ToolCall("set_fan_speed", {"level": 3}),
+                       response="ok", needs_llm=True)
+    rec2 = predict(_StubPipe(cr2), {"utterance": "x", "expected_functions": ["set_temperature"], "type": "single"})
+    assert rec2["exec_correct"][0] is False
+    assert incorrect_execution_rate([rec2]) == 1.0
