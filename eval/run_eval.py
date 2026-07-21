@@ -70,7 +70,7 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         if dev:
             def route_top(utt):
                 return pipe.route(utt).clauses[0].decision.candidates
-            cfg.thresholds = calibrate_gate(dev, route_top)
+            cfg.thresholds = calibrate_gate(dev, route_top, execute_medium=(arm in ("C_llm", "D")))
             # swap only the gate — do NOT rebuild the pipeline (avoids re-encoding prototypes)
             pipe.gate = ConfidenceGate(cfg.thresholds)
         rows = [r for r in rows if r.get("split") != "dev"]  # report on test only

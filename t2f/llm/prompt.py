@@ -23,9 +23,12 @@ def compact_schema(card: FunctionCard) -> str:
     return f"- {card.name}: {card.description} | 参数: {params}"
 
 
-def build_prompt(clause: str, cards: list[FunctionCard], extracted_params: dict) -> list[dict]:
+def build_prompt(clause: str, cards: list[FunctionCard], extracted_params: dict,
+                 allow_reject: bool = False) -> list[dict]:
     tools = "\n".join(compact_schema(c) for c in cards)
+    reject = ("\n如果用户指令与上述候选功能都不匹配（例如闲聊或不支持的请求），"
+              "请输出 {\"name\": \"__reject__\"}。" if allow_reject else "")
     user = (f"用户指令：{clause}\n候选功能：\n{tools}\n"
-            f"已提取参数：{json.dumps(extracted_params, ensure_ascii=False)}\n"
+            f"已提取参数：{json.dumps(extracted_params, ensure_ascii=False)}{reject}\n"
             "请输出JSON工具调用。")
     return [{"role": "system", "content": _SYS}, {"role": "user", "content": user}]

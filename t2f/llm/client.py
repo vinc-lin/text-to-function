@@ -3,7 +3,7 @@ import json
 from abc import ABC, abstractmethod
 from ..types import FunctionCard, ToolCall, LLMResult
 from .prompt import build_prompt
-from .schema import candidates_to_json_schema
+from .schema import candidates_to_json_schema, REJECT_NAME
 
 
 class LLMClient(ABC):
@@ -33,6 +33,8 @@ def _parse_tool_call(raw: str) -> LLMResult:
         return LLMResult(raw=raw, error=f"json_parse:{e}")
     if not isinstance(obj, dict) or "name" not in obj:
         return LLMResult(raw=raw, error="missing_name")
+    if obj["name"] == REJECT_NAME:
+        return LLMResult(clarification=REJECT_NAME, raw=raw)
     return LLMResult(tool_call=ToolCall(name=obj["name"], parameters=obj.get("parameters", {})), raw=raw)
 
 
@@ -62,13 +64,13 @@ class TransformersXGrammarClient(LLMClient):
 
     def complete_tool_call(self, clause, candidate_cards, extracted_params) -> LLMResult:
         torch = self._torch
-        schema = candidates_to_json_schema(candidate_cards)
-        messages = build_prompt(clause, candidate_cards, extracted_params)
+        schema = candidates_to_json_schema(candidate_cards, allow_reject=True)
+        messages = build_prompt(clause, candidate_cards, extracted_params, allow_reject=True)
         prompt = self.tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
                                               enable_thinking=False)
         inputs = self.tok(prompt, return_tensors="pt").to(self.device)
-        compiled = self.compiler.compile_json_schema(json_schema=__import__("json").dumps(schema))
-        processor = self._xgr.contrib.hf.LogitsProcessor(compiled)  # ADJUST if API differs
+        compiled = self.compiler.compile_json_schema(json.dumps(schema))
+        processor = self._xgr.contrib.hf.LogitsProcessor(compiled)
         with torch.no_grad():
             out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens,
                                        do_sample=False, logits_processor=[processor],

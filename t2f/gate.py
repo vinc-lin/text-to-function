@@ -30,47 +30,78 @@ class ConfidenceGate:
         return Decision(Band.MEDIUM, candidates[0].function, candidates, ood_score=ood, features=feats)
 
 
-def calibrate_gate(dev_rows, route_top_candidates, target_high_precision: float = 0.98) -> Thresholds:
+def calibrate_gate(dev_rows, route_top_candidates, target_high_precision: float = 0.98,
+                   execute_medium: bool = False) -> Thresholds:
     """Grid-search thresholds on dev rows.
     dev_rows: list of dicts {utterance, expected_functions, type}.
     route_top_candidates(utterance) -> list[Candidate] (already hybrid-scored).
-    Picks the thresholds giving the most HIGH-band coverage while HIGH-band top-1 precision
-    >= target and OOD examples never land in HIGH.
 
-    The candidate list for an utterance is independent of the thresholds, so it is computed
-    ONCE per dev row and cached — the grid search then only re-bands the cached candidates.
-    This keeps calibration cheap even when routing invokes a real embedding model.
+    Default (execute_medium=False, Spec-1 zero-LLM arms): only the HIGH band executes, so the
+    objective is to maximize HIGH-band coverage subject to HIGH-band top-1 precision >= target and
+    no OOD in HIGH.
+
+    execute_medium=True (Spec-2 LLM arms, where the MEDIUM band is executed by the LLM): OOD that
+    reaches HIGH *or* MEDIUM would be executed, so the constraint tightens to "no OOD in any
+    executing band" — i.e. OOD must fall to LOW (rejected). low_top1 becomes the OOD floor. The
+    objective then maximizes in-domain rows routed into the executing bands (coverage) subject to
+    that OOD-safety constraint and the HIGH precision constraint.
+
+    The candidate list for an utterance is independent of the thresholds, so it is computed ONCE
+    per dev row and cached — the grid search only re-bands the cached candidates.
     """
-    # Route each dev utterance a single time (dedup by utterance) and cache candidates.
     cand_cache: dict[str, list] = {}
     for r in dev_rows:
         u = r["utterance"]
         if u not in cand_cache:
             cand_cache[u] = route_top_candidates(u)
 
-    best, best_cov = Thresholds(), -1.0
-    fallback, fallback_key = Thresholds(), (-1.0, -1.0)  # best by (precision, coverage) if none meet target
+    low_grid = ([0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50]
+                if execute_medium else [0.15, 0.20, 0.25, 0.30, 0.35])
+
+    # Evaluate every threshold combo once, collecting the stats both objectives need.
+    combos = []
     for high_top1 in [0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70]:
         for high_margin in [0.02, 0.03, 0.05, 0.08, 0.12]:
-            for low_top1 in [0.15, 0.20, 0.25, 0.30, 0.35]:
+            for low_top1 in low_grid:
                 if low_top1 >= high_top1:
                     continue
-                t = Thresholds(high_top1, high_margin, low_top1)
-                gate = ConfidenceGate(t)
-                high_total = high_correct = ood_in_high = 0
+                gate = ConfidenceGate(Thresholds(high_top1, high_margin, low_top1))
+                high_total = high_correct = ood_in_high = ood_in_exec = ind_exec = 0
                 for r in dev_rows:
                     d = gate.decide(cand_cache[r["utterance"]], LexFeatures(), {})
+                    is_ood = r.get("type") == "ood"
+                    executing = d.band in (Band.HIGH, Band.MEDIUM)
                     if d.band == Band.HIGH:
                         high_total += 1
-                        if r.get("type") == "ood":
+                        if is_ood:
                             ood_in_high += 1
                         elif d.chosen in r.get("expected_functions", []):
                             high_correct += 1
+                    if is_ood and executing:
+                        ood_in_exec += 1
+                    elif not is_ood and executing and r.get("expected_functions"):
+                        ind_exec += 1
                 if high_total == 0 or ood_in_high > 0:
                     continue
-                prec = high_correct / high_total
-                if (prec, high_total) > fallback_key:
-                    fallback, fallback_key = t, (prec, high_total)
-                if prec >= target_high_precision and high_total > best_cov:
-                    best, best_cov = t, high_total
-    return best if best_cov >= 0 else fallback
+                combos.append({
+                    "t": Thresholds(high_top1, high_margin, low_top1),
+                    "prec": high_correct / high_total, "high_total": high_total,
+                    "ood_in_exec": ood_in_exec, "ind_exec": ind_exec,
+                })
+    if not combos:
+        return Thresholds()
+
+    if execute_medium:
+        # prefer: meets HIGH precision AND zero OOD leaking into an executing band, then max coverage
+        safe = [c for c in combos if c["prec"] >= target_high_precision and c["ood_in_exec"] == 0]
+        if safe:
+            best = max(safe, key=lambda c: (c["ind_exec"], c["high_total"]))
+        else:  # fallback: least OOD leak, then most in-domain coverage
+            best = min(combos, key=lambda c: (c["ood_in_exec"], -c["ind_exec"]))
+        return best["t"]
+
+    # zero-LLM arms: maximize HIGH coverage subject to precision; fallback = best precision/coverage
+    ok = [c for c in combos if c["prec"] >= target_high_precision]
+    pool = ok if ok else combos
+    key = (lambda c: (c["high_total"], c["prec"])) if ok else (lambda c: (c["prec"], c["high_total"]))
+    return max(pool, key=key)["t"]

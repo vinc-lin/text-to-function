@@ -9,6 +9,7 @@ from .params.extract import ParameterExtractor
 from .validate import validate_tool_call
 from .respond import render_response, build_clarification, build_low_confidence_clarification
 from .execute import MockExecutor
+from .llm.schema import REJECT_NAME
 
 
 class NullMediumResolver:
@@ -37,6 +38,9 @@ class LLMResolver:
         attempts = 0
         while True:
             res = self.client.complete_tool_call(clause, cards, extracted)
+            if res.clarification == REJECT_NAME:  # LLM declined: out-of-scope, do NOT execute
+                return ClauseResult(clause=clause, decision=decision,
+                                    clarification=build_low_confidence_clarification(), needs_llm=True)
             if res.clarification and not res.tool_call:
                 clar = build_clarification(chosen_card, chosen_card.required_params)
                 return ClauseResult(clause=clause, decision=decision, clarification=clar, needs_llm=True)

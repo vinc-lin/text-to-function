@@ -32,6 +32,24 @@ def _card_schema(card: FunctionCard) -> dict:
     }
 
 
-def candidates_to_json_schema(cards: list[FunctionCard]) -> dict:
+REJECT_NAME = "__reject__"
+
+_REJECT_OPTION = {
+    "type": "object",
+    "properties": {"name": {"const": REJECT_NAME}},
+    "required": ["name"],
+    "additionalProperties": False,
+}
+
+
+def candidates_to_json_schema(cards: list[FunctionCard], allow_reject: bool = False) -> dict:
+    """JSON schema constraining output to one candidate tool-call.
+
+    When allow_reject is set, an extra `{"name": "__reject__"}` option is added so the model can
+    decline when no candidate fits (out-of-domain / unsupported) instead of being forced to emit a
+    wrong call — the key safety escape hatch for a constrained decoder.
+    """
     options = [_card_schema(c) for c in cards]
+    if allow_reject:
+        options.append(_REJECT_OPTION)
     return options[0] if len(options) == 1 else {"oneOf": options}
