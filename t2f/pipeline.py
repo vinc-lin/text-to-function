@@ -115,8 +115,11 @@ class Pipeline:
             t0 = time.perf_counter()
             qv = self.embedder.encode([clause], is_query=True)[0]
             cands = self.retriever.retrieve(qv, top_k=self.config.top_k)
+            classifier_probs = None
+            if self.classifier_source is not None:
+                cands, classifier_probs = self.classifier_source.augment(cands, clause)
             feats = extract_features(clause)
-            cands = self.scorer.rescore(clause, feats, cands, self.cards_by_name, classifier_probs=None)
+            cands = self.scorer.rescore(clause, feats, cands, self.cards_by_name, classifier_probs=classifier_probs)
             decision = self.gate.decide(cands, feats, self.cards_by_name)
             cr = self.resolver.resolve(clause, feats, decision)
             cr.latency_ms = (time.perf_counter() - t0) * 1000.0
