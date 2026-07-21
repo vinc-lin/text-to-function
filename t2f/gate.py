@@ -97,10 +97,15 @@ def calibrate_gate(dev_rows, route_top_candidates, target_high_precision: float 
         return Thresholds()
 
     if execute_medium:
-        # prefer: meets HIGH precision AND zero OOD leaking into an executing band, then max coverage
+        # Among combos that meet HIGH precision and leak zero OOD into an executing band, pick a
+        # CONSERVATIVE operating point: the highest low_top1 (largest OOD safety margin against the
+        # dev/test gap) that still keeps in-domain coverage within 90% of the achievable maximum.
+        # Biasing toward rejection over execution is the PRD's stated preference for the risky path.
         safe = [c for c in combos if c["prec"] >= target_high_precision and c["ood_in_exec"] == 0]
         if safe:
-            best = max(safe, key=lambda c: (c["ind_exec"], c["high_total"]))
+            max_cov = max(c["ind_exec"] for c in safe)
+            near = [c for c in safe if c["ind_exec"] >= 0.9 * max_cov]
+            best = max(near, key=lambda c: (c["t"].low_top1, c["ind_exec"]))
         else:  # fallback: least OOD leak, then most in-domain coverage
             best = min(combos, key=lambda c: (c["ood_in_exec"], -c["ind_exec"]))
         return best["t"]
