@@ -35,6 +35,19 @@ def _parse_card(d: dict, domain: str) -> FunctionCard:
         response_template=d.get("response_template", ""))
 
 
+def load_ood_prototypes(path: str | Path) -> list[str]:
+    """Load out-of-domain/chitchat prototype utterances (one per line; '#' comments and blanks skipped)."""
+    p = Path(path)
+    if not p.exists():
+        return []
+    out = []
+    for line in p.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            out.append(line)
+    return out
+
+
 def load_catalog(path: str | Path) -> list[FunctionCard]:
     path = Path(path)
     cards: list[FunctionCard] = []

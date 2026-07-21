@@ -101,14 +101,14 @@ class DeterministicResolver:
 
 class Pipeline:
     def __init__(self, cards, embedder, scorer, gate, config, resolver=None,
-                 medium_resolver=None, classifier_source=None):
+                 medium_resolver=None, classifier_source=None, ood_texts=None):
         self.cards = cards
         self.cards_by_name = {c.name: c for c in cards}
         self.embedder = embedder
         self.scorer = scorer
         self.gate = gate
         self.config = config
-        self.retriever = Retriever(PrototypeStore.build(cards, embedder))
+        self.retriever = Retriever(PrototypeStore.build(cards, embedder, ood_texts=ood_texts))
         self.classifier_source = classifier_source
         self.resolver = resolver or DeterministicResolver(self.cards_by_name, medium_resolver=medium_resolver)
 

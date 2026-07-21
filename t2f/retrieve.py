@@ -5,6 +5,12 @@ from .types import FunctionCard, Candidate
 from .embed import Embedder
 
 
+# A retrieved candidate with this function name is an out-of-domain / unsupported marker: it means
+# the query matched a chitchat/unsupported prototype rather than a real function, and must be
+# rejected (never executed). See ConfidenceGate.decide.
+OOD_MARKER = "__ood__"
+
+
 def _prototype_texts(card: FunctionCard) -> list[str]:
     texts = [card.description, *card.aliases, *card.utterances]
     return [t for t in texts if t]
@@ -17,12 +23,17 @@ class PrototypeStore:
     prototypes: list[str]         # length P, source text per row
 
     @classmethod
-    def build(cls, cards: list[FunctionCard], embedder: Embedder) -> "PrototypeStore":
+    def build(cls, cards: list[FunctionCard], embedder: Embedder,
+              ood_texts: list[str] | None = None) -> "PrototypeStore":
         texts, funcs = [], []
         for c in cards:
             for t in _prototype_texts(c):
                 texts.append(t)
                 funcs.append(c.name)
+        for t in (ood_texts or []):
+            if t:
+                texts.append(t)
+                funcs.append(OOD_MARKER)
         matrix = embedder.encode(texts, is_query=False)
         return cls(matrix=matrix, functions=funcs, prototypes=texts)
 

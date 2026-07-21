@@ -6,7 +6,7 @@ top_k: 5
 # the embedder alone and, at large weights, hurt it — so embedding carries the ranking and the
 # signals only nudge genuine near-ties (and still feed the gate's param_compat feature). They
 # remain available for a weaker on-device backend. See docs/superpowers/RESULTS.md.
-weights: {embedding: 0.88, keyword_alias: 0.04, param_compat: 0.05, domain_prior: 0.03, classifier_prob: 0.0}
+weights: {embedding: 0.88, keyword_alias: 0.04, param_compat: 0.05, domain_prior: 0.03, classifier_prob: 0.15}
 # Calibrated on the gold dev split (see RESULTS.md). Conservative HIGH band keeps incorrect
 # execution low at the cost of coverage; the medium band is what the Spec-2 LLM will resolve.
 # The binding constraint is high_margin: on confusable clusters top1/top2 are close, so only
@@ -21,5 +21,6 @@ domain_keywords:
   door: [车门, 门锁, 后备箱, 尾门, 上锁, 解锁]
   navigation: [导航, 回家, 去, 路线, 地图]
 llm: {model_id: Qwen/Qwen3-0.6B, max_candidates: 3, max_retries: 1, max_new_tokens: 128}
-classifier: {enabled: false, topk: 3, char_ngram_path: models/clf_charngram.joblib, embedding_path: models/clf_embedding.joblib}
+classifier: {enabled: true, topk: 3, char_ngram_path: models/clf_charngram.joblib, embedding_path: models/clf_embedding.joblib}
 dialog: {max_turns: 2}
+ood_prototypes: data/ood/prototypes.txt

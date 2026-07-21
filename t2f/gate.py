@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from .types import Candidate, Decision, Band, LexFeatures
+from .retrieve import OOD_MARKER
 
 
 @dataclass
@@ -18,6 +19,10 @@ class ConfidenceGate:
                cards_by_name: dict) -> Decision:
         if not candidates:
             return Decision(Band.LOW, None, [], ood_score=1.0, features={})
+        if candidates[0].function == OOD_MARKER:
+            # query matched an out-of-domain/chitchat prototype → reject, never execute
+            return Decision(Band.LOW, None, candidates, ood_score=1.0,
+                            features={"top1": candidates[0].score, "ood_marker": 1.0})
         top1 = candidates[0].score
         margin = top1 - (candidates[1].score if len(candidates) > 1 else 0.0)
         pc = candidates[0].signal_scores.get("param_compat", 0.0)

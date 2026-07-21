@@ -53,3 +53,22 @@ def test_calibrate_execute_medium_routes_ood_to_low():
         assert gate.decide(cache[f"ood{i}"], LexFeatures(), {}).band == Band.LOW
     for i in range(8):
         assert gate.decide(cache[f"ind{i}"], LexFeatures(), {}).band in (Band.HIGH, Band.MEDIUM)
+
+
+def test_ood_marker_top1_is_rejected():
+    """When an OOD prototype wins retrieval, the gate rejects (LOW) without executing."""
+    from t2f.embed import FakeEmbedder
+    from t2f.retrieve import PrototypeStore, Retriever, OOD_MARKER
+    from t2f.gate import ConfidenceGate, Thresholds, Band
+    from t2f.types import LexFeatures
+    cards = [FunctionCard("open_window", "window", "打开车窗", utterances=["开车窗", "把窗户打开"])]
+    emb = FakeEmbedder(256)
+    store = PrototypeStore.build(cards, emb, ood_texts=["今天天气怎么样", "讲个笑话"])
+    retr = Retriever(store)
+    gate = ConfidenceGate(Thresholds(0.5, 0.05, 0.2))
+    # a chitchat query matches the OOD prototype -> OOD_MARKER top1 -> rejected
+    q = emb.encode(["今天天气怎么样"], is_query=True)[0]
+    cands = retr.retrieve(q, top_k=3)
+    assert cands[0].function == OOD_MARKER
+    d = gate.decide(cands, LexFeatures(), {})
+    assert d.band == Band.LOW and d.chosen is None

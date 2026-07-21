@@ -1,7 +1,7 @@
 from __future__ import annotations
 import argparse, json
 from pathlib import Path
-from t2f.cards import load_catalog
+from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
 from t2f.gate import Thresholds, calibrate_gate, ConfidenceGate
 from t2f.embed import FakeEmbedder
@@ -54,14 +54,16 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
     elif arm == "baseline":
         pipe = A.build_arm_c_baseline(cards, embedder, cfg)
     elif arm == "C_llm":
-        pipe = A.build_arm_c_llm(cards, embedder, cfg, _llm_client(cfg, fake, permissive))
+        ood = load_ood_prototypes(cfg.ood_prototypes)
+        pipe = A.build_arm_c_llm(cards, embedder, cfg, _llm_client(cfg, fake, permissive), ood_texts=ood)
     elif arm == "D":
+        ood = load_ood_prototypes(cfg.ood_prototypes)
         classifier = _classifier(cfg)
         client = _llm_client(cfg, fake, permissive)
         if classifier is not None:
-            pipe = A.build_arm_d(cards, embedder, cfg, client, classifier)
+            pipe = A.build_arm_d(cards, embedder, cfg, client, classifier, ood_texts=ood)
         else:  # classifier not trained yet — fall back to C+LLM (no candidate augmentation)
-            pipe = A.build_arm_c_llm(cards, embedder, cfg, client)
+            pipe = A.build_arm_c_llm(cards, embedder, cfg, client, ood_texts=ood)
     else:
         raise ValueError(f"unknown arm: {arm}")
 
