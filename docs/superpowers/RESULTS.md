@@ -105,3 +105,44 @@ Executing the medium band via a **constrained** LLM introduces a risk Spec 1 did
 
 ## Bottom line
 Spec 2 turns the retrieval router into an executing system: **guaranteed-valid, param-complete tool calls, 6× end-to-end executable accuracy, and flawless multi-turn completion**, all with the LLM in the loop under 1.5 s. Its honest cost is that executing the medium band reintroduces OOD/incorrect-execution risk; three principled mechanisms cut OOD false-execution 3× (1.0→0.32), and the remaining gap has clear, identified levers rather than hand-waving. Retrieval recall and the ≤0.5-LLM-call target remain Spec-1-bounded and need the classifier/data work already scoped.
+
+---
+
+# Spec 3 — Accuracy & Safety Hardening Results
+
+**Date:** 2026-07-22
+**Mechanism:** a learned **execution-confidence gate** (logistic regression over 11 cheap routing features → `P(top-1 correct)`), calibrated on gold-**dev** (+ OOD prototype queries), reported on gold-**test** (n=184). Replaces the hand-tuned score thresholds; abstains (clarifies) below a calibrated confidence.
+
+## The safety/coverage frontier (learned gate, deterministic HIGH-only, **zero LLM**)
+
+| τ_high | OOD false-exec | incorrect-exec | coverage |
+|---|---|---|---|
+| 0.4 | 0.357 | 0.060 | 0.712 |
+| 0.5 | 0.321 | 0.051 | 0.669 |
+| 0.6 | 0.214 | 0.058 | 0.585 |
+| **0.7** | **0.107** | **0.067** | **0.508** |
+| 0.8 | 0.107 | 0.070 | 0.364 |
+
+The learned confidence separates cleanly and monotonically — every operating point is available by choosing τ. Incorrect-execution stays **0.05–0.07 across the whole curve** (the confident set is 93–95% correct).
+
+## Two operating points vs Spec 2
+
+| metric | Spec 2 (heuristic gate + LLM) | **Spec 3 safe (det. τ=0.7, no LLM)** | Spec 3 balanced (calibrated 2-band + LLM) |
+|---|---|---|---|
+| OOD false-execution | 0.321 | **0.107** | 0.321 |
+| incorrect-execution | 0.344 | **0.067** | 0.252 |
+| coverage (fully executed) | ~0.46 | 0.508 | 0.455 |
+| e2e executable | 0.458 | 0.508* | 0.366 |
+| avg LLM calls / single | 1.16 | **0.000** | **0.447** (≤0.5 ✅) |
+| P95 latency (ms) | 1184 | **~275** | 1126 |
+
+\* deterministic e2e = coverage here (every executed clause is a confident, validated call).
+
+## Findings
+- **The learned gate is a strict improvement in separation.** At the recommended **safe** point (deterministic, τ_high=0.7), OOD false-execution drops **3× (0.32→0.107)** and incorrect-execution **5× (0.34→0.067)** versus Spec 2, while still confidently executing **~half of all requests with zero LLM calls** at ~275 ms P95. This is the PRD-aligned "clarify rather than incorrectly execute" operating point.
+- **Executing the medium band via the LLM is the OOD liability.** The balanced two-band point keeps a medium/LLM zone (τ_low=0.45, τ_high=0.79), which recovers coverage and cuts incorrect-execution to 0.252 and hits the **avg-LLM-calls ≤ 0.5 target (0.447)** — but OOD false-execution returns to 0.321, because the constrained LLM still executes most OOD it is handed (its reject option + OOD prototypes only partly help). This confirms the Spec-2 finding: the medium-band LLM, not retrieval, is where OOD leaks.
+- **Recommendation:** for a safety-critical automotive deployment, run the confidence gate **deterministically at a high τ** (execute only high-confidence, clarify the rest), reserving the LLM for a *narrow* high-confidence-medium zone or disabling it — trading raw executable coverage for near-target OOD/incorrect execution and 4× lower latency.
+- **Recall / hard negatives:** mining (`data/analysis/hard_negatives.md`) found only diffuse singleton confusions — no cluster worth targeting — so no prototype additions were made and recall@1/@3 stay 0.814 / 0.907. The recall lever remains a larger/fine-tuned encoder (future work), not spot-fixes.
+
+## Residual gap & levers
+OOD false-execution plateaus at **0.107** deterministically (≈3 test OOD rows carry spuriously high confidence). Closing the last gap toward ≈0 needs a stronger OOD signal — more OOD prototypes (capture scaled 46%→57% just by 54→96), an OOD-specific feature/embedding, or a larger fallback whose reject is more reliable — and/or accepting the deterministic safe point's coverage cost. The confidence-gate frontier makes that policy choice explicit and tunable per deployment, which is the deliverable.
