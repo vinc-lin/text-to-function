@@ -164,3 +164,25 @@ def latency_percentiles(latencies, ps=(50, 95)) -> dict:
         return {p: 0.0 for p in ps}
     arr = np.array(latencies, dtype=float)
     return {p: float(np.percentile(arr, p, method="linear")) for p in ps}
+
+
+def coverage(records) -> float:
+    rows = [r for r in records if r["row"].get("type") in ("single", "multi_intent", "ambiguous")]
+    if not rows:
+        return 0.0
+    done = sum(1 for r in rows if r["executed"] and all(r["executed"]))
+    return done / len(rows)
+
+
+def frontier(records_by_tau) -> list:
+    out = []
+    for tau, recs in records_by_tau.items():
+        out.append({
+            "tau": tau,
+            "ood_false_execution": ood_false_execution_rate(recs),
+            "incorrect_execution": incorrect_execution_rate(recs),
+            "e2e": e2e_executable_accuracy(recs, "deterministic"),
+            "coverage": coverage(recs),
+            "clarification_rate": clarification_rate(recs),
+        })
+    return sorted(out, key=lambda d: d["tau"])
