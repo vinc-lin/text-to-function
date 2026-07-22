@@ -52,24 +52,43 @@ def build_confidence_dataset(rows, route_fn, cards_by_name, domain_keywords):
     return feats, labels
 
 
-def calibrate_thresholds(points, target_error: float = 0.05) -> ConfidenceThresholds:
+def calibrate_thresholds(points, target_error: float = 0.05,
+                         ood_budget_high: float = 0.10, ood_budget_low: float = 0.30) -> ConfidenceThresholds:
+    """Pick (tau_low, tau_high) for a two-band safety policy from dev points (p, correct, is_ood).
+
+    tau_high — the DIRECT-execute (zero-LLM) floor: lowest cut where the executed set has both
+      in-domain error <= target_error AND OOD fraction <= ood_budget_high, maximizing coverage.
+      (Counting OOD-as-error alone forces tau_high implausibly high, killing the medium band, so
+      in-domain precision and OOD leakage are budgeted separately.)
+    tau_low — the REJECT floor below which we abstain: lowest cut whose above-set has OOD fraction
+      <= ood_budget_low. The band [tau_low, tau_high) is the medium/LLM zone, where the LLM's reject
+      option + OOD prototypes provide the residual OOD defense. Keeping tau_low < tau_high preserves
+      a real medium band so the LLM can recover coverage.
+    """
     if not points:
         return ConfidenceThresholds()
     cuts = sorted({round(p, 3) for p, _, _ in points})
-    # tau_high: lowest cut whose executed set (p>=cut) has error <= target, max coverage
-    best_high, best_cov, fallback_high, fallback_err = None, -1, cuts[-1], 1.1
+    n_ood = sum(1 for _, _, o in points if o)
+
+    def ood_frac_above(cut):
+        above_ood = sum(1 for p, _, o in points if o and p >= cut)
+        return above_ood / n_ood if n_ood else 0.0
+
+    # tau_high: in-domain error <= target AND OOD leakage <= budget, max coverage
+    best_high, best_cov, fallback_high, fallback_key = None, -1, cuts[-1], (1.1, 1.1)
     for cut in cuts:
-        ex = [(p, c, o) for (p, c, o) in points if p >= cut]
-        if not ex:
-            continue
-        err = sum(1 for _, c, _ in ex if not c) / len(ex)
-        if err < fallback_err:
-            fallback_err, fallback_high = err, cut
-        if err <= target_error and len(ex) > best_cov:
-            best_high, best_cov = cut, len(ex)
+        indom = [(p, c) for (p, c, o) in points if not o and p >= cut]
+        cov = len(indom)
+        err = sum(1 for _, c in indom if not c) / cov if cov else 1.0
+        oodf = ood_frac_above(cut)
+        if (oodf, err) < fallback_key:
+            fallback_key, fallback_high = (oodf, err), cut
+        if err <= target_error and oodf <= ood_budget_high and cov > best_cov:
+            best_high, best_cov = cut, cov
     tau_high = best_high if best_high is not None else fallback_high
-    # tau_low: lowest cut with no OOD point at/above it (all OOD rejected)
-    ood_ps = [p for p, _, o in points if o]
-    tau_low = 0.0 if not ood_ps else min([c for c in cuts if all(p < c for p in ood_ps)] or [tau_high])
+
+    # tau_low: lowest cut with OOD leakage <= ood_budget_low (the medium-band floor)
+    lows = [c for c in cuts if c <= tau_high and ood_frac_above(c) <= ood_budget_low]
+    tau_low = min(lows) if lows else 0.0
     tau_low = min(tau_low, tau_high)
     return ConfidenceThresholds(tau_low=float(tau_low), tau_high=float(tau_high))

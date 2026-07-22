@@ -1,15 +1,15 @@
-from t2f.safety.confidence import calibrate_thresholds
+from t2f.safety.confidence import calibrate_thresholds, ConfidenceThresholds
 
-def test_calibrate_separates_and_rejects_ood():
-    # in-domain correct at high P, wrong/ood at low P
-    pts = [(0.9, True, False)] * 8 + [(0.85, True, False)] * 8 \
-        + [(0.4, False, False)] * 4 + [(0.3, False, True)] * 6
-    t = calibrate_thresholds(pts, target_error=0.05)
-    assert t.tau_high <= 0.85 and t.tau_high > 0.4      # executes the clean high-P set
-    # no OOD (max p 0.3) may sit at/above tau_low
-    assert t.tau_low > 0.3
-    assert t.tau_low <= t.tau_high
+
+def test_calibrate_two_band_keeps_medium_zone():
+    # in-domain correct at high p; in-domain wrong at mid p; OOD at low-mid p
+    pts = ([(0.9, True, False)] * 10 + [(0.85, True, False)] * 10
+           + [(0.5, False, False)] * 4 + [(0.45, False, True)] * 3 + [(0.2, False, True)] * 7)
+    t = calibrate_thresholds(pts, target_error=0.05, ood_budget_high=0.10, ood_budget_low=0.30)
+    assert t.tau_low < t.tau_high            # a real medium/LLM band survives
+    assert t.tau_high >= 0.8                  # direct-execute floor excludes the wrong/OOD mid set
+    assert 0.3 < t.tau_low < t.tau_high       # reject floor sits below the execute floor
+
 
 def test_calibrate_empty():
-    from t2f.safety.confidence import ConfidenceThresholds
     assert isinstance(calibrate_thresholds([]), ConfidenceThresholds)
