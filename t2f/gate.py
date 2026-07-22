@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from .types import Candidate, Decision, Band, LexFeatures
 from .retrieve import OOD_MARKER
+from .safety.features import confidence_features
 
 
 @dataclass
@@ -115,3 +116,26 @@ def calibrate_gate(dev_rows, route_top_candidates, target_high_precision: float 
     pool = ok if ok else combos
     key = (lambda c: (c["high_total"], c["prec"])) if ok else (lambda c: (c["prec"], c["high_total"]))
     return max(pool, key=key)["t"]
+
+
+class ConfidenceModelGate:
+    """Bands on a learned P(top-1 correct) instead of a raw score threshold. Same decide() shape."""
+
+    def __init__(self, model, thresholds, domain_keywords=None):
+        self.model = model
+        self.t = thresholds
+        self.domain_keywords = domain_keywords or {}
+
+    def decide(self, candidates, features, cards_by_name):
+        if not candidates:
+            return Decision(Band.LOW, None, [], ood_score=1.0, features={})
+        if candidates[0].function == OOD_MARKER:
+            return Decision(Band.LOW, None, candidates, ood_score=1.0, features={"ood_marker": 1.0})
+        feat = confidence_features(candidates, features, cards_by_name, self.domain_keywords)
+        p = self.model.predict_proba(feat)
+        info = {"p_correct": p}
+        if p < self.t.tau_low:
+            return Decision(Band.LOW, None, candidates, ood_score=1.0 - p, features=info)
+        if p >= self.t.tau_high:
+            return Decision(Band.HIGH, candidates[0].function, candidates, ood_score=1.0 - p, features=info)
+        return Decision(Band.MEDIUM, candidates[0].function, candidates, ood_score=1.0 - p, features=info)
