@@ -18,18 +18,22 @@ def build_arm_c_baseline(cards, embedder, config) -> Pipeline:
 def build_arm_c_llm(cards, embedder, config, llm_client, ood_texts=None) -> Pipeline:
     medium = LLMResolver(llm_client, max_candidates=config.llm.get("max_candidates", 3),
                          max_retries=config.llm.get("max_retries", 1))
-    return Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
+    pipe = Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
                     ConfidenceGate(config.thresholds), config, medium_resolver=medium,
                     ood_texts=ood_texts)
+    pipe.llm_client = llm_client
+    return pipe
 
 
 def build_arm_d(cards, embedder, config, llm_client, classifier, ood_texts=None) -> Pipeline:
     medium = LLMResolver(llm_client, max_candidates=config.llm.get("max_candidates", 3),
                          max_retries=config.llm.get("max_retries", 1))
     source = ClassifierCandidateSource(classifier, config.classifier.get("topk", 3))
-    return Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
+    pipe = Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
                     ConfidenceGate(config.thresholds), config, medium_resolver=medium,
                     classifier_source=source, ood_texts=ood_texts)
+    pipe.llm_client = llm_client
+    return pipe
 
 
 def _params_match(got: dict, exp: dict | None) -> bool:

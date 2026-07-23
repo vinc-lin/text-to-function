@@ -203,6 +203,19 @@ class Pipeline:
         return RouteResult(utterance=utterance, clauses=clause_results, plan=plan)
 
     def _llm_plan(self, utterance, action_spans, clause_results):
-        # Placeholder until Task 9 (only reached when self.llm_client is set, which Task 9 wires).
-        return [self._planned_from_span(cr.clause, cr.decision, extract_features(cr.clause))
-                for cr in clause_results]
+        union, seen = [], set()
+        for cr in clause_results:
+            for c in cr.decision.candidates[:self.config.llm.get("max_candidates", 3)]:
+                if c.function not in seen and c.function in self.cards_by_name:
+                    seen.add(c.function); union.append(self.cards_by_name[c.function])
+        calls = self.llm_client.complete_plan(utterance, [s.text for s in action_spans], union)
+        planned = []
+        for i, s in enumerate(action_spans):
+            feats = extract_features(s.text)
+            rel = RelativeSpec(feats.operation, feats.amount) \
+                if (feats.operation in ("increase", "decrease") and feats.amount) else None
+            call = calls[i] if i < len(calls) else None
+            fn = call.name if call else None
+            params = dict(call.parameters) if call else {}
+            planned.append(PlannedAction(span=s.text, function=fn, parameters=params, relative=rel))
+        return planned
