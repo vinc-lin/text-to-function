@@ -1,6 +1,6 @@
 import re
 from .types import LexFeatures
-from .params.numerals import find_numbers, parse_number
+from .params.numerals import find_numbers, parse_number, parse_fraction_percent
 
 _POSITION = [
     ("driver", ["主驾驶", "主驾", "驾驶位", "驾驶座", "左前"]),
@@ -16,6 +16,11 @@ _MAX = ["最大", "最高", "开到最大", "拉满"]
 _MIN = ["最小", "最低"]
 _INC = ["调高", "升高", "大一点", "高一点", "增大", "提高", "热一点", "升"]
 _DEC = ["调低", "降低", "小一点", "低一点", "减小", "凉一点", "降"]
+
+_AMT_SMALL = ["一点点", "一点", "点儿", "一些", "些", "稍微", "稍稍", "略微"]
+_AMT_LARGE = ["多一些", "大幅", "很多", "好多"]
+_REL_INC = ["开", "大", "高", "升", "加", "多", "亮", "热"]
+_REL_DEC = ["关", "小", "低", "降", "减", "少", "暗", "凉"]
 
 _TEMP = re.compile(r"(\d+(?:\.\d+)?|[零〇一二两俩三四五六七八九十百千]+)\s*度")
 _PCT = re.compile(r"(\d+(?:\.\d+)?|[零〇一二两俩三四五六七八九十百千]+)\s*%|百分之\s*(\d+|[零〇一二两俩三四五六七八九十百千]+)")
@@ -66,4 +71,25 @@ def extract_features(clause: str) -> LexFeatures:
         f.on_off = False
     elif any(k in clause for k in _ON):
         f.on_off = True
+
+    # fraction words -> percent (e.g. 一半 -> 50); only when no explicit % was found
+    if not f.percentages:
+        frac = parse_fraction_percent(clause)
+        if frac is not None:
+            f.percentages.append(float(frac))
+
+    # relative amount + operation (e.g. 再开一点 -> increase/small, 调小一点 -> decrease/small)
+    small = any(k in clause for k in _AMT_SMALL)
+    large = any(k in clause for k in _AMT_LARGE)
+    if small or large or f.operation in ("increase", "decrease"):
+        f.amount = "large" if large else ("small" if small else "medium")
+        if f.operation not in ("increase", "decrease"):
+            inc = any(k in clause for k in _REL_INC)
+            dec = any(k in clause for k in _REL_DEC)
+            if dec and not inc:
+                f.operation = "decrease"
+            elif inc and not dec:
+                f.operation = "increase"
+            else:
+                f.amount = None  # ambiguous direction -> not a usable relative op
     return f
