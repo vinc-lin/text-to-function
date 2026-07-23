@@ -39,3 +39,22 @@ def find_numbers(text: str) -> list[float]:
         if v is not None:
             out.append(v)
     return out
+
+
+# "一半" and "N分之M" -> integer percent (0-100), else None.
+# 百 is excluded from the denominator group so "百分之N" is not treated as a
+# fraction here; it is an explicit percentage handled elsewhere.
+_HALF = ("一半", "半")
+_FRAC = re.compile(r"([零〇一二两俩三四五六七八九十千]+|\d+)分之([零〇一二两俩三四五六七八九十百千]+|\d+)")
+
+
+def parse_fraction_percent(text: str) -> int | None:
+    m = _FRAC.search(text)
+    if m:
+        denom = parse_number(m.group(1))
+        numer = parse_number(m.group(2))
+        if denom and numer is not None and denom != 0:
+            return int(round(numer / denom * 100))
+    if any(h in text for h in _HALF):
+        return 50
+    return None
