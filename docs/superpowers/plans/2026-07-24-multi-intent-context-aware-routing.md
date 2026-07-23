@@ -870,7 +870,12 @@ from .respond import render_response
 ```python
         self.state = VehicleState()
         self.llm_client = None  # set by arms for the LLM plan path (Task 9)
+        self.extractor = getattr(self.resolver, "extractor", None) or ParameterExtractor()
+        self.executor = getattr(self.resolver, "executor", None) or MockExecutor()
 ```
+
+(`ClauseResult`, `Band`, `ParameterExtractor`, `MockExecutor`, `render_response`,
+`build_low_confidence_clarification` are already imported at the top of `pipeline.py`.)
 
 3. Replace `route()` with a dispatcher + two helpers. Keep the existing per-clause logic as `_route_legacy` (this is exactly today's loop body, so single-intent behavior is byte-for-byte preserved):
 
@@ -890,14 +895,13 @@ from .respond import render_response
         return self._route_legacy(utterance)
 
     def _route_legacy(self, utterance: str) -> RouteResult:
-        clauses = split(normalize(utterance))
-        results = []
-        for clause in clauses:
-            results.append(self._route_one(clause))
+        results = [self._route_one(c) for c in split(normalize(utterance))]
         return RouteResult(utterance=utterance, clauses=results)
 
-    def _route_one(self, clause: str) -> ClauseResult:
-        t0 = time.perf_counter()
+    def _decide(self, clause: str):
+        """Retrieve -> (classifier) -> score -> gate. Returns (decision, feats). NO execution.
+        Shared by the legacy path and the plan path; the plan path MUST NOT execute here (the
+        PlanExecutor barrier is the single execution point)."""
         qv = self.embedder.encode([clause], is_query=True)[0]
         cands = self.retriever.retrieve(qv, top_k=self.config.top_k)
         classifier_probs = None
@@ -905,75 +909,85 @@ from .respond import render_response
             cands, classifier_probs = self.classifier_source.augment(cands, clause)
         feats = extract_features(clause)
         cands = self.scorer.rescore(clause, feats, cands, self.cards_by_name, classifier_probs=classifier_probs)
-        decision = self.gate.decide(cands, feats, self.cards_by_name)
+        return self.gate.decide(cands, feats, self.cards_by_name), feats
+
+    def _route_one(self, clause: str) -> ClauseResult:
+        """Legacy single-clause path: decide + resolve (resolver executes HIGH band eagerly).
+        Behavior is byte-for-byte unchanged from before this feature."""
+        t0 = time.perf_counter()
+        decision, feats = self._decide(clause)
         cr = self.resolver.resolve(clause, feats, decision)
         cr.latency_ms = (time.perf_counter() - t0) * 1000.0
         return cr
 ```
 
-Note `import` of `split` at top already exists. Move the per-clause body of the old `route()` into `_route_one` exactly as-is.
+Note: `split` is already imported at the top of `pipeline.py`.
 
-4. Add the plan path. It reuses `_route_one` per action span to get the decision, then builds `PlannedAction`s (with relative overlay from lexical features), runs the barrier, and populates `clauses[]` for metric back-compat:
+4. Add the plan path. CRITICAL DIFFERENCES from the legacy path: (a) it uses `_decide` (no eager
+execution) so the `PlanExecutor` barrier is the ONLY execution point; (b) it BAND-GATES — in the
+deterministic (no-LLM) branch, ONLY `HIGH`-band spans are eligible to execute; `MEDIUM`/`LOW` spans
+are deferred (`needs_llm`/clarification), never deterministically executed. This preserves the
+Spec 2/3 safety property that the medium band is the LLM's zone, not a deterministic-execution zone.
 
 ```python
+    def _planned_from_span(self, span_text, decision, feats) -> PlannedAction:
+        rel = RelativeSpec(feats.operation, feats.amount) \
+            if (feats.operation in ("increase", "decrease") and feats.amount) else None
+        fn = decision.chosen
+        params = self.extractor.extract(span_text, feats, self.cards_by_name[fn])[0] if fn else {}
+        return PlannedAction(span=span_text, function=fn, parameters=dict(params), relative=rel)
+
     def _route_plan(self, utterance: str, action_spans) -> RouteResult:
         t0 = time.perf_counter()
-        planned, clause_results = [], []
-        all_high = True
-        for s in action_spans:
-            cr = self._route_one(s.text)
-            clause_results.append(cr)
-            if cr.decision.band != Band.HIGH:
-                all_high = False
-            feats = extract_features(s.text)
-            rel = None
-            if feats.operation in ("increase", "decrease") and feats.amount:
-                rel = RelativeSpec(operation=feats.operation, amount=feats.amount)
-            fn = cr.decision.chosen
-            params = cr.tool_call.parameters if cr.tool_call else \
-                     (self.resolver.extractor.extract(s.text, feats, self.cards_by_name[fn])[0] if fn else {})
-            planned.append(PlannedAction(span=s.text, function=fn, parameters=dict(params),
-                                         relative=rel))
+        decided = [(s, *self._decide(s.text)) for s in action_spans]            # (span, decision, feats)
+        clause_results = [ClauseResult(clause=s.text, decision=d) for s, d, _ in decided]
+        all_high = all(d.band == Band.HIGH for _, d, _ in decided)
 
         if not all_high and self.llm_client is not None:
-            planned = self._llm_plan(utterance, action_spans, clause_results)  # Task 9
+            planned = self._llm_plan(utterance, action_spans, clause_results)   # Task 9 (single LLM call)
+            source = "llm"
+        else:
+            # deterministic: ONLY HIGH-band spans enter the barrier; medium/low are deferred below.
+            planned = [self._planned_from_span(s.text, d, f)
+                       for s, d, f in decided if d.band == Band.HIGH and d.chosen]
+            source = "deterministic"
 
-        plan = ActionPlan(actions=planned, source="llm" if (not all_high and self.llm_client) else "deterministic")
-        pe = PlanExecutor(self.cards_by_name, self.state, self.resolver.executor, self.config.relative_steps)
-        executed, clar = pe.finalize(plan)
+        plan = ActionPlan(actions=planned, source=source)
+        executed, clar = PlanExecutor(self.cards_by_name, self.state, self.executor,
+                                      self.config.relative_steps).finalize(plan)
 
-        # populate clauses[] for eval back-compat: mirror each action's outcome
-        for cr, a in zip(clause_results, plan.actions):
-            cr.tool_call = a.tool_call if a.status == "executed" else None
-            cr.response = render_response(self.cards_by_name[a.function], a.tool_call) \
-                if (a.status == "executed" and a.function in self.cards_by_name) else None
-            cr.needs_llm = (plan.source == "llm")
-            if a.status in ("clarify", "invalid", "reject") and clar is not None:
+        # populate clauses[] for eval back-compat: mirror each action's outcome by span text
+        by_span = {a.span: a for a in plan.actions}
+        for (s, d, _), cr in zip(decided, clause_results):
+            a = by_span.get(s.text)
+            if a is not None and a.status == "executed":
+                cr.tool_call = a.tool_call
+                cr.response = render_response(self.cards_by_name[a.function], a.tool_call)
+                cr.needs_llm = (source == "llm")
+            elif a is not None:                                   # in plan but clarify/invalid/reject
                 cr.clarification = clar
+                cr.needs_llm = (source == "llm")
+            else:                                                 # deferred (deterministic, non-HIGH)
+                cr.needs_llm = (d.band == Band.MEDIUM)
+                if d.band == Band.LOW:
+                    cr.clarification = build_low_confidence_clarification()
         total = (time.perf_counter() - t0) * 1000.0
         for cr in clause_results:
             cr.latency_ms = total / max(len(clause_results), 1)
         return RouteResult(utterance=utterance, clauses=clause_results, plan=plan)
 ```
 
-5. Add a no-op `_llm_plan` stub so Task 8 runs without the model (Task 9 replaces it):
+5. Add a `_llm_plan` stub so Task 8 runs without the model (Task 9 replaces it with the real
+single-call plan). It is only reached when `self.llm_client` is set (Task 9 wires that), so in
+Task 8 it is defined but not exercised:
 
 ```python
     def _llm_plan(self, utterance, action_spans, clause_results):
-        # Deterministic fallback until Task 9: keep per-span choices as-is.
-        planned = []
-        for s, cr in zip(action_spans, clause_results):
-            feats = extract_features(s.text)
-            rel = RelativeSpec(feats.operation, feats.amount) \
-                if (feats.operation in ("increase", "decrease") and feats.amount) else None
-            fn = cr.decision.chosen
-            params = cr.tool_call.parameters if cr.tool_call else \
-                     (self.resolver.extractor.extract(s.text, feats, self.cards_by_name[fn])[0] if fn else {})
-            planned.append(PlannedAction(span=s.text, function=fn, parameters=dict(params), relative=rel))
-        return planned
+        # Placeholder until Task 9. Fallback: per-span deterministic choice (no band gating here;
+        # the real Task-9 version calls the LLM once for the whole utterance).
+        return [self._planned_from_span(cr.clause, cr.decision, extract_features(cr.clause))
+                for cr in clause_results]
 ```
-
-Note: `self.resolver.executor` and `self.resolver.extractor` exist on `DeterministicResolver`. If a custom resolver lacks them, fall back to `MockExecutor()` / `ParameterExtractor()` — add those imports and guards.
 
 - [ ] **Step 4: Run to verify it passes**
 
