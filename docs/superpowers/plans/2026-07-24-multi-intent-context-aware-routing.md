@@ -172,8 +172,10 @@ Append to `t2f/params/numerals.py`:
 import re as _re
 
 # "一半" and "N分之M" -> integer percent (0-100), else None.
+# 百 is excluded from the DENOMINATOR class so "百分之N" (a percentage) is NOT parsed as a
+# fraction here — it is handled by the percent extractor in lexical.py.
 _HALF = ("一半", "半")
-_FRAC = _re.compile(r"([零〇一二两俩三四五六七八九十百千]+|\d+)分之([零〇一二两俩三四五六七八九十百千]+|\d+)")
+_FRAC = _re.compile(r"([零〇一二两俩三四五六七八九十千]+|\d+)分之([零〇一二两俩三四五六七八九十百千]+|\d+)")
 
 def parse_fraction_percent(text: str) -> int | None:
     m = _FRAC.search(text)
