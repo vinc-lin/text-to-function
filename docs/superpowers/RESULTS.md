@@ -146,3 +146,41 @@ The learned confidence separates cleanly and monotonically — every operating p
 
 ## Residual gap & levers
 OOD false-execution plateaus at **0.107** deterministically (≈3 test OOD rows carry spuriously high confidence). Closing the last gap toward ≈0 needs a stronger OOD signal — more OOD prototypes (capture scaled 46%→57% just by 54→96), an OOD-specific feature/embedding, or a larger fallback whose reject is more reliable — and/or accepting the deterministic safe point's coverage cost. The confidence-gate frontier makes that policy choice explicit and tunable per deployment, which is the deliverable.
+
+
+# Spec 4 — Multi-Intent, Context-Aware Routing Results
+
+Design: `docs/superpowers/specs/2026-07-24-multi-intent-context-aware-routing-design.md`. Adds context-vs-action span classification (lexical actionability filter), a plan-then-execute barrier, relative-op resolution against an injectable mock vehicle-state store, and a multi-intent + context eval axis. Suite: **144 core + 3 model tests** (incl. the canonical multi-intent end-to-end).
+
+## Headline metrics (gold test split, n=192; + 7 context negatives)
+
+| metric | Spec 3 | Spec 4 C_llm (balanced) | Spec 4 C (deterministic, zero-LLM) |
+|---|---|---|---|
+| recall@1 | 0.814 | **0.856** | 0.864 |
+| recall@3 | 0.907 | **0.941** | 0.941 |
+| multi_intent_set_recall | — | **0.819** | 0.819 |
+| param_exact_match | 0.507 | **0.718** | 0.267\* |
+| schema_valid_rate | 0.964 | **0.995** | 0.505\* |
+| e2e_deterministic | — | 0.613 | 0.100 |
+| e2e_ceiling | — | 0.753 | 0.893 |
+| ood_false_execution | 0.321 | 0.321 | **0.000** |
+| context_false_action | — | 0.857 | **0.000** |
+| incorrect_execution | 0.252 | 0.287 | **0.032** |
+| p95 latency (ms) | 1126 | 1019 | **73** |
+
+\* param/schema at the deterministic point are computed only over the small subset that executes without the LLM, so they read low by construction.
+
+## What Spec 4 delivered
+- **Multi-intent routing works.** `multi_intent_set_recall` **0.819**. The canonical utterance 「后排小孩老去按车窗，把车窗锁打开。然后主驾这边窗户再开一点，天窗开到一半。」 executes exactly the three intended actions — `set_window_child_lock{enabled:true}`, `set_window_position{percent:40}` (relative, resolved from seeded state 30 +10), `set_sunroof_position{percent:50}` (一半→50) — with the narration clause suppressed (verified by the `@model` test).
+- **No single-intent regression — net improvement.** recall@1 0.814→0.856, recall@3 0.907→0.941, param_exact_match 0.507→**0.718**, schema_valid 0.964→**0.995** (from fraction/relative param parsing + polarity/relative catalog prototypes).
+- **Context suppression (plan path)** proven on the canonical case. The lexical actionability filter (target-alias ∪ domain-keyword + operation cue) was chosen over the confidence/OOD gate after a probe measured **0.12 vs 1.00** context separation — the gate cannot tell in-domain narration from commands (它们 topically identical).
+- **Relative control + state** works: `再开一点`/`一半` resolve to absolute calls via `StateResolver` against the mock `VehicleState` (priority live > confirmed > session), clamped to card min/max; the LLM never invents the current value.
+
+## The central finding — context/OOD is the medium-band-LLM residual
+`context_false_action_rate` is **0.857** at the C_llm point but **0.000** deterministically. The context negatives are all **single-clause narration** (副驾说有点热 …) with zero action spans, so they route through the **legacy** path, where the medium-band LLM executes in-domain narration — the same liability Spec 2/3 identified for OOD (`ood_false_execution` unchanged at 0.321). The actionability filter suppresses context only inside the **plan path** (multi-intent), not for a lone context clause. At the deterministic zero-LLM point both context and OOD false-execution are **0** (incorrect 0.032, p95 73 ms) — the safe operating point, consistent with Spec 3.
+
+## Design pivot (user-approved, during implementation)
+The spec's single multi-action LLM call empirically failed with Qwen3-0.6B (wrong functions, hallucinated params, under-generation — e.g. it picked `open_window{is_open:false, position:passenger}` for 再开一点, or emitted only 1 of 3 actions). Replaced by **per-span confirm-or-reject retrieval top-1**: one `complete_tool_call` per action span offering only that span's retrieval top-1 (+ `__reject__`), so the weak model fills params / abstains but cannot substitute a different function; relative spans are restricted to numeric-param candidates. This lifted the canonical case from 1/3 to **3/3** correct.
+
+## Residual gap & levers
+Single-clause pure-context (and OOD) false-execution at the C_llm point is the open gap. Levers, by leverage: (1) route 0-action / all-context utterances to a conservative clarify instead of the legacy LLM (trades a little command-shape coverage for safety); (2) more context/OOD negative prototypes; (3) a binary context/OOD classifier feeding the gate; (4) a stronger fallback whose reject is more reliable. The safe deterministic point (context/OOD = 0, p95 73 ms) is available today for a safety-critical deployment.

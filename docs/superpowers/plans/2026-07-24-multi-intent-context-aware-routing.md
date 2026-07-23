@@ -1010,6 +1010,16 @@ git commit -m "feat: plan-path pipeline with deterministic multi-action routing"
 
 ## Task 9: LLM multi-action plan call
 
+> **PIVOT (during execution, user-approved):** The single multi-action `complete_plan` call below was
+> implemented but **empirically underperformed** with Qwen3-0.6B (wrong functions, hallucinated
+> params, under-generation). It was replaced by **per-span "confirm-or-reject retrieval top-1"**:
+> `_llm_plan` calls the existing `complete_tool_call` once per action span, offering ONLY that span's
+> retrieval top-1 (+ `__reject__`) so the LLM fills params / abstains but cannot substitute a
+> different function; relative spans are restricted to numeric-param candidates. The single-call
+> code (`complete_plan`, `plan_to_json_schema`, `build_plan_prompt`, `FakePlanClient`) was removed as
+> dead code. See commits `831b1ce` (pivot) and `228eb5e` (cleanup). The steps below are retained as
+> the historical record of the original approach.
+
 **Files:**
 - Modify: `t2f/llm/schema.py`, `t2f/llm/prompt.py`, `t2f/llm/client.py`, `t2f/pipeline.py`, `eval/arms.py`
 - Test: `tests/test_llm_plan.py`, `tests/test_integration_plan.py` (`@model`)

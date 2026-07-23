@@ -48,6 +48,8 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
     if embedder is None:
         embedder = _embedder(cfg, fake, backend)
     rows = load_dataset(dataset)
+    ctx_path = Path("data/eval/context_negatives.jsonl")
+    ctx_rows = load_dataset(ctx_path) if ctx_path.exists() else []
 
     if arm == "C":
         pipe = A.build_arm_c(cards, embedder, cfg)  # builds the prototype store once
@@ -76,8 +78,10 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
             # swap only the gate — do NOT rebuild the pipeline (avoids re-encoding prototypes)
             pipe.gate = ConfidenceGate(cfg.thresholds)
         rows = [r for r in rows if r.get("split") != "dev"]  # report on test only
+        ctx_rows = [r for r in ctx_rows if r.get("split") != "dev"]
 
     records = [A.predict(pipe, r) for r in rows]
+    ctx_records = [A.predict(pipe, r) for r in ctx_rows]
     latencies = [lat for rec in records for lat in rec["latencies"]]
     lp = M.latency_percentiles(latencies, (50, 95))
     metrics = {
@@ -89,6 +93,8 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         "e2e_deterministic": M.e2e_executable_accuracy(records, "deterministic"),
         "e2e_ceiling": M.e2e_executable_accuracy(records, "ceiling"),
         "ood_false_execution_rate": M.ood_false_execution_rate(records),
+        "context_false_action_rate": M.context_false_action_rate(ctx_records),
+        "n_context_rows": len(ctx_records),
         "incorrect_execution_rate": M.incorrect_execution_rate(records),
         "clarification_rate": M.clarification_rate(records),
         "avg_llm_calls_single": M.avg_llm_calls(records),
