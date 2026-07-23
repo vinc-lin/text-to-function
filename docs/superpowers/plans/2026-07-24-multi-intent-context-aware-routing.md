@@ -311,9 +311,11 @@ from t2f.actionability import build_alias_index, classify_span
 from t2f.lexical import extract_features
 from t2f.types import SpanRole
 from t2f.cards import load_catalog
+from t2f.config import Config
 
 CARDS = load_catalog("data/catalog")
-IDX = build_alias_index(CARDS)
+CFG = Config.load("config.yaml")
+IDX = build_alias_index(CARDS, CFG.domain_keywords)   # 窗户 comes from domain_keywords, not aliases
 
 def role(text):
     return classify_span(text, extract_features(text), IDX)
@@ -353,12 +355,17 @@ _OP_CUES = [
 _CONNECTOR_ONLY = {"然后", "还有", "并且", "同时", "接着", "并", "而且", "以及"}
 
 
-def build_alias_index(cards: list[FunctionCard]) -> list[str]:
-    """Flat list of every target alias across all cards (longest-first for cheap containment)."""
-    aliases: set[str] = set()
+def build_alias_index(cards: list[FunctionCard], domain_keywords: dict | None = None) -> list[str]:
+    """Target-word index = every card alias UNION the config domain_keywords (longest-first for
+    cheap containment). Domain keywords (e.g. 窗户/玻璃) catch common synonyms that curated aliases
+    miss, so genuine commands aren't dropped as context. Context suppression is unaffected because
+    an ACTION still additionally requires an operation cue."""
+    targets: set[str] = set()
     for c in cards:
-        aliases.update(c.aliases)
-    return sorted(aliases, key=len, reverse=True)
+        targets.update(c.aliases)
+    for words in (domain_keywords or {}).values():
+        targets.update(words)
+    return sorted(targets, key=len, reverse=True)
 
 
 def _has_target(text: str, alias_index: list[str]) -> bool:
@@ -447,10 +454,10 @@ from .lexical import extract_features
 from .actionability import build_alias_index, classify_span
 
 
-def segment(text, cards) -> list[Span]:
+def segment(text, cards, domain_keywords=None) -> list[Span]:
     """Split into fragments, label each ACTION/CONTEXT/CONNECTOR, and attach each CONTEXT
     fragment to the nearest following ACTION (or the previous ACTION if it is trailing)."""
-    alias_index = build_alias_index(cards)
+    alias_index = build_alias_index(cards, domain_keywords)
     raw = split(text)
     spans = [Span(text=t, role=classify_span(t, extract_features(t), alias_index)) for t in raw]
 
@@ -864,7 +871,7 @@ from .respond import render_response
 ```python
     def route(self, utterance: str) -> RouteResult:
         norm = normalize(utterance)
-        spans = segment(norm, self.cards)
+        spans = segment(norm, self.cards, self.config.domain_keywords)
         action_spans = [s for s in spans if s.role == SpanRole.ACTION]
         context_spans = [s for s in spans if s.role == SpanRole.CONTEXT]
         if len(action_spans) <= 1 and not context_spans:
