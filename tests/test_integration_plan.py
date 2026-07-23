@@ -20,6 +20,13 @@ def test_canonical_multi_intent():
     pipe.state.reset({"set_window_position/driver": 30})
     rr = pipe.route("后排小孩老去按车窗，把车窗锁打开。然后主驾这边窗户再开一点，天窗开到一半。")
     executed = {a.function for a in rr.plan.actions if a.status == "executed"}
+    # all three real actions execute; the context clause is suppressed
     assert "set_window_child_lock" in executed
     assert "set_sunroof_position" in executed
+    assert "set_window_position" in executed
     assert all("后排小孩" not in a.span for a in rr.plan.actions)
+    by_fn = {a.function: a for a in rr.plan.actions if a.status == "executed"}
+    # child lock enabled; sunroof to 50% (一半); relative window resolved from state 30 + step10 = 40
+    assert by_fn["set_window_child_lock"].parameters.get("enabled") is True
+    assert by_fn["set_sunroof_position"].parameters.get("percent") == 50
+    assert by_fn["set_window_position"].parameters.get("percent") == 40

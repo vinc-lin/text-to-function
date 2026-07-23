@@ -11,7 +11,7 @@ from .validate import validate_tool_call
 from .respond import render_response, build_clarification, build_low_confidence_clarification
 from .execute import MockExecutor
 from .llm.schema import REJECT_NAME
-from .state import VehicleState
+from .state import VehicleState, primary_numeric_param
 from .plan import PlanExecutor
 
 
@@ -158,10 +158,23 @@ class Pipeline:
         cr.latency_ms = (time.perf_counter() - t0) * 1000.0
         return cr
 
+    def _span_candidates(self, decision, rel):
+        """Candidate cards for a span, best-first. A relative span (再开一点) can only be applied to
+        a function with a numeric param to adjust, so restrict to those when possible; otherwise the
+        relative overlay would have nothing to resolve against."""
+        cards = [self.cards_by_name[c.function] for c in decision.candidates
+                 if c.function in self.cards_by_name]
+        if rel is not None:
+            numeric = [c for c in cards if primary_numeric_param(c) is not None]
+            if numeric:
+                cards = numeric
+        return cards
+
     def _planned_from_span(self, span_text, decision, feats) -> PlannedAction:
         rel = RelativeSpec(feats.operation, feats.amount) \
             if (feats.operation in ("increase", "decrease") and feats.amount) else None
-        fn = decision.chosen
+        cands = self._span_candidates(decision, rel)
+        fn = cands[0].name if (rel is not None and cands) else decision.chosen
         params = self.extractor.extract(span_text, feats, self.cards_by_name[fn])[0] if fn else {}
         return PlannedAction(span=span_text, function=fn, parameters=dict(params), relative=rel)
 
@@ -203,19 +216,26 @@ class Pipeline:
         return RouteResult(utterance=utterance, clauses=clause_results, plan=plan)
 
     def _llm_plan(self, utterance, action_spans, clause_results):
-        union, seen = [], set()
-        for cr in clause_results:
-            for c in cr.decision.candidates[:self.config.llm.get("max_candidates", 3)]:
-                if c.function not in seen and c.function in self.cards_by_name:
-                    seen.add(c.function); union.append(self.cards_by_name[c.function])
-        calls = self.llm_client.complete_plan(utterance, [s.text for s in action_spans], union)
+        """Per-span 'confirm-or-reject retrieval top-1'. Qwen3-0.6B is unreliable at multi-way
+        function selection (it hallucinates functions/params), but retrieval top-1 is strong, so we
+        offer the LLM only that single top-1 (plus the __reject__ escape): it fills params or
+        abstains, and cannot substitute a different function. Abstention -> function None -> the
+        barrier defers/rejects the span (context/OOD safety preserved)."""
         planned = []
-        for i, s in enumerate(action_spans):
+        for s, cr in zip(action_spans, clause_results):
             feats = extract_features(s.text)
             rel = RelativeSpec(feats.operation, feats.amount) \
                 if (feats.operation in ("increase", "decrease") and feats.amount) else None
-            call = calls[i] if i < len(calls) else None
-            fn = call.name if call else None
-            params = dict(call.parameters) if call else {}
-            planned.append(PlannedAction(span=s.text, function=fn, parameters=params, relative=rel))
+            cands = self._span_candidates(cr.decision, rel)
+            if not cands:
+                planned.append(PlannedAction(span=s.text, function=None, relative=rel))
+                continue
+            top = cands[0]
+            extracted = self.extractor.extract(s.text, feats, top)[0]
+            res = self.llm_client.complete_tool_call(s.text, [top], extracted)
+            if res.tool_call is not None and res.clarification != REJECT_NAME:
+                planned.append(PlannedAction(span=s.text, function=res.tool_call.name,
+                                             parameters=dict(res.tool_call.parameters), relative=rel))
+            else:  # LLM abstained or produced nothing -> defer (never execute an unconfirmed span)
+                planned.append(PlannedAction(span=s.text, function=None, relative=rel))
         return planned
