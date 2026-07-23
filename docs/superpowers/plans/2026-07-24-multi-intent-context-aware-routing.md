@@ -836,6 +836,12 @@ def test_context_bearing_utterance_builds_plan_and_suppresses_context():
     assert rr.plan is not None
     # the context clause produced NO clause/action
     assert all("后排小孩" not in c.clause for c in rr.clauses)
+
+def test_zero_action_utterance_falls_back_to_legacy():
+    # a command shape the actionability filter doesn't recognize (no operation verb, so it
+    # classifies as CONTEXT) must NOT be dropped -> legacy path handles the whole utterance.
+    rr = _pipe().route("导航去公司")
+    assert rr.plan is None and len(rr.clauses) >= 1
 ```
 
 Note: `FakeEmbedder` gives arbitrary rankings, so this test asserts *structure* (plan built, context suppressed), not specific functions. Function-level correctness is covered by the `@model` test in Task 11.
@@ -874,9 +880,14 @@ from .respond import render_response
         spans = segment(norm, self.cards, self.config.domain_keywords)
         action_spans = [s for s in spans if s.role == SpanRole.ACTION]
         context_spans = [s for s in spans if s.role == SpanRole.CONTEXT]
-        if len(action_spans) <= 1 and not context_spans:
-            return self._route_legacy(utterance)
-        return self._route_plan(utterance, action_spans)
+        # Use the plan path ONLY for genuine multi-intent, or a single action that has context to
+        # strip. Everything else -> legacy (unchanged single-intent semantics). CRITICAL: when the
+        # filter finds NO action span (e.g. navigation / media-play command shapes that lack an
+        # open/close/set operation cue, so they classify as CONTEXT), fall back to legacy so the
+        # embedding router still handles the utterance -- never drop it as context.
+        if len(action_spans) >= 2 or (action_spans and context_spans):
+            return self._route_plan(utterance, action_spans)
+        return self._route_legacy(utterance)
 
     def _route_legacy(self, utterance: str) -> RouteResult:
         clauses = split(normalize(utterance))
