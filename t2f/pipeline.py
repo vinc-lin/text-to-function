@@ -1,8 +1,9 @@
 from __future__ import annotations
 import time
-from .types import RouteResult, ClauseResult, Band, ValidationError
+from .types import (RouteResult, ClauseResult, Band, ValidationError,
+                    SpanRole, ActionPlan, PlannedAction, RelativeSpec)
 from .normalize import normalize
-from .segment import split
+from .segment import split, segment
 from .lexical import extract_features
 from .retrieve import PrototypeStore, Retriever
 from .params.extract import ParameterExtractor
@@ -10,6 +11,8 @@ from .validate import validate_tool_call
 from .respond import render_response, build_clarification, build_low_confidence_clarification
 from .execute import MockExecutor
 from .llm.schema import REJECT_NAME
+from .state import VehicleState
+from .plan import PlanExecutor
 
 
 class NullMediumResolver:
@@ -114,21 +117,92 @@ class Pipeline:
         self.retriever = Retriever(PrototypeStore.build(cards, embedder, ood_texts=ood_texts))
         self.classifier_source = classifier_source
         self.resolver = resolver or DeterministicResolver(self.cards_by_name, medium_resolver=medium_resolver)
+        self.state = VehicleState()
+        self.llm_client = None  # set by arms for the LLM plan path (Task 9)
+        self.extractor = getattr(self.resolver, "extractor", None) or ParameterExtractor()
+        self.executor = getattr(self.resolver, "executor", None) or MockExecutor()
 
     def route(self, utterance: str) -> RouteResult:
-        clauses = split(normalize(utterance))
-        results = []
-        for clause in clauses:
-            t0 = time.perf_counter()
-            qv = self.embedder.encode([clause], is_query=True)[0]
-            cands = self.retriever.retrieve(qv, top_k=self.config.top_k)
-            classifier_probs = None
-            if self.classifier_source is not None:
-                cands, classifier_probs = self.classifier_source.augment(cands, clause)
-            feats = extract_features(clause)
-            cands = self.scorer.rescore(clause, feats, cands, self.cards_by_name, classifier_probs=classifier_probs)
-            decision = self.gate.decide(cands, feats, self.cards_by_name)
-            cr = self.resolver.resolve(clause, feats, decision)
-            cr.latency_ms = (time.perf_counter() - t0) * 1000.0
-            results.append(cr)
+        norm = normalize(utterance)
+        spans = segment(norm, self.cards, self.config.domain_keywords)
+        action_spans = [s for s in spans if s.role == SpanRole.ACTION]
+        context_spans = [s for s in spans if s.role == SpanRole.CONTEXT]
+        # Plan path ONLY for genuine multi-intent, or a single action that has context to strip.
+        # Everything else -> legacy (unchanged single-intent semantics). CRITICAL: when the filter
+        # finds NO action span (navigation/media-play shapes lack an open/close/set cue and classify
+        # as CONTEXT), fall back to legacy so the embedding router still handles it -- never dropped.
+        if len(action_spans) >= 2 or (action_spans and context_spans):
+            return self._route_plan(utterance, action_spans)
+        return self._route_legacy(utterance)
+
+    def _route_legacy(self, utterance: str) -> RouteResult:
+        results = [self._route_one(c) for c in split(normalize(utterance))]
         return RouteResult(utterance=utterance, clauses=results)
+
+    def _decide(self, clause: str):
+        """Retrieve -> (classifier) -> score -> gate. Returns (decision, feats). NO execution."""
+        qv = self.embedder.encode([clause], is_query=True)[0]
+        cands = self.retriever.retrieve(qv, top_k=self.config.top_k)
+        classifier_probs = None
+        if self.classifier_source is not None:
+            cands, classifier_probs = self.classifier_source.augment(cands, clause)
+        feats = extract_features(clause)
+        cands = self.scorer.rescore(clause, feats, cands, self.cards_by_name, classifier_probs=classifier_probs)
+        return self.gate.decide(cands, feats, self.cards_by_name), feats
+
+    def _route_one(self, clause: str) -> ClauseResult:
+        """Legacy single-clause path: decide + resolve (resolver executes HIGH band). Unchanged."""
+        t0 = time.perf_counter()
+        decision, feats = self._decide(clause)
+        cr = self.resolver.resolve(clause, feats, decision)
+        cr.latency_ms = (time.perf_counter() - t0) * 1000.0
+        return cr
+
+    def _planned_from_span(self, span_text, decision, feats) -> PlannedAction:
+        rel = RelativeSpec(feats.operation, feats.amount) \
+            if (feats.operation in ("increase", "decrease") and feats.amount) else None
+        fn = decision.chosen
+        params = self.extractor.extract(span_text, feats, self.cards_by_name[fn])[0] if fn else {}
+        return PlannedAction(span=span_text, function=fn, parameters=dict(params), relative=rel)
+
+    def _route_plan(self, utterance: str, action_spans) -> RouteResult:
+        t0 = time.perf_counter()
+        decided = [(s, *self._decide(s.text)) for s in action_spans]            # (span, decision, feats)
+        clause_results = [ClauseResult(clause=s.text, decision=d) for s, d, _ in decided]
+        all_high = all(d.band == Band.HIGH for _, d, _ in decided)
+
+        if not all_high and self.llm_client is not None:
+            planned = self._llm_plan(utterance, action_spans, clause_results)   # Task 9
+            source = "llm"
+        else:
+            planned = [self._planned_from_span(s.text, d, f)
+                       for s, d, f in decided if d.band == Band.HIGH and d.chosen]
+            source = "deterministic"
+
+        plan = ActionPlan(actions=planned, source=source)
+        executed, clar = PlanExecutor(self.cards_by_name, self.state, self.executor,
+                                      self.config.relative_steps).finalize(plan)
+
+        by_span = {a.span: a for a in plan.actions}
+        for (s, d, _), cr in zip(decided, clause_results):
+            a = by_span.get(s.text)
+            if a is not None and a.status == "executed":
+                cr.tool_call = a.tool_call
+                cr.response = render_response(self.cards_by_name[a.function], a.tool_call)
+                cr.needs_llm = (source == "llm")
+            elif a is not None:
+                cr.clarification = clar
+                cr.needs_llm = (source == "llm")
+            else:
+                cr.needs_llm = (d.band == Band.MEDIUM)
+                if d.band == Band.LOW:
+                    cr.clarification = build_low_confidence_clarification()
+        total = (time.perf_counter() - t0) * 1000.0
+        for cr in clause_results:
+            cr.latency_ms = total / max(len(clause_results), 1)
+        return RouteResult(utterance=utterance, clauses=clause_results, plan=plan)
+
+    def _llm_plan(self, utterance, action_spans, clause_results):
+        # Placeholder until Task 9 (only reached when self.llm_client is set, which Task 9 wires).
+        return [self._planned_from_span(cr.clause, cr.decision, extract_features(cr.clause))
+                for cr in clause_results]

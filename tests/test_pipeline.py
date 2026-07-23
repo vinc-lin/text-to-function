@@ -27,7 +27,9 @@ def test_route_single_intent_produces_toolcall():
         assert cl.tool_call.parameters.get("temperature") == 25
 
 def test_route_multi_intent_splits():
-    res = _pipeline().route("开车窗,把空调调到25度")
+    # two clauses that are both recognizable actions in the reduced fixture (车窗 + 温度 aliases);
+    # the new architecture gates clause creation on actionability, so both must be real actions.
+    res = _pipeline().route("开车窗,温度调到25度")
     assert len(res.clauses) == 2
 
 def test_latency_recorded():
