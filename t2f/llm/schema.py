@@ -53,18 +53,3 @@ def candidates_to_json_schema(cards: list[FunctionCard], allow_reject: bool = Fa
     if allow_reject:
         options.append(_REJECT_OPTION)
     return options[0] if len(options) == 1 else {"oneOf": options}
-
-
-def plan_to_json_schema(candidate_cards: list[FunctionCard], allow_reject: bool = True) -> dict:
-    """Constrain output to {"actions": [ <one candidate call> ... ]}. Each array item is any
-    candidate card's call (or __reject__), so the decoder can emit a coordinated multi-action plan."""
-    options = [_card_schema(c) for c in candidate_cards]
-    if allow_reject:
-        options.append(_REJECT_OPTION)
-    item = options[0] if len(options) == 1 else {"oneOf": options}
-    return {
-        "type": "object",
-        "properties": {"actions": {"type": "array", "items": item, "minItems": 1}},
-        "required": ["actions"],
-        "additionalProperties": False,
-    }

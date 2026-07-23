@@ -11,10 +11,6 @@ class LLMClient(ABC):
     def complete_tool_call(self, clause: str, candidate_cards: list[FunctionCard],
                            extracted_params: dict) -> LLMResult: ...
 
-    def complete_plan(self, utterance: str, action_spans: list[str],
-                      candidate_cards: list[FunctionCard]) -> list[ToolCall]:
-        raise NotImplementedError
-
 
 class FakeLLMClient(LLMClient):
     """Deterministic client for tests: maps a clause substring -> a scripted LLMResult."""
@@ -28,17 +24,6 @@ class FakeLLMClient(LLMClient):
             if key in clause:
                 return res
         return self.default or LLMResult(error="no_script_match")
-
-
-class FakePlanClient(LLMClient):
-    def __init__(self, actions: list[dict] | None = None):
-        self.actions = actions or []
-
-    def complete_tool_call(self, clause, candidate_cards, extracted_params) -> LLMResult:
-        return LLMResult(error="use complete_plan")
-
-    def complete_plan(self, utterance, action_spans, candidate_cards) -> list[ToolCall]:
-        return [ToolCall(name=a["name"], parameters=a.get("parameters", {})) for a in self.actions]
 
 
 def _parse_tool_call(raw: str) -> LLMResult:
@@ -92,29 +77,6 @@ class TransformersXGrammarClient(LLMClient):
                                        pad_token_id=self.tok.eos_token_id)
         raw = self.tok.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
         return _parse_tool_call(raw)
-
-    def complete_plan(self, utterance, action_spans, candidate_cards) -> list[ToolCall]:
-        torch = self._torch
-        from .schema import plan_to_json_schema
-        from .prompt import build_plan_prompt
-        schema = plan_to_json_schema(candidate_cards, allow_reject=True)
-        messages = build_plan_prompt(utterance, action_spans, candidate_cards)
-        prompt = self.tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True,
-                                              enable_thinking=False)
-        inputs = self.tok(prompt, return_tensors="pt").to(self.device)
-        compiled = self.compiler.compile_json_schema(json.dumps(schema))
-        processor = self._xgr.contrib.hf.LogitsProcessor(compiled)
-        with torch.no_grad():
-            out = self.model.generate(**inputs, max_new_tokens=self.max_new_tokens * 2,
-                                       do_sample=False, logits_processor=[processor],
-                                       pad_token_id=self.tok.eos_token_id)
-        raw = self.tok.decode(out[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True).strip()
-        try:
-            obj = json.loads(raw)
-            return [ToolCall(name=a["name"], parameters=a.get("parameters", {}))
-                    for a in obj.get("actions", []) if a.get("name") != REJECT_NAME]
-        except Exception:
-            return []
 
 
 class GgufLLMClient(LLMClient):  # Spec 3
