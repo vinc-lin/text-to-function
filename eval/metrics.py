@@ -98,6 +98,15 @@ def e2e_executable_accuracy(records, mode: str = "deterministic") -> float:
     return ok / len(rows)
 
 
+def context_false_action_rate(records) -> float:
+    """Fraction of context-only utterances that wrongly executed ANY action (want -> 0)."""
+    rows = [r for r in records if r["row"].get("type") == "context"]
+    if not rows:
+        return 0.0
+    bad = sum(1 for r in rows if any(r.get("executed", [])))
+    return bad / len(rows)
+
+
 def ood_false_execution_rate(records) -> float:
     rows = [r for r in records if r["row"].get("type") == "ood"]
     if not rows:

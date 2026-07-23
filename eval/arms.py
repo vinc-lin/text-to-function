@@ -43,6 +43,8 @@ def _params_match(got: dict, exp: dict | None) -> bool:
 
 
 def predict(pipeline: Pipeline, row: dict) -> dict:
+    if hasattr(pipeline, "state") and pipeline.state is not None:
+        pipeline.state.reset(row.get("vehicle_state") or {})
     res = pipeline.route(row["utterance"])
     gold = row.get("expected_functions", [])
     exp_params = row.get("expected_params", {})

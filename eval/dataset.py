@@ -33,6 +33,8 @@ def validate_against_catalog(rows: list[dict], function_names: set[str]) -> list
                 problems.append(f"row {i}: unknown function {fn}")
         if r["type"] == "ood" and r.get("expected_functions"):
             problems.append(f"row {i}: ood must have empty expected_functions")
+        if r["type"] == "context" and r.get("expected_functions"):
+            problems.append(f"row {i}: context must have empty expected_functions")
         if r["type"] == "multi_intent" and len(r.get("expected_functions", [])) < 2:
             problems.append(f"row {i}: multi_intent needs >=2 functions")
     return problems
