@@ -24,3 +24,6 @@ llm: {model_id: Qwen/Qwen3-0.6B, max_candidates: 3, max_retries: 1, max_new_toke
 classifier: {enabled: true, topk: 3, char_ngram_path: models/clf_charngram.joblib, embedding_path: models/clf_embedding.joblib}
 dialog: {max_turns: 2}
 ood_prototypes: data/ood/prototypes.txt
+relative_steps:
+  by_unit: {percent: 10, celsius: 1, level: 1}
+  amount_multiplier: {small: 1, medium: 2, large: 3}

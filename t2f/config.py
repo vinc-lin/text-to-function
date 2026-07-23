@@ -18,6 +18,7 @@ class Config:
     classifier: dict = field(default_factory=dict)
     dialog: dict = field(default_factory=dict)
     ood_prototypes: str = "data/ood/prototypes.txt"
+    relative_steps: dict = field(default_factory=dict)
 
     @classmethod
     def default(cls) -> "Config":
@@ -34,7 +35,8 @@ class Config:
             top_k=d.get("top_k", 5), mrl_dim=d.get("mrl_dim"),
             model_id=d.get("model_id", "Qwen/Qwen3-Embedding-0.6B"),
             llm=d.get("llm", {}), classifier=d.get("classifier", {}), dialog=d.get("dialog", {}),
-            ood_prototypes=d.get("ood_prototypes", "data/ood/prototypes.txt"))
+            ood_prototypes=d.get("ood_prototypes", "data/ood/prototypes.txt"),
+            relative_steps=d.get("relative_steps", {}))
 
 
 def load_config(path: str | Path) -> Config:
