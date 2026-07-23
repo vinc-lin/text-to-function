@@ -98,7 +98,44 @@ class LexFeatures:
     directions: list[str] = field(default_factory=list)      # up/down/left/right/front/back
     on_off: Optional[bool] = None
     operation: Optional[str] = None                          # "increase" | "decrease" | "max" | "min"
+    amount: Optional[str] = None                             # "small" | "medium" | "large"
     raw: str = ""
+
+
+class SpanRole(str, Enum):
+    ACTION = "action"
+    CONTEXT = "context"
+    CONNECTOR = "connector"
+
+
+@dataclass
+class Span:
+    text: str
+    role: SpanRole
+    attached_context: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RelativeSpec:
+    operation: str   # "increase" | "decrease"
+    amount: str      # "small" | "medium" | "large"
+
+
+@dataclass
+class PlannedAction:
+    span: str
+    function: Optional[str]
+    parameters: dict[str, Any] = field(default_factory=dict)
+    relative: Optional[RelativeSpec] = None
+    tool_call: Optional[ToolCall] = None
+    status: str = "pending"          # pending|valid|executed|clarify|invalid|reject
+    error: Optional[str] = None      # short reason when not executed
+
+
+@dataclass
+class ActionPlan:
+    actions: list[PlannedAction] = field(default_factory=list)
+    source: str = "deterministic"    # "deterministic" | "llm"
 
 
 @dataclass
@@ -117,6 +154,7 @@ class ClauseResult:
 class RouteResult:
     utterance: str
     clauses: list[ClauseResult] = field(default_factory=list)
+    plan: Optional[ActionPlan] = None
 
 
 @dataclass
