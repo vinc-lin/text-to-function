@@ -1,5 +1,4 @@
 from __future__ import annotations
-from typing import Optional
 from .types import ActionPlan, PlannedAction, FunctionCard
 from .validate import validate_tool_call
 from .state import VehicleState, StateResolver, state_key, primary_numeric_param

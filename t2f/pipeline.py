@@ -170,9 +170,18 @@ class Pipeline:
                 cards = numeric
         return cards
 
+    @staticmethod
+    def _relative_spec(feats):
+        """A span is RELATIVE only with an increase/decrease cue AND an amount AND no explicit
+        absolute value. If the user stated a value (调高到26度 / 亮度调到30% / 开到一半), it is
+        ABSOLUTE — the StateResolver must not overwrite it with a state-derived guess."""
+        if feats.operation in ("increase", "decrease") and feats.amount \
+                and not (feats.percentages or feats.temperatures or feats.levels):
+            return RelativeSpec(feats.operation, feats.amount)
+        return None
+
     def _planned_from_span(self, span_text, decision, feats) -> PlannedAction:
-        rel = RelativeSpec(feats.operation, feats.amount) \
-            if (feats.operation in ("increase", "decrease") and feats.amount) else None
+        rel = self._relative_spec(feats)
         cands = self._span_candidates(decision, rel)
         fn = cands[0].name if (rel is not None and cands) else decision.chosen
         params = self.extractor.extract(span_text, feats, self.cards_by_name[fn])[0] if fn else {}
@@ -224,8 +233,7 @@ class Pipeline:
         planned = []
         for s, cr in zip(action_spans, clause_results):
             feats = extract_features(s.text)
-            rel = RelativeSpec(feats.operation, feats.amount) \
-                if (feats.operation in ("increase", "decrease") and feats.amount) else None
+            rel = self._relative_spec(feats)
             cands = self._span_candidates(cr.decision, rel)
             if not cands:
                 planned.append(PlannedAction(span=s.text, function=None, relative=rel))
