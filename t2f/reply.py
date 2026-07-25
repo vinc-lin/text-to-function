@@ -30,12 +30,17 @@ def _confirmations(clauses) -> list[str]:
     return out
 
 
+def _question_text(clause) -> str:
+    """The clause's clarification question, or '' when absent or blank."""
+    clar = clause.clarification
+    return ((clar.question if clar else "") or "").strip()
+
+
 def _questions(clauses) -> list[str]:
     """Non-empty clarification questions in clause order, exact duplicates dropped."""
     out: list[str] = []
     for cl in clauses:
-        clar = cl.clarification
-        text = ((clar.question if clar else "") or "").strip()
+        text = _question_text(cl)
         if text and text not in out:
             out.append(text)
     return out
@@ -45,7 +50,10 @@ def _has_failure(clauses) -> bool:
     """A clause that failed validation and has nothing else to say."""
     for cl in clauses:
         spoke = bool((cl.response or "").strip())
-        asked = bool(cl.clarification and (cl.clarification.question or "").strip())
+        asked = bool(_question_text(cl))
+        # The 'asked' guard is currently redundant (compose_reply only reaches here in the
+        # elif, i.e. when no clause has a question) but is kept so this helper stays correct
+        # in isolation.
         if cl.validation_errors and not spoke and not asked:
             return True
     return False

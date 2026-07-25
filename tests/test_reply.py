@@ -97,3 +97,12 @@ def test_question_suppresses_the_failure_line():
     reply = compose_reply(res)
     assert reply == "请补充信息。"
     assert "没能完成" not in reply
+
+
+def test_single_clause_with_both_error_and_question_asks_only():
+    """LLMResolver (pipeline.py:73-75) puts errors AND a clarification on one clause."""
+    res = _result(_clause(question="您想设置到多少度？",
+                          errors=[ValidationError("missing_required", "missing temperature")]))
+    reply = compose_reply(res)
+    assert reply == "您想设置到多少度？"
+    assert "没能完成" not in reply
