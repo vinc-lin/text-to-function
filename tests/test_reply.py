@@ -47,3 +47,53 @@ def test_confirmation_without_terminator_gets_one():
 
 def test_nothing_acted_returns_ack():
     assert compose_reply(_result(_clause())) == "好的。"
+
+
+def test_confirmation_then_single_question():
+    res = _result(_clause(response="已为您调整车窗儿童锁状态。"),
+                  _clause(question="关于「温度调高」我还需要确认一下，请补充信息。"))
+    assert compose_reply(res) == ("已为您调整车窗儿童锁状态。"
+                                  "关于「温度调高」我还需要确认一下，请补充信息。")
+
+
+def test_repeated_plan_question_collapses_to_one():
+    # _route_plan attaches the SAME ClarificationRequest to every unresolved clause
+    q = "关于「温度调高」「天窗开到一半」我还需要确认一下，请补充信息。"
+    res = _result(_clause(response="已为您调整车窗儿童锁状态。"),
+                  _clause(question=q), _clause(question=q))
+    assert compose_reply(res) == "已为您调整车窗儿童锁状态。" + q
+    assert compose_reply(res).count(q) == 1
+
+
+def test_distinct_questions_first_wins():
+    res = _result(_clause(question="问甲？"), _clause(question="问乙？"))
+    assert compose_reply(res) == "问甲？"
+
+
+def test_question_only():
+    res = _result(_clause(question="抱歉，我不太确定您的意思，可以换个说法吗？"))
+    assert compose_reply(res) == "抱歉，我不太确定您的意思，可以换个说法吗？"
+
+
+def test_question_without_terminator_gets_one():
+    res = _result(_clause(question="请补充信息"))
+    assert compose_reply(res) == "请补充信息。"
+
+
+def test_hard_failure_line_when_no_question():
+    res = _result(_clause(errors=[ValidationError("out_of_range", "temperature 99 > 32")]))
+    assert compose_reply(res) == "抱歉，这个操作没能完成。"
+
+
+def test_hard_failure_appended_after_confirmations():
+    res = _result(_clause(response="已为您调整当前区域车窗状态。"),
+                  _clause(errors=[ValidationError("out_of_range", "bad")]))
+    assert compose_reply(res) == "已为您调整当前区域车窗状态。抱歉，这个操作没能完成。"
+
+
+def test_question_suppresses_the_failure_line():
+    res = _result(_clause(errors=[ValidationError("out_of_range", "bad")]),
+                  _clause(question="请补充信息。"))
+    reply = compose_reply(res)
+    assert reply == "请补充信息。"
+    assert "没能完成" not in reply
