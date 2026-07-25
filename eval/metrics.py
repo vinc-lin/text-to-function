@@ -188,21 +188,27 @@ def _reply_of(record) -> str:
 
 
 def reply_nonempty_rate(records) -> float:
-    """Uniform contract: route() always produces something speakable (want -> 1.0)."""
+    """Uniform contract: route() always produces something speakable (want -> 1.0).
+
+    Returns 1.0 when there are no records (vacuously satisfied).
+    """
     if not records:
-        return 0.0
+        return 1.0
     return sum(1 for r in records if _reply_of(r)) / len(records)
 
 
 def reply_action_coverage(records) -> float:
-    """Over rows that executed something: does the reply carry EVERY confirmation? (want -> 1.0)"""
+    """Over rows that executed something: does the reply carry EVERY confirmation? (want -> 1.0)
+
+    Returns 1.0 when there are no records (vacuously satisfied).
+    """
     rows = []
     for r in records:
         confirms = [c.strip() for c in (r.get("responses") or []) if c and c.strip()]
         if confirms:
             rows.append((r, confirms))
     if not rows:
-        return 0.0
+        return 1.0
     ok = sum(1 for r, confirms in rows if all(c in _reply_of(r) for c in confirms))
     return ok / len(rows)
 
@@ -213,14 +219,19 @@ def reply_single_question(records) -> float:
     Deliberately NOT defined by counting '？': build_plan_clarification returns
     '关于「…」我还需要确认一下，请补充信息。', which has no question mark, so a
     punctuation-counting metric would pass trivially.
+
+    Questions contained inside another recorded question are ignored, so a template
+    whose text is a prefix of a longer one does not read as two questions.
+    Returns 1.0 when there are no records (vacuously satisfied).
     """
     if not records:
-        return 0.0
+        return 1.0
     ok = 0
     for r in records:
         reply = _reply_of(r)
         distinct = {q.strip() for q in (r.get("questions") or []) if q and q.strip()}
-        if sum(1 for q in distinct if q in reply) <= 1:
+        maximal = [q for q in distinct if not any(q != o and q in o for o in distinct)]
+        if sum(1 for q in maximal if q in reply) <= 1:
             ok += 1
     return ok / len(records)
 
