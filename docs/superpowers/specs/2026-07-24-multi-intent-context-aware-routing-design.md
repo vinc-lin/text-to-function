@@ -35,6 +35,13 @@ A probe on the real Qwen3-Embedding-0.6B pipeline (`config.yaml`, OOD prototypes
 5. Execution is **eager and per-clause** — there is no "validate the whole plan, then execute"
    barrier, and **all 312 gold cases are `type:"single"`**: multi-intent has never been evaluated.
 
+> **Errata (2026-07-25).** The second half of item 5 is wrong as written. At the time this spec was
+> authored the gold set already contained 48 `type:"multi_intent"` rows, and `multi_intent_set_recall`
+> was already computed and reported (Spec 1 recorded 0.929). The accurate motivation is that
+> multi-intent was evaluated but *not specifically engineered for* — there was no plan barrier and no
+> context suppression. The first half of the item (eager per-clause execution, no barrier) is correct
+> and is what Spec 4 fixed. No metric reported in `RESULTS.md` is affected.
+
 Polarity is *not* a problem: `把车窗锁打开` already retrieves `set_window_child_lock (0.819)` cleanly
 above `open_window (0.779)`.
 

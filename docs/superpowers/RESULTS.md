@@ -1,3 +1,9 @@
+> **Read this first:** these are per-spec *measured* results, recorded when each spec shipped. For
+> what the system covers against the Central Model business workflow — and what it does not — see
+> [`2026-07-25-central-model-system-design.md`](specs/2026-07-25-central-model-system-design.md).
+> Two things that page states and this one does not: **step 4b (explain the failure cause) is unmet**,
+> and **no number below was measured on the 87 platform**.
+
 # Spec 1 — Evaluation Results
 
 **Date:** 2026-07-21
@@ -7,7 +13,12 @@
 **Fusion weights:** `embedding 0.88 · keyword_alias 0.04 · param_compat 0.05 · domain_prior 0.03`
 **Gate thresholds (dev-calibrated):** `high_top1 0.35 · high_margin 0.12 · low_top1 0.15`
 
-> Latency/memory below are **dev-machine (GPU) numbers, not SA8797**. On-device benchmarking is Spec 3.
+> Latency below is a **dev-machine (x86 + discrete GPU, CUDA FP16) number, not SA8797**. No memory
+> figure is reported anywhere in this document, or measured anywhere in the repo — `psutil` is a
+> declared dependency that nothing imports. On-device latency/memory/crash benchmarking was assigned
+> to the SA8797 port, which remains **deferred pending hardware** (Spec 3 shipped as accuracy & safety
+> hardening instead). The `<1500 ms` target below is a self-set engineering inference, not an
+> 87-platform standard.
 
 ## Headline metrics (test split, n=184)
 
@@ -112,6 +123,13 @@ Spec 2 turns the retrieval router into an executing system: **guaranteed-valid, 
 
 **Date:** 2026-07-22
 **Mechanism:** a learned **execution-confidence gate** (logistic regression over 11 cheap routing features → `P(top-1 correct)`), calibrated on gold-**dev** (+ OOD prototype queries), reported on gold-**test** (n=184). Replaces the hand-tuned score thresholds; abstains (clarifies) below a calibrated confidence.
+
+> **Wiring caveat (added 2026-07-25).** `ConfidenceModelGate` and `ExecutionConfidence` are implemented,
+> trained (`models/confidence.joblib`) and integration-tested, but **no eval arm constructs them** — all
+> four builders in `eval/arms.py` hardcode the plain threshold `ConfidenceGate`, and the driver that
+> produced the frontier below was never committed. Treat this section as a reproducible-in-principle
+> research result, not as shipped behaviour. Spec 4's deterministic arm C subsequently reported
+> *better* safety with the plain gate (OOD 0.000 / incorrect 0.031 / P95 73 ms).
 
 ## The safety/coverage frontier (learned gate, deterministic HIGH-only, **zero LLM**)
 
