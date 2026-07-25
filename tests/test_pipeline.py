@@ -35,3 +35,17 @@ def test_route_multi_intent_splits():
 def test_latency_recorded():
     res = _pipeline().route("把空调调到25度")
     assert res.clauses[0].latency_ms >= 0
+
+def test_route_always_sets_a_nonempty_reply():
+    """Uniform contract: every path returns something speakable."""
+    p = _pipeline()
+    for utterance in ["把空调调到25度", "开车窗,温度调到25度", "今天天气怎么样",
+                      "今天天气怎么样，开车窗", "", "   ", "。", "，，，"]:
+        res = p.route(utterance)
+        assert isinstance(res.reply, str), utterance
+        assert res.reply.strip(), utterance
+
+
+def test_single_intent_reply_matches_clause_response():
+    res = _pipeline().route("把空调调到25度")
+    assert res.reply == res.clauses[0].response
