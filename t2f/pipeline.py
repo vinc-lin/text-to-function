@@ -136,6 +136,8 @@ class Pipeline:
             res = self._route_plan(utterance, action_spans)
         else:
             res = self._route_legacy(utterance)
+        # Single composition point: any new branch in route() must assign to `res`,
+        # never return early, or its reply will be silently empty.
         res.reply = compose_reply(res)
         return res
 
