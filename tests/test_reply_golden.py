@@ -73,5 +73,10 @@ def test_golden_hard_failure_only():
     assert _reply(_failed()) == "抱歉，这个操作没能完成。"
 
 
-def test_golden_nothing_acted():
-    assert _reply(ClauseResult(clause="x", decision=Decision(Band.LOW, None, []))) == "好的。"
+def test_golden_unresolved_clause_is_not_success():
+    assert _reply(ClauseResult(clause="x", decision=Decision(Band.LOW, None, []))) == \
+        "抱歉，这个操作没能完成。"
+
+
+def test_golden_ack_only_when_no_clauses():
+    assert compose_reply(RouteResult(utterance="u", clauses=[])) == "好的。"

@@ -47,20 +47,28 @@ def _questions(clauses) -> list[str]:
 
 
 def _has_failure(clauses) -> bool:
-    """A clause that failed validation and has nothing else to say."""
+    """A clause that produced nothing the driver can hear.
+
+    This covers both an outright validation failure and an UNRESOLVED clause — e.g. a
+    MEDIUM-band span with no LLM configured, which reaches the reply layer with no response,
+    no clarification and no errors (t2f/pipeline.py:200-201 and NullMediumResolver). Such a
+    clause must never be reported as success: saying 好的。 when nothing happened is a
+    falsely affirmative confirmation, the worst failure mode for a vehicle assistant.
+    """
     for cl in clauses:
         spoke = bool((cl.response or "").strip())
         asked = bool(_question_text(cl))
-        # The 'asked' guard is currently redundant (compose_reply only reaches here in the
-        # elif, i.e. when no clause has a question) but is kept so this helper stays correct
-        # in isolation.
-        if cl.validation_errors and not spoke and not asked:
+        if not spoke and not asked:
             return True
     return False
 
 
 def compose_reply(result: RouteResult) -> str:
-    """Compose the utterance-level reply. Runs AFTER execution, so it must never raise."""
+    """Compose the utterance-level reply. Runs AFTER execution, so it must never raise.
+
+    好的。 is spoken ONLY when there were no clauses at all. A clause that produced nothing
+    is an unresolved request and yields the failure line instead — never a false affirmation.
+    """
     clauses = result.clauses or []
     parts = [_sentence(t) for t in _confirmations(clauses)]
     questions = _questions(clauses)

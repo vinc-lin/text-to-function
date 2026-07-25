@@ -46,8 +46,14 @@ def test_confirmation_without_terminator_gets_one():
     assert compose_reply(res) == "已执行set_fan_speed。"
 
 
-def test_nothing_acted_returns_ack():
-    assert compose_reply(_result(_clause())) == "好的。"
+def test_clause_that_produced_nothing_is_not_reported_as_success():
+    """A clause that neither spoke nor asked is an UNRESOLVED request (e.g. MEDIUM band with
+    no LLM). Saying 好的。 there would falsely confirm work that never happened."""
+    assert compose_reply(_result(_clause())) == "抱歉，这个操作没能完成。"
+
+
+def test_ack_only_when_there_were_no_clauses():
+    assert compose_reply(RouteResult(utterance="u", clauses=[])) == "好的。"
 
 
 def test_confirmation_then_single_question():
@@ -109,22 +115,20 @@ def test_single_clause_with_both_error_and_question_asks_only():
     assert "没能完成" not in reply
 
 
-def test_empty_clause_list_returns_ack():
-    assert compose_reply(RouteResult(utterance="u", clauses=[])) == "好的。"
-
-
 def test_whitespace_response_treated_as_absent():
-    assert compose_reply(_result(_clause(response="   "))) == "好的。"
+    """Whitespace-only response counts as not having spoken, so the clause is unresolved."""
+    assert compose_reply(_result(_clause(response="   "))) == "抱歉，这个操作没能完成。"
 
 
 def test_blank_question_treated_as_absent():
-    assert compose_reply(_result(_clause(question=""))) == "好的。"
+    """Blank question counts as not having asked, so the clause is unresolved."""
+    assert compose_reply(_result(_clause(question=""))) == "抱歉，这个操作没能完成。"
 
 
 def test_none_question_treated_as_absent():
     res = _result(ClauseResult(clause="x", decision=Decision(Band.LOW, None, []),
                                clarification=ClarificationRequest(question=None)))
-    assert compose_reply(res) == "好的。"
+    assert compose_reply(res) == "抱歉，这个操作没能完成。"
 
 
 def test_missing_decision_is_never_read():
@@ -141,3 +145,17 @@ def test_missing_decision_is_never_read():
 def test_composer_never_raises(res):
     assert isinstance(compose_reply(res), str)
     assert compose_reply(res)
+
+
+def test_unresolved_clause_alongside_a_confirmation_is_reported():
+    """开车窗，温度调到25度 with the 2nd span MEDIUM: the driver must not be told only about
+    the window and left believing the temperature was set."""
+    res = _result(_clause(response="已为您调整当前区域车窗状态。"), _clause())
+    reply = compose_reply(res)
+    assert reply == "已为您调整当前区域车窗状态。抱歉，这个操作没能完成。"
+
+
+def test_question_still_suppresses_the_failure_line():
+    """An actionable question outranks the failure line — unchanged by this fix."""
+    res = _result(_clause(), _clause(question="您想设置到多少度？"))
+    assert compose_reply(res) == "您想设置到多少度？"

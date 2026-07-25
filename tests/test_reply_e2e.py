@@ -80,6 +80,29 @@ def test_e2e_hard_failure_line():                                        # E8
     assert res.reply == "抱歉，这个操作没能完成。"
 
 
+def _medium_pipeline():
+    """Thresholds that force the MEDIUM band, where arm C has no LLM to resolve the span."""
+    cards = load_catalog(FIX)
+    cfg = Config.default()
+    cfg.thresholds = Thresholds(high_top1=0.9, high_margin=0.5, low_top1=0.01)
+    return Pipeline(cards, FakeEmbedder(256), Scorer(cfg.weights, cfg.domain_keywords),
+                    ConfidenceGate(cfg.thresholds), cfg)
+
+
+def test_e2e_medium_band_never_falsely_confirms():                       # E9
+    """Regression: a MEDIUM span with no LLM produced response=None/clarification=None/errors=[]
+    and used to yield 好的。 — an affirmative reply for work that never happened."""
+    p = _medium_pipeline()
+    for utterance in ["把空调调到25度", "后排小孩老去按车窗，温度调到25度"]:
+        reply = p.route(utterance).reply
+        assert reply == "抱歉，这个操作没能完成。", (utterance, reply)
+
+
+def test_e2e_medium_band_partial_execution_is_honest():                  # E10
+    res = _medium_pipeline().route("开车窗，温度调到25度")
+    assert res.reply == "已为您调整当前区域车窗状态。抱歉，这个操作没能完成。"
+
+
 def test_compose_reply_called_exactly_once_per_route(monkeypatch):
     """Guards the single-composition-point invariant: no path may compose twice or zero times."""
     import t2f.pipeline as pipeline_mod
