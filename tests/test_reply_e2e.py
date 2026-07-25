@@ -74,6 +74,12 @@ def test_e2e_every_executed_confirmation_appears():                      # cover
                 assert cl.response in res.reply, (utterance, cl.response)
 
 
+def test_e2e_hard_failure_line():                                        # E8
+    """An out-of-range value fails validation with no clarification -> the failure line."""
+    res = _pipeline().route("把空调调到99度")
+    assert res.reply == "抱歉，这个操作没能完成。"
+
+
 def test_compose_reply_called_exactly_once_per_route(monkeypatch):
     """Guards the single-composition-point invariant: no path may compose twice or zero times."""
     import t2f.pipeline as pipeline_mod

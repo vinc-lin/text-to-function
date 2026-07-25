@@ -236,6 +236,27 @@ def reply_single_question(records) -> float:
     return ok / len(records)
 
 
+def reply_question_drop_rate(records) -> float:
+    """Fraction of rows where the router raised MORE THAN ONE distinct clarification question
+    but the reply can only speak one — a real clarification need is silently dropped (want -> 0.0).
+
+    compose_reply's rule 3 ('first wins') guarantees at most one question per reply. That is
+    correct on the plan path, where build_plan_clarification already consolidates every pending
+    span into one question naming each. The legacy multi-clause path has no such consolidation,
+    so a second clause's distinct question vanishes. reply_single_question cannot detect this:
+    exactly one question IS spoken, which is all it checks.
+    """
+    if not records:
+        return 0.0
+    dropped = 0
+    for r in records:
+        distinct = {q.strip() for q in (r.get("questions") or []) if q and q.strip()}
+        maximal = [q for q in distinct if not any(q != o and q in o for o in distinct)]
+        if len(maximal) > 1:
+            dropped += 1
+    return dropped / len(records)
+
+
 def frontier(records_by_tau) -> list:
     out = []
     for tau, recs in records_by_tau.items():

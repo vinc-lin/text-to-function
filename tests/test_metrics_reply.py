@@ -1,5 +1,6 @@
 # tests/test_metrics_reply.py
-from eval.metrics import reply_action_coverage, reply_single_question, reply_nonempty_rate
+from eval.metrics import (reply_action_coverage, reply_single_question, reply_nonempty_rate,
+                          reply_question_drop_rate)
 
 
 def _rec(reply, responses=(), questions=()):
@@ -63,3 +64,29 @@ def test_single_question_tolerates_substring_overlap():
     q_short = "您想调到几档？"
     q_long = "您想调到几档？（1/2/3）"
     assert reply_single_question([_rec(q_long, questions=[q_short, q_long])]) == 1.0
+
+
+def test_question_drop_rate_zero_when_one_question():
+    assert reply_question_drop_rate([_rec("问A", questions=["问A"])]) == 0.0
+
+
+def test_question_drop_rate_zero_when_no_questions():
+    assert reply_question_drop_rate([_rec("甲。", ["甲。"])]) == 0.0
+
+
+def test_question_drop_rate_zero_when_same_question_repeated():
+    """The plan path attaches one shared question object to every unresolved clause."""
+    assert reply_question_drop_rate([_rec("问A", questions=["问A", "问A"])]) == 0.0
+
+
+def test_question_drop_rate_flags_two_distinct_questions():
+    """The legacy multi-clause path can raise two different questions; only one is spoken."""
+    recs = [_rec("请补充更多信息。", questions=["请补充更多信息。", "您想调到几档？"]),
+            _rec("问A", questions=["问A"])]
+    assert reply_question_drop_rate(recs) == 0.5
+
+
+def test_question_drop_rate_tolerates_substring_overlap():
+    q_short = "您想调到几档？"
+    q_long = "您想调到几档？（1/2/3）"
+    assert reply_question_drop_rate([_rec(q_long, questions=[q_short, q_long])]) == 0.0
