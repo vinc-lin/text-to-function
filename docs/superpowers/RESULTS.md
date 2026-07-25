@@ -189,7 +189,7 @@ Single-clause pure-context (and OOD) false-execution at the C_llm point is the o
 
 # Spec 5 — Utterance-Level Reply Results
 
-Design: `docs/superpowers/specs/2026-07-25-utterance-level-reply-design.md`. Plan: `docs/superpowers/plans/2026-07-25-utterance-level-reply.md`. Adds a single spoken `RouteResult.reply`, composed deterministically from what the router already produced, plus four contract metrics that make the eval harness enforce it on every run. Suite: **203 core + 3 model tests**.
+Design: `docs/superpowers/specs/2026-07-25-utterance-level-reply-design.md`. Plan: `docs/superpowers/plans/2026-07-25-utterance-level-reply.md`. Adds a single spoken `RouteResult.reply`, composed deterministically from what the router already produced, plus four contract metrics that make the eval harness enforce it on every run. Suite: **208 core + 3 model tests**.
 
 ## What the gap was
 
@@ -235,6 +235,22 @@ Only latency moved (run-to-run timing noise: C P95 71.7→75.6 ms, C_llm 1092→
 
 Three confirmations, sentence-joined; the narration clause appears nowhere in the reply.
 
+## The defect the metrics could not see — caught in final review
+
+All four contract metrics read healthy while the composer was doing something genuinely unsafe. The original rule 5 said "no confirmations, no question, no failure → `好的。`". But a clause routinely reaches the reply layer having produced **nothing at all** (`response=None`, `clarification=None`, `validation_errors=[]`): on the plan path a MEDIUM-band span never enters `plan.actions` when there is no LLM client (`t2f/pipeline.py:200-201`), and on the legacy path `NullMediumResolver` deliberately does not execute, so it sets no response. Reproduced with MEDIUM-forcing thresholds:
+
+| utterance | reply BEFORE the fix | reply AFTER |
+|---|---|---|
+| `把空调调到25度` | `好的。` ← nothing happened | `抱歉，这个操作没能完成。` |
+| `后排小孩老去按车窗，温度调到25度` | `好的。` ← nothing happened | `抱歉，这个操作没能完成。` |
+| `开车窗，温度调到25度` | `已为您调整当前区域车窗状态。` ← temperature request vanished | `已为您调整当前区域车窗状态。抱歉，这个操作没能完成。` |
+
+Telling a driver "OK" for work that never happened is the worst failure mode this feature could have, and arm C's `e2e_deterministic` of 0.1067 means the MEDIUM band is the common case, not an edge case. **Why no metric caught it:** `reply_nonempty_rate` passes because `好的。` is non-empty; `reply_action_coverage` is vacuous because the clause produced no confirmation to cover; `reply_question_drop_rate` needs two distinct recorded questions and this clause records none.
+
+The fix is confined to `t2f/reply.py`: `_has_failure` no longer requires `validation_errors`, so any clause that neither spoke nor asked counts as a failure. `好的。` is now reachable **only** when there are no clauses at all. This deviates from the brainstormed "soft ack when nothing acted" — that choice was made for *narration*, and it is not safe to extend to a *failed command*.
+
+The lasting lesson: three contract metrics at 1.000 proved the reply was well-formed, not that it was true. Only reading the composition rules against real pipeline states found this.
+
 ## Two findings that changed the design
 
 **Sentence-join, not comma-join.** The design originally specified stripping each confirmation's `。` and joining with `，`. Grounding the golden strings in the real catalog showed the templates are *self-contained* `已…` sentences (`已为您调整车窗儿童锁状态。`, `已将{position}车窗开度调整到{percent}%。`), so comma-joining produced `已…，已…，已…` — three `已` in one breath. Concatenating the sentences as-is reads better and needs no template rewrite.
@@ -255,7 +271,7 @@ Composition rule 3 is "distinct questions → the first wins", which guarantees 
 
 ## What `reply_action_coverage` does and does not prove
 
-Stated plainly, because a contract metric that reads 1.0 for structural reasons is worth less than it looks: `compose_reply` builds the reply *by concatenating* the very `response` strings this metric checks for, so today it cannot read below 1.0 without `t2f/reply.py` itself being broken. It is a **regression tripwire** — it would catch a future change that starts omitting a confirmation — not an independent behavioral check. The composition rules themselves are pinned by the 24 unit tests, 8 golden tests, and 9 end-to-end tests.
+Stated plainly, because a contract metric that reads 1.0 for structural reasons is worth less than it looks: `compose_reply` builds the reply *by concatenating* the very `response` strings this metric checks for, so today it cannot read below 1.0 without `t2f/reply.py` itself being broken. It is a **regression tripwire** — it would catch a future change that starts omitting a confirmation — not an independent behavioral check. The composition rules themselves are pinned by the 26 unit tests, 9 golden tests, and 11 end-to-end tests.
 
 ## Rejected: gold reply annotations
 
@@ -263,4 +279,4 @@ Annotating a gold `reply` on the 64 `multi_intent` rows was considered and rejec
 
 ## Bottom line
 
-The router now returns something speakable on every path — plan, legacy, rejection, and validation failure — with at most one question, verified by 57 new tests (24 unit + 8 golden + 9 end-to-end + 16 metric) and four harness metrics, and with both eval arms proven bit-identical to the pre-Spec-5 baseline on every routing axis.
+The router now returns something speakable on every path — plan, legacy, rejection, and validation failure — with at most one question, verified by 62 new tests (26 unit + 9 golden + 11 end-to-end + 16 metric) and four harness metrics, and with both eval arms proven bit-identical to the pre-Spec-5 baseline on every routing axis.

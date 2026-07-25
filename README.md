@@ -5,7 +5,7 @@ directly to a concrete vehicle-control function call (name + validated parameter
 returns a templated confirmation — using a small LLM only as an *optional fallback*, never as the
 primary router. Targets on-device deployment (Qualcomm SA8797, Qwen3-Embedding-0.6B + Qwen3-0.6B).
 
-> **Status:** Specs 1–5 complete (203 automated tests + 3 model-backed). The SA8797 on-device port is
+> **Status:** Specs 1–5 complete (208 automated tests + 3 model-backed). The SA8797 on-device port is
 > designed but deferred pending hardware. Built as a reference implementation with honest,
 > reproducible evaluation.
 
