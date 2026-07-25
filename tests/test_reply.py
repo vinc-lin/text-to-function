@@ -1,4 +1,5 @@
 # tests/test_reply.py
+import pytest
 from t2f.types import (RouteResult, ClauseResult, Decision, Band,
                        ClarificationRequest, ValidationError)
 from t2f.reply import compose_reply
@@ -106,3 +107,37 @@ def test_single_clause_with_both_error_and_question_asks_only():
     reply = compose_reply(res)
     assert reply == "您想设置到多少度？"
     assert "没能完成" not in reply
+
+
+def test_empty_clause_list_returns_ack():
+    assert compose_reply(RouteResult(utterance="u", clauses=[])) == "好的。"
+
+
+def test_whitespace_response_treated_as_absent():
+    assert compose_reply(_result(_clause(response="   "))) == "好的。"
+
+
+def test_blank_question_treated_as_absent():
+    assert compose_reply(_result(_clause(question=""))) == "好的。"
+
+
+def test_none_question_treated_as_absent():
+    res = _result(ClauseResult(clause="x", decision=Decision(Band.LOW, None, []),
+                               clarification=ClarificationRequest(question=None)))
+    assert compose_reply(res) == "好的。"
+
+
+def test_missing_decision_is_never_read():
+    res = _result(ClauseResult(clause="x", decision=None, response="已执行。"))
+    assert compose_reply(res) == "已执行。"
+
+
+@pytest.mark.parametrize("res", [
+    RouteResult(utterance="", clauses=[]),
+    RouteResult(utterance="u", clauses=None),
+    _result(_clause()),
+    _result(_clause(response=None, question=None, errors=[])),
+])
+def test_composer_never_raises(res):
+    assert isinstance(compose_reply(res), str)
+    assert compose_reply(res)
