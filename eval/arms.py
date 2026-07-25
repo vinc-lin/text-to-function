@@ -75,4 +75,7 @@ def predict(pipeline: Pipeline, row: dict) -> dict:
             "bands": bands, "tool_calls": tcs, "executed": executed, "needs_llm": needs,
             "params_per_clause": params, "exec_correct": exec_ok, "val_errors": verrs,
             "llm_json_ok": llm_json_ok,
+            "reply": res.reply,
+            "responses": [cl.response for cl in res.clauses],
+            "questions": [cl.clarification.question for cl in res.clauses if cl.clarification],
             "latencies": [cl.latency_ms for cl in res.clauses]}
