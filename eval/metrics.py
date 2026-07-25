@@ -183,6 +183,80 @@ def coverage(records) -> float:
     return done / len(rows)
 
 
+def _reply_of(record) -> str:
+    return (record.get("reply") or "").strip()
+
+
+def reply_nonempty_rate(records) -> float:
+    """Uniform contract: route() always produces something speakable (want -> 1.0).
+
+    Returns 1.0 when there are no records (vacuously satisfied).
+    """
+    if not records:
+        return 1.0
+    return sum(1 for r in records if _reply_of(r)) / len(records)
+
+
+def reply_action_coverage(records) -> float:
+    """Over rows that executed something: does the reply carry EVERY confirmation? (want -> 1.0)
+
+    Returns 1.0 when there are no records (vacuously satisfied).
+    """
+    rows = []
+    for r in records:
+        confirms = [c.strip() for c in (r.get("responses") or []) if c and c.strip()]
+        if confirms:
+            rows.append((r, confirms))
+    if not rows:
+        return 1.0
+    ok = sum(1 for r, confirms in rows if all(c in _reply_of(r) for c in confirms))
+    return ok / len(rows)
+
+
+def reply_single_question(records) -> float:
+    """At most ONE distinct clarification question may appear in a reply (want -> 1.0).
+
+    Deliberately NOT defined by counting '？': build_plan_clarification returns
+    '关于「…」我还需要确认一下，请补充信息。', which has no question mark, so a
+    punctuation-counting metric would pass trivially.
+
+    Questions contained inside another recorded question are ignored, so a template
+    whose text is a prefix of a longer one does not read as two questions.
+    Returns 1.0 when there are no records (vacuously satisfied).
+    """
+    if not records:
+        return 1.0
+    ok = 0
+    for r in records:
+        reply = _reply_of(r)
+        distinct = {q.strip() for q in (r.get("questions") or []) if q and q.strip()}
+        maximal = [q for q in distinct if not any(q != o and q in o for o in distinct)]
+        if sum(1 for q in maximal if q in reply) <= 1:
+            ok += 1
+    return ok / len(records)
+
+
+def reply_question_drop_rate(records) -> float:
+    """Fraction of rows where the router raised MORE THAN ONE distinct clarification question
+    but the reply can only speak one — a real clarification need is silently dropped (want -> 0.0).
+
+    compose_reply's rule 3 ('first wins') guarantees at most one question per reply. That is
+    correct on the plan path, where build_plan_clarification already consolidates every pending
+    span into one question naming each. The legacy multi-clause path has no such consolidation,
+    so a second clause's distinct question vanishes. reply_single_question cannot detect this:
+    exactly one question IS spoken, which is all it checks.
+    """
+    if not records:
+        return 0.0
+    dropped = 0
+    for r in records:
+        distinct = {q.strip() for q in (r.get("questions") or []) if q and q.strip()}
+        maximal = [q for q in distinct if not any(q != o and q in o for o in distinct)]
+        if len(maximal) > 1:
+            dropped += 1
+    return dropped / len(records)
+
+
 def frontier(records_by_tau) -> list:
     out = []
     for tau, recs in records_by_tau.items():

@@ -155,6 +155,7 @@ class RouteResult:
     utterance: str
     clauses: list[ClauseResult] = field(default_factory=list)
     plan: Optional[ActionPlan] = None
+    reply: str = ""
 
 
 @dataclass

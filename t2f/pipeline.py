@@ -9,6 +9,7 @@ from .retrieve import PrototypeStore, Retriever
 from .params.extract import ParameterExtractor
 from .validate import validate_tool_call
 from .respond import render_response, build_clarification, build_low_confidence_clarification
+from .reply import compose_reply
 from .execute import MockExecutor
 from .llm.schema import REJECT_NAME
 from .state import VehicleState, primary_numeric_param
@@ -132,8 +133,13 @@ class Pipeline:
         # finds NO action span (navigation/media-play shapes lack an open/close/set cue and classify
         # as CONTEXT), fall back to legacy so the embedding router still handles it -- never dropped.
         if len(action_spans) >= 2 or (action_spans and context_spans):
-            return self._route_plan(utterance, action_spans)
-        return self._route_legacy(utterance)
+            res = self._route_plan(utterance, action_spans)
+        else:
+            res = self._route_legacy(utterance)
+        # Single composition point: any new branch in route() must assign to `res`,
+        # never return early, or its reply will be silently empty.
+        res.reply = compose_reply(res)
+        return res
 
     def _route_legacy(self, utterance: str) -> RouteResult:
         results = [self._route_one(c) for c in split(normalize(utterance))]

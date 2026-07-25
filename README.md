@@ -5,8 +5,9 @@ directly to a concrete vehicle-control function call (name + validated parameter
 returns a templated confirmation — using a small LLM only as an *optional fallback*, never as the
 primary router. Targets on-device deployment (Qualcomm SA8797, Qwen3-Embedding-0.6B + Qwen3-0.6B).
 
-> **Status:** Specs 1–3 complete (119 automated tests). The SA8797 on-device port is designed but
-> deferred pending hardware. Built as a reference implementation with honest, reproducible evaluation.
+> **Status:** Specs 1–5 complete (208 automated tests + 3 model-backed). The SA8797 on-device port is
+> designed but deferred pending hardware. Built as a reference implementation with honest,
+> reproducible evaluation.
 
 ## Why
 
@@ -26,16 +27,20 @@ utterance
       high   → deterministic param extraction → strict schema validation → execute → template reply
       medium → Qwen3-0.6B single-shot, JSON-schema-constrained tool-call → validate → execute / clarify
       low    → clarify / reject (never execute)
+  → plan barrier (multi-intent): validate the whole plan, then execute the valid subset
+  → compose ONE spoken reply: confirmations sentence-joined + at most one clarification
   → (multi-turn) complete a pending clarification from the next reply
 ```
 
-## The three specs
+## The specs
 
-| Spec | What | Key result (gold test split, n=184) |
+| Spec | What | Key result (gold test split) |
 |---|---|---|
 | **1 — Deterministic router** | retrieval + hybrid scoring + calibrated gate + rule param-extraction + strict validation + eval harness | recall@1 0.82 / @3 0.91; OOD & incorrect execution ≈0; P95 **72 ms**; LLM-ceiling e2e **0.845** |
 | **2 — LLM fallback + classifier + multi-turn** | Qwen3-0.6B via **xgrammar**-constrained decoding; supervised classifier (Arm D); bounded multi-turn; `__ood__` prototypes + reject option | schema-valid **0.995**, param-match **0.63**, e2e **0.46**, multi-turn follow-up **1.0**; but executing the medium band via LLM leaks OOD (0.32) |
 | **3 — Accuracy & safety hardening** | **learned execution-confidence gate** (LR over cheap routing features) → tunable safety/coverage frontier | safe point (τ=0.7, no LLM): OOD **0.107** (3×↓), incorrect **0.067** (5×↓), coverage 0.51, ~275 ms; balanced point hits avg-LLM-calls **0.447 (≤0.5)** |
+| **4 — Multi-intent, context-aware routing** | lexical actionability filter (context suppression), plan-then-execute barrier, relative-op resolution against injectable mock vehicle state, multi-intent eval axis | multi-intent set-recall **0.819**; deterministic point: context & OOD false-action **0.000**, incorrect **0.031**, P95 **73 ms** |
+| **5 — Utterance-level reply** | one spoken `RouteResult.reply` composed from what the router already produced; four contract metrics enforce it every eval run | coverage / single-question / non-empty all **1.000** on both arms; zero routing change (arm C byte-identical to baseline) |
 
 Full analysis and the safety/coverage frontier are in **[`docs/superpowers/RESULTS.md`](docs/superpowers/RESULTS.md)**; each spec's design and TDD plan live under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 
@@ -49,10 +54,13 @@ t2f/
   dialog.py   # bounded multi-turn follow-up resolver (Spec 2)
   safety/     # execution-confidence features + model + calibration (Spec 3)
   tools/      # hard-negative mining (Spec 3)
+  actionability · state · plan   # context filter, mock vehicle state, plan barrier (Spec 4)
+  reply.py    # utterance-level reply composition (Spec 5)
 data/
   catalog/    # 92 function cards across 10 domains (YAML)
-  eval/       # hand-verified gold.jsonl (312) + generated silver.jsonl + followups.jsonl
-  ood/        # 96 out-of-domain / chitchat negative prototypes
+  eval/       # hand-verified gold.jsonl (328) + context_negatives.jsonl (14)
+              # + generated silver.jsonl + followups.jsonl
+  ood/        # 100 out-of-domain / chitchat negative prototypes
 eval/         # all PRD metrics, pluggable arms (C, baseline, C+LLM, D), runner
 docs/superpowers/  # specs, plans, RESULTS.md
 ```

@@ -184,3 +184,99 @@ The spec's single multi-action LLM call empirically failed with Qwen3-0.6B (wron
 
 ## Residual gap & levers
 Single-clause pure-context (and OOD) false-execution at the C_llm point is the open gap. Levers, by leverage: (1) route 0-action / all-context utterances to a conservative clarify instead of the legacy LLM (trades a little command-shape coverage for safety); (2) more context/OOD negative prototypes; (3) a binary context/OOD classifier feeding the gate; (4) a stronger fallback whose reject is more reliable. The safe deterministic point (context/OOD = 0, p95 73 ms) is available today for a safety-critical deployment.
+
+---
+
+# Spec 5 — Utterance-Level Reply Results
+
+Design: `docs/superpowers/specs/2026-07-25-utterance-level-reply-design.md`. Plan: `docs/superpowers/plans/2026-07-25-utterance-level-reply.md`. Adds a single spoken `RouteResult.reply`, composed deterministically from what the router already produced, plus four contract metrics that make the eval harness enforce it on every run. Suite: **208 core + 3 model tests**.
+
+## What the gap was
+
+The pipeline routed, validated, and executed — but never produced the one string a voice assistant speaks. Confirmations existed only per clause (`ClauseResult.response`), and `_route_plan` attached the **same** `ClarificationRequest` object to *every* unresolved clause, so a caller concatenating naively would ask the identical question two or three times.
+
+## Headline metrics (gold test split, n=192; + 7 context negatives)
+
+| metric | arm C (deterministic) | arm C_llm (balanced) | want |
+|---|---|---|---|
+| reply_action_coverage | **1.0000** | **1.0000** | 1.0 |
+| reply_single_question | **1.0000** | **1.0000** | 1.0 |
+| reply_nonempty_rate | **1.0000** | **1.0000** | 1.0 |
+| reply_question_drop_rate | **0.0000** | 0.0104 | 0.0 |
+
+## Zero routing change — proven, not asserted
+
+The regression gate was checked by running both arms on `main` (pre-Spec-5) and on the branch and diffing every metric. **Every routing metric is identical on both arms**, to four decimals:
+
+| metric | arm C main → branch | arm C_llm main → branch |
+|---|---|---|
+| recall@1 | 0.8644 → 0.8644 | 0.8559 → 0.8559 |
+| recall@3 | 0.9407 → 0.9407 | 0.9407 → 0.9407 |
+| multi_intent_set_recall | 0.8194 → 0.8194 | 0.8194 → 0.8194 |
+| param_exact_match | 0.2733 → 0.2733 | 0.7248 → 0.7248 |
+| schema_valid_rate | 0.5079 → 0.5079 | 0.9948 → 0.9948 |
+| e2e_deterministic | 0.1067 → 0.1067 | 0.6200 → 0.6200 |
+| ood_false_execution | 0.0000 → 0.0000 | 0.3214 → 0.3214 |
+| context_false_action | 0.0000 → 0.0000 | 0.8571 → 0.8571 |
+| incorrect_execution | 0.0312 → 0.0312 | 0.2850 → 0.2850 |
+
+Only latency moved (run-to-run timing noise: C P95 71.7→75.6 ms, C_llm 1092→1085 ms). This is what "presentational" is supposed to mean, and it is now measured rather than claimed.
+
+> **Note on the Spec 4 table above.** Its arm-C/C_llm figures predate commit `095a0aa` ("explicit value + relative verb is absolute"), which landed on `main` after those numbers were recorded. The small differences (e.g. `param_exact_match` 0.718 → 0.7248, `e2e_deterministic` 0.613 → 0.6200) are attributable to that fix, not to Spec 5 — confirmed by the `main` baseline runs above.
+
+## The canonical reply, on real models
+
+`pytest -m model` asserts the exact string end-to-end, with real Qwen3-Embedding-0.6B and real xgrammar-constrained Qwen3-0.6B:
+
+```
+后排小孩老去按车窗，把车窗锁打开。然后主驾这边窗户再开一点，天窗开到一半。
+  → 已为您调整车窗儿童锁状态。已将主驾车窗开度调整到40%。已将天窗开度调整到50%。
+```
+
+Three confirmations, sentence-joined; the narration clause appears nowhere in the reply.
+
+## The defect the metrics could not see — caught in final review
+
+All four contract metrics read healthy while the composer was doing something genuinely unsafe. The original rule 5 said "no confirmations, no question, no failure → `好的。`". But a clause routinely reaches the reply layer having produced **nothing at all** (`response=None`, `clarification=None`, `validation_errors=[]`): on the plan path a MEDIUM-band span never enters `plan.actions` when there is no LLM client (`t2f/pipeline.py:200-201`), and on the legacy path `NullMediumResolver` deliberately does not execute, so it sets no response. Reproduced with MEDIUM-forcing thresholds:
+
+| utterance | reply BEFORE the fix | reply AFTER |
+|---|---|---|
+| `把空调调到25度` | `好的。` ← nothing happened | `抱歉，这个操作没能完成。` |
+| `后排小孩老去按车窗，温度调到25度` | `好的。` ← nothing happened | `抱歉，这个操作没能完成。` |
+| `开车窗，温度调到25度` | `已为您调整当前区域车窗状态。` ← temperature request vanished | `已为您调整当前区域车窗状态。抱歉，这个操作没能完成。` |
+
+Telling a driver "OK" for work that never happened is the worst failure mode this feature could have, and arm C's `e2e_deterministic` of 0.1067 means the MEDIUM band is the common case, not an edge case. **Why no metric caught it:** `reply_nonempty_rate` passes because `好的。` is non-empty; `reply_action_coverage` is vacuous because the clause produced no confirmation to cover; `reply_question_drop_rate` needs two distinct recorded questions and this clause records none.
+
+The fix is confined to `t2f/reply.py`: `_has_failure` no longer requires `validation_errors`, so any clause that neither spoke nor asked counts as a failure. `好的。` is now reachable **only** when there are no clauses at all. This deviates from the brainstormed "soft ack when nothing acted" — that choice was made for *narration*, and it is not safe to extend to a *failed command*.
+
+The lasting lesson: three contract metrics at 1.000 proved the reply was well-formed, not that it was true. Only reading the composition rules against real pipeline states found this.
+
+## Two findings that changed the design
+
+**Sentence-join, not comma-join.** The design originally specified stripping each confirmation's `。` and joining with `，`. Grounding the golden strings in the real catalog showed the templates are *self-contained* `已…` sentences (`已为您调整车窗儿童锁状态。`, `已将{position}车窗开度调整到{percent}%。`), so comma-joining produced `已…，已…，已…` — three `已` in one breath. Concatenating the sentences as-is reads better and needs no template rewrite.
+
+**`reply_single_question` is not punctuation-based.** The obvious implementation counts `？` in the reply. But `build_plan_clarification` returns `关于「…」我还需要确认一下，请补充信息。` — **no question mark at all**. A `？`-counting metric would have read 1.0 forever while measuring nothing. It instead counts how many *distinct recorded question strings* occur as substrings of the reply, ignoring any that are contained in another (so a template that is a prefix of a longer one does not read as two).
+
+## Known limitation — dropped clarifications on the legacy path
+
+Composition rule 3 is "distinct questions → the first wins", which guarantees one question per reply. That is correct on the **plan path**, where `build_plan_clarification` already consolidates every pending span into a single question naming each. The **legacy multi-clause path** has no such consolidation, so a second clause's genuinely different question is silently dropped:
+
+```
+车里闷，换外循环吸点新鲜空气
+  questions = ['请补充更多信息。', '您想调到几档？']
+  reply     = '请补充更多信息。'          ← the second need is never voiced
+```
+
+`reply_single_question` cannot see this — exactly one question *is* spoken, which is all it checks. `reply_question_drop_rate` was added to measure it honestly: **0.0000 on arm C** and **0.0104 (2/192) on arm C_llm**. (Under `--fake --permissive`, where far more clauses land in a clarifying band, it reaches 0.0183 = 6/328 — a property of that threshold setting, not of the real pipeline.) Closing it means giving the legacy path the plan path's consolidation, which is a behavior change and belongs in its own spec.
+
+## What `reply_action_coverage` does and does not prove
+
+Stated plainly, because a contract metric that reads 1.0 for structural reasons is worth less than it looks: `compose_reply` builds the reply *by concatenating* the very `response` strings this metric checks for, so today it cannot read below 1.0 without `t2f/reply.py` itself being broken. It is a **regression tripwire** — it would catch a future change that starts omitting a confirmation — not an independent behavioral check. The composition rules themselves are pinned by the 26 unit tests, 9 golden tests, and 11 end-to-end tests.
+
+## Rejected: gold reply annotations
+
+Annotating a gold `reply` on the 64 `multi_intent` rows was considered and rejected. A gold reply bakes in *which actions the arm executed*: arm C executes a subset of what C_llm executes, so C would score near zero even when composing perfectly from what it did execute. That measures routing again, not composition — and every template tweak would invalidate 64 annotations. Exact-wording protection is bought far more cheaply by 8 golden tests over fixed inputs.
+
+## Bottom line
+
+The router now returns something speakable on every path — plan, legacy, rejection, and validation failure — with at most one question, verified by 62 new tests (26 unit + 9 golden + 11 end-to-end + 16 metric) and four harness metrics, and with both eval arms proven bit-identical to the pre-Spec-5 baseline on every routing axis.
