@@ -1,6 +1,10 @@
 # t2f/execute.py
-from .types import ToolCall
+from .types import ToolCall, ExecResult
+
 
 class MockExecutor:
-    def execute(self, tool_call: ToolCall) -> dict:
-        return {"ok": True, "name": tool_call.name, "parameters": tool_call.parameters}
+    """Always succeeds. Kept for tests that do not care about the vehicle; `sim/` is the
+    simulated car."""
+
+    def execute(self, tool_call: ToolCall) -> ExecResult:
+        return ExecResult(ok=True)
