@@ -3,7 +3,8 @@ import argparse, json
 from pathlib import Path
 from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
-from t2f.gate import Thresholds, calibrate_gate, ConfidenceGate
+from t2f.gate import Thresholds, ConfidenceGate
+from eval.calibrate import calibrate_gate
 from t2f.embed import FakeEmbedder
 from t2f.types import LLMResult, ToolCall
 from t2f.llm.client import FakeLLMClient, TransformersXGrammarClient

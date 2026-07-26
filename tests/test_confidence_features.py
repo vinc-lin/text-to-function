@@ -1,6 +1,6 @@
 from t2f.types import Candidate, FunctionCard, ParamSpec, LexFeatures
 from t2f.retrieve import OOD_MARKER
-from t2f.safety.features import confidence_features, FEATURE_ORDER
+from research.safety.features import confidence_features, FEATURE_ORDER
 from t2f.lexical import extract_features
 
 CARDS = {"set_temperature": FunctionCard("set_temperature", "climate", "温度",

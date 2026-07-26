@@ -1,6 +1,6 @@
 from __future__ import annotations
-from ..retrieve import OOD_MARKER
-from ..params.extract import ParameterExtractor
+from t2f.retrieve import OOD_MARKER
+from t2f.params.extract import ParameterExtractor
 
 FEATURE_ORDER = ["top1_score", "margin", "top3_spread", "ood_marker_sim", "top1_param_compat",
                  "classifier_prob", "classifier_margin", "n_candidates", "query_len",

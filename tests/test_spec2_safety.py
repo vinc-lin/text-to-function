@@ -3,7 +3,8 @@ from t2f.types import FunctionCard, ParamSpec, Candidate, Decision, Band, LexFea
 from t2f.llm.schema import candidates_to_json_schema, REJECT_NAME
 from t2f.llm.client import FakeLLMClient, _parse_tool_call
 from t2f.pipeline import LLMResolver
-from t2f.gate import calibrate_gate, ConfidenceGate
+from t2f.gate import ConfidenceGate
+from eval.calibrate import calibrate_gate
 from t2f.lexical import extract_features
 
 CARD = FunctionCard("set_temperature", "climate", "温度",
