@@ -269,3 +269,36 @@ def frontier(records_by_tau) -> list:
             "clarification_rate": clarification_rate(recs),
         })
     return sorted(out, key=lambda d: d["tau"])
+
+
+def invalid_no_execution_rate(records) -> float:
+    """Of `type:"invalid"` rows, the fraction where NOTHING was dispatched.
+
+    Want 1.0 — an unusable parameter value must never reach the vehicle. Unlike the four
+    Spec-5 reply metrics this one can genuinely fail. Empty denominator -> 1.0, matching
+    the want-1.0 convention of schema_valid_rate.
+    """
+    rows = [r for r in records if r["row"].get("type") == "invalid"]
+    if not rows:
+        return 1.0
+    clean = sum(1 for r in rows if not any(r.get("executed") or []))
+    return clean / len(rows)
+
+
+def reply_exact_match(records) -> float:
+    """Over rows carrying `expected_reply`, the fraction where the spoken reply matches.
+
+    Report alongside `n_reply_annotated` — a 1.0 over zero rows is vacuous, which is the
+    lesson of reply_action_coverage. Both sides are stripped so a stray space in a
+    hand-authored annotation is not scored as a miss.
+    """
+    rows = [r for r in records if r["row"].get("expected_reply")]
+    if not rows:
+        return 1.0
+    hit = sum(1 for r in rows if _reply_of(r) == r["row"]["expected_reply"].strip())
+    return hit / len(rows)
+
+
+def n_reply_annotated(records) -> int:
+    """The denominator of reply_exact_match. Emitted so a vacuous 1.0 is visible."""
+    return sum(1 for r in records if r["row"].get("expected_reply"))
