@@ -298,3 +298,108 @@ Annotating a gold `reply` on the 64 `multi_intent` rows was considered and rejec
 ## Bottom line
 
 The router now returns something speakable on every path — plan, legacy, rejection, and validation failure — with at most one question, verified by 62 new tests (26 unit + 9 golden + 11 end-to-end + 16 metric) and four harness metrics, and with both eval arms proven bit-identical to the pre-Spec-5 baseline on every routing axis.
+
+---
+
+# Spec 6 — End-to-End Test Cases Results
+
+**Date:** 2026-07-26
+**Suite A:** `tests/e2e/` — the real `Pipeline.route()` over the 3-card fixture catalog with `FakeEmbedder`; no model, no GPU
+**Suite B:** `data/eval/e2e_cases.jsonl` — 54 labelled rows scored as a **separate** slice
+**Arm:** C (deterministic, real embedder), gold test split n=192
+
+## The gap this closed
+
+Before Spec 6 the repo had 208 tests and 328 labelled rows, and **not one case asserted what the driver
+hears**, nor **exercised a failure**. `gold.jsonl` carries no reply field, and a scan for unusable
+parameter values found **zero** rows — every case ever scored either routed correctly or was refused.
+Step 4 of the business workflow was graded only by contract metrics that cannot fail by construction.
+
+## What was added
+
+| | count |
+|---|---|
+| Suite A end-to-end cases | **36** (25 green, 11 red) |
+| eval unit tests (validator + metrics) | 17 |
+| Suite B rows | 54 — 22 `invalid`, 20 `asr_noise`, 12 relative-with-state |
+| `expected_reply` annotations | 37 |
+| **Full suite** | **250 passed, 11 xfailed, 3 deselected** |
+
+Green cases characterise behaviour as it is; **red cases use `xfail(strict=True)`**, so a case that
+starts passing becomes a *failure* and forces promotion. The suite reports its own progress rather
+than waiting to be asked. Every green literal was measured against the running pipeline, not assumed.
+
+## Headline metrics (arm C, real embedder)
+
+| metric | value | denominator | reading |
+|---|---|---|---|
+| `invalid_no_execution_rate` | **1.0000** | 22 | nothing unusable reached the vehicle — the safety half of 4b holds |
+| `reply_exact_match` | **0.0811** | 37 | the driver hears the correct sentence in **3 of 37** cases |
+| `n_e2e_rows` | 54 | — | |
+
+`reply_exact_match` is reported beside its denominator deliberately. `reply_action_coverage` shipped
+in Spec 5 reading 1.0000 while being incapable of failing, and only a paragraph of prose recorded
+that. Every subset-scoped metric here prints its own denominator, so a vacuous 1.0 is visible.
+
+**0.0811 is the honest state of step 4**, and it is not to be improved by softening the annotations.
+
+## Four defects the existing 208 tests could not see
+
+1. **A failed actuation is spoken as success, and commits vehicle state.** With an executor returning
+   `{"ok": False}`, `route("把空调调到25度")` returns `已将当前区域温度设置为25°C。` and writes the
+   confirmed state layer. `execute()`'s return value is discarded at all four call sites
+   (`t2f/plan.py:43`, `t2f/pipeline.py:64`, `:104`, `t2f/dialog.py:42`); `t2f/plan.py:48` marks
+   `"executed"` unconditionally. **This is the case that matters most** — it is harmless only because
+   `MockExecutor` cannot fail, and becomes a live safety defect the day a vehicle adapter is attached.
+2. **`别关车窗` ("don't close the window") dispatches `is_open=False` and closes it.** Polarity is
+   keyword-derived with no negation handling (`t2f/lexical.py:70-73`), so the system executes the
+   inverse of the instruction.
+3. **Opening and closing the window produce byte-identical replies.** 43 of 92 cards confirm an action
+   without stating the value set (`render_response` humanizes only `position`).
+4. **Every failure cause collapses to one constant.** `bad_enum` carries the card's enum list and
+   `type_mismatch` carries `temperature must be numeric`; both reach the reply layer on
+   `ClauseResult.validation_errors` and both are spoken as `抱歉，这个操作没能完成。`
+
+## A fifth gap, surfaced by authoring the rows
+
+**A single-clause relative command can never be resolved against vehicle state.** `StateResolver` is
+constructed only in `PlanExecutor.__init__` (`t2f/plan.py:17`) and called only at `t2f/plan.py:26`,
+reachable only via `_route_plan`. A bare `温度再调高一点` goes down `_route_legacy` and clarifies
+instead of resolving, however much state is available. This was invisible because all 6 state-carrying
+gold rows are `multi_intent`; 8 of the 10 new relative rows expose it.
+
+## Zero contamination — proven, not asserted
+
+Eight metrics (`param_exact_match`, `schema_valid_rate`, `incorrect_execution_rate`,
+`clarification_rate`, `json_valid_rate`, and all four `reply_*`) plus the latency percentiles have
+**no row-type filter**, so appending to `gold.jsonl` would have moved numbers throughout this
+document. The new rows therefore live in their own file, scored as `context_negatives.jsonl` already is.
+
+Arm C was run three times — before the change, with the wiring and no rows, and with all 54 rows
+loaded. **Every gold metric is identical to four decimals across all three:** recall@1 0.8644,
+recall@3 0.9407, multi-intent set-recall 0.8194, param exact-match 0.2733, schema-valid 0.5079,
+e2e deterministic 0.1067, e2e ceiling 0.8933, OOD 0.0000, context 0.0000, incorrect 0.0312,
+clarification 0.0000, avg-LLM-calls 1.0175, json-valid 0.3266, all four reply metrics unchanged,
+candidate-gen recall@3 0.9407. Only latency moved (P95 78.4 → 83.9 ms, run-to-run noise).
+
+## Honest limits
+
+- **`asr_noise` rows encode our belief about ASR errors, not measured misrecognitions.** We have no
+  ASR. They are weaker evidence than the rest of this document and should not be quoted beside
+  measured numbers as though they carried equal weight.
+- **Suite A proves mechanisms on 3 cards, not the 92-card catalog.** It shows *that* a cause is
+  unexplained; Suite B shows how often. Neither is sufficient alone.
+- **Two of the 22 `invalid` rows claim `bad_enum` but fire `missing_required`** — `氛围灯调成粉色`
+  and `导航走最省油的路线`. The extractor drops the unrecognised enum value, so "you named an
+  unsupported colour" is indistinguishable from "you named no colour". The label records the true
+  cause; the divergence is the finding, not an error.
+- **`xfail(strict=True)` reads as green in CI.** A reviewer skimming "250 passed" will not see the 11
+  red cases. That is why the count appears in the README status line.
+
+## Bottom line
+
+"How much of the workflow do we meet?" is now a number a test run prints rather than a claim a
+document makes: **11 red cases and `reply_exact_match` 0.0811** are the measured distance between what
+the Central Model does and what the business workflow specifies. Steps 2 and 4a are in good shape;
+step 3's actuation half and step 4b are not, and both are now guarded so that closing them is
+self-reporting.

@@ -6,11 +6,11 @@ function calls (name + validated parameters), dispatches them, and returns **one
 router. Targets on-device deployment (Qualcomm SA8797 / "87 platform", Qwen3-Embedding-0.6B +
 Qwen3-0.6B).
 
-> **Status:** Specs 1–5 complete (208 automated tests + 3 model-backed). Step 4b of the business
-> workflow — explaining *why* an operation failed — is **not yet met**, and no performance number has
-> been measured on the 87 platform. Both are documented with fixes and owners in
-> **[the Central Model system design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**,
-> which is the right place to start reading.
+> **Status:** Specs 1–6 complete (250 automated tests + 3 model-backed), **plus 11 red cases** that
+> encode the parts of the business workflow the system does not yet meet — step 3's actuation half and
+> step 4b (explaining *why* an operation failed). They are `xfail(strict=True)`, so closing a gap makes
+> the suite say so. No performance number has been measured on the 87 platform. Start with
+> **[the Central Model system design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**.
 
 ## The business workflow
 
@@ -24,9 +24,9 @@ Qwen3-0.6B).
 |---|---|---|
 | 1 — user speaks | **upstream** | no audio/ASR here; the Central Model consumes an ASR transcript |
 | 2 — segmented intent recognition | **covered** | multi-intent set-recall 0.819; OOD & context false-action 0.000 |
-| 3 — execute | **partial** | validation + plan barrier are real; the vehicle adapter is a mock |
-| 4a — report success | **covered** | one composed reply on every path, metric-enforced |
-| 4b — explain failure cause | **not met** | causes are computed, then dropped before speaking |
+| 3 — execute | **partial** | validation + plan barrier are real; the vehicle adapter is a mock, and its result is discarded — a failed actuation is currently spoken as success (2 red cases) |
+| 4a — report success | **covered** | one composed reply on every path, metric-enforced; 43/92 cards omit the value set (1 red case) |
+| 4b — explain failure cause | **not met** | ten causes are computed and dropped before speaking; `reply_exact_match` **0.081** over 37 annotations (8 red cases) |
 | 87-platform performance | **not benchmarked** | all figures are dev-machine (x86 + discrete GPU) |
 
 ### Scope boundary
@@ -89,6 +89,7 @@ measured recall gain and a 184 MB artifact; it should not enter a vehicle image.
 | **3 — Accuracy & safety hardening** | **learned execution-confidence gate** (LR over cheap routing features) → tunable safety/coverage frontier | safe point (τ=0.7, no LLM): OOD **0.107** (3×↓), incorrect **0.067** (5×↓), coverage 0.51, ~275 ms; balanced point hits avg-LLM-calls **0.447 (≤0.5)** |
 | **4 — Multi-intent, context-aware routing** | lexical actionability filter (context suppression), plan-then-execute barrier, relative-op resolution against injectable mock vehicle state, multi-intent eval axis | multi-intent set-recall **0.819**; deterministic point: context & OOD false-action **0.000**, incorrect **0.031**, P95 **73 ms** |
 | **5 — Utterance-level reply** | one spoken `RouteResult.reply` composed from what the router already produced; four contract metrics enforce it every eval run | coverage / single-question / non-empty all **1.000** on both arms; zero routing change (arm C byte-identical to baseline) |
+| **6 — End-to-end test cases** | 36 e2e cases asserting *both* what was dispatched and the exact reply, 11 of them red (`xfail(strict=True)`); 54 new eval rows carrying the failure taxonomy gold never had | `invalid_no_execution_rate` **1.000** (22 rows) — nothing unusable reaches the vehicle; `reply_exact_match` **0.081** (37 rows) — the measured distance to the workflow; gold metrics byte-identical |
 
 Note: the Spec-3 *learned* gate is measured in `RESULTS.md` but is **not wired into any eval arm** —
 all four arms construct the plain threshold `ConfidenceGate`. Treat its frontier as a research result,

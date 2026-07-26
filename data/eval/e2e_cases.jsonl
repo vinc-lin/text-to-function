@@ -1,0 +1,54 @@
+{"utterance": "把空调温度调到99度", "type": "invalid", "expected_functions": ["set_temperature"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "温度只能设置在16到32度之间。", "split": "test"}
+{"utterance": "空调温度设成5度", "type": "invalid", "expected_functions": ["set_temperature"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "温度最低只能设到16度，5度设不了。", "split": "test"}
+{"utterance": "风速开到十档", "type": "invalid", "expected_functions": ["set_fan_speed"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "风速只有1到7档，最高只能开到7档。", "split": "test"}
+{"utterance": "主驾座椅加热开到八档", "type": "invalid", "expected_functions": ["set_seat_heating"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "座椅加热只有0到3档，最高3档。", "split": "test"}
+{"utterance": "雨刮调到九档", "type": "invalid", "expected_functions": ["set_wiper_speed"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "雨刮最高只有4档。", "split": "test"}
+{"utterance": "屏幕亮度调到150%", "type": "invalid", "expected_functions": ["set_screen_brightness"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "屏幕亮度最高只能调到100%。", "split": "test"}
+{"utterance": "主驾车窗开到200%", "type": "invalid", "expected_functions": ["set_window_position"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "车窗开度最多只能到100%。", "split": "test"}
+{"utterance": "氛围灯亮度调到300%", "type": "invalid", "expected_functions": ["set_ambient_light_brightness"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "氛围灯亮度最高只能调到100%。", "split": "test"}
+{"utterance": "恢复主驾座椅记忆位置七", "type": "invalid", "expected_functions": ["recall_seat_memory"], "expected_execution": false, "expected_cause": "out_of_range", "expected_reply": "座椅记忆只有1到3号位置。", "split": "test"}
+{"utterance": "空调切到三号模式", "type": "invalid", "expected_functions": ["set_ac_mode"], "expected_execution": false, "expected_cause": "bad_enum", "expected_reply": "空调只有制冷、制热、自动、除湿和送风五种模式。", "split": "test"}
+{"utterance": "音效切到第八种风格", "type": "invalid", "expected_functions": ["set_equalizer"], "expected_execution": false, "expected_cause": "bad_enum", "expected_reply": "音效只有流行、摇滚、古典、爵士、人声和标准六种风格。", "split": "test"}
+{"utterance": "大灯切到第五种模式", "type": "invalid", "expected_functions": ["set_headlight_mode"], "expected_execution": false, "expected_cause": "bad_enum", "expected_reply": "大灯只有自动、近光和远光三种模式。", "split": "test"}
+{"utterance": "音源切到第六个", "type": "invalid", "expected_functions": ["set_audio_source"], "expected_execution": false, "expected_cause": "bad_enum", "expected_reply": "音源只支持蓝牙、U盘、收音机、AUX和本地音乐。", "split": "test"}
+{"utterance": "氛围灯调成粉色", "type": "invalid", "expected_functions": ["set_ambient_light_color"], "expected_execution": false, "expected_cause": "bad_enum", "expected_reply": "氛围灯没有粉色，可以选红、蓝、绿、白、紫、橙或青色。", "split": "test"}
+{"utterance": "导航走最省油的路线", "type": "invalid", "expected_functions": ["set_route_preference"], "expected_execution": false, "expected_cause": "bad_enum", "expected_reply": "路线偏好只支持最快、最短、避开高速和避开收费。", "split": "test"}
+{"utterance": "空调温度帮我调调", "type": "invalid", "expected_functions": ["set_temperature"], "expected_execution": false, "expected_cause": "missing_required", "expected_reply": "您想把空调温度设置到多少度？", "split": "test"}
+{"utterance": "方向盘加热打开", "type": "invalid", "expected_functions": ["set_steering_wheel_heating"], "expected_execution": false, "expected_cause": "missing_required", "expected_reply": "方向盘加热要开到几档？", "split": "test"}
+{"utterance": "帮我拨个电话出去", "type": "invalid", "expected_functions": ["make_call"], "expected_execution": false, "expected_cause": "missing_required", "expected_reply": "您想打给谁？", "split": "test"}
+{"utterance": "帮我搜搜附近", "type": "invalid", "expected_functions": ["find_nearby"], "expected_execution": false, "expected_cause": "missing_required", "expected_reply": "您想找附近的什么？", "split": "test"}
+{"utterance": "恢复座椅记忆", "type": "invalid", "expected_functions": ["recall_seat_memory"], "expected_execution": false, "expected_cause": "missing_required", "expected_reply": "您想恢复第几号座椅记忆位置？", "split": "test"}
+{"utterance": "座椅通风再开大一点", "type": "invalid", "expected_functions": ["set_seat_ventilation"], "expected_execution": false, "expected_cause": "missing_state", "expected_reply": "我这边读不到座椅通风当前的档位，您想直接设到几档？", "split": "test"}
+{"utterance": "音量再调大一点", "type": "invalid", "expected_functions": ["set_volume"], "expected_execution": false, "expected_cause": "missing_state", "expected_reply": "我这边读不到当前音量，您想把音量直接设成多少？", "split": "test"}
+{"utterance": "把空调调到二十五都", "type": "asr_noise", "expected_functions": ["set_temperature"], "source_utterance": "把空调调到二十五度", "expected_reply": "已将当前区域温度设置为25°C。", "split": "test"}
+{"utterance": "座椅加热开到二党", "type": "asr_noise", "expected_functions": ["set_seat_heating"], "source_utterance": "座椅加热开到二档", "split": "test"}
+{"utterance": "打开大登", "type": "asr_noise", "expected_functions": ["set_headlight"], "source_utterance": "打开大灯", "split": "test"}
+{"utterance": "雨挂开到三档", "type": "asr_noise", "expected_functions": ["set_wiper_speed"], "source_utterance": "雨刮开到三档", "expected_reply": "已将雨刮设置为3档。", "split": "test"}
+{"utterance": "到航回家", "type": "asr_noise", "expected_functions": ["navigate_home"], "source_utterance": "导航回家", "expected_reply": "已为您规划回家路线。", "split": "test"}
+{"utterance": "打开后背箱", "type": "asr_noise", "expected_functions": ["open_trunk"], "source_utterance": "打开后备箱", "split": "test"}
+{"utterance": "分为灯调成蓝色", "type": "asr_noise", "expected_functions": ["set_ambient_light_color"], "source_utterance": "氛围灯调成蓝色", "split": "test"}
+{"utterance": "空调切到治冷模式", "type": "asr_noise", "expected_functions": ["set_ac_mode"], "source_utterance": "空调切到制冷模式", "split": "test"}
+{"utterance": "把车床开一半", "type": "asr_noise", "expected_functions": ["set_window_position"], "source_utterance": "把车窗开一半", "split": "test"}
+{"utterance": "前挡除物打开", "type": "asr_noise", "expected_functions": ["set_front_defrost"], "source_utterance": "前挡除雾打开", "split": "test"}
+{"utterance": "坐椅通风开到二挡", "type": "asr_noise", "expected_functions": ["set_seat_ventilation"], "source_utterance": "座椅通风开到二档", "split": "test"}
+{"utterance": "因量调到二十", "type": "asr_noise", "expected_functions": ["set_volume"], "source_utterance": "音量调到二十", "split": "test"}
+{"utterance": "那个，帮我把温度调到二十四度", "type": "asr_noise", "expected_functions": ["set_temperature"], "source_utterance": "帮我把温度调到二十四度", "expected_reply": "已将当前区域温度设置为24°C。", "split": "test"}
+{"utterance": "嗯，就是把后排车窗关一下", "type": "asr_noise", "expected_functions": ["open_window"], "source_utterance": "把后排车窗关一下", "split": "test"}
+{"utterance": "呃，那个，座椅通风开到二档", "type": "asr_noise", "expected_functions": ["set_seat_ventilation"], "source_utterance": "座椅通风开到二档", "split": "test"}
+{"utterance": "哎帮我导航去机场吧", "type": "asr_noise", "expected_functions": ["navigate_to"], "source_utterance": "帮我导航去机场", "split": "test"}
+{"utterance": "就那个啥，音效调成摇滚", "type": "asr_noise", "expected_functions": ["set_equalizer"], "source_utterance": "音效调成摇滚", "split": "test"}
+{"utterance": "温度二十三度", "type": "asr_noise", "expected_functions": ["set_temperature"], "source_utterance": "把温度调到二十三度", "split": "test"}
+{"utterance": "车窗关", "type": "asr_noise", "expected_functions": ["open_window"], "source_utterance": "把车窗关上", "split": "test"}
+{"utterance": "风速三档", "type": "asr_noise", "expected_functions": ["set_fan_speed"], "source_utterance": "风速调到三档", "expected_reply": "已将当前区域风速设置为3档。", "split": "test"}
+{"utterance": "主驾这边温度再调高一点", "type": "single", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 23, "position": "driver"}}, "vehicle_state": {"set_temperature/driver": 22}, "expected_reply": "已将主驾温度设置为23°C。", "split": "test"}
+{"utterance": "副驾温度调低一点", "type": "single", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 23, "position": "passenger"}}, "vehicle_state": {"set_temperature/passenger": 24}, "expected_reply": "已将副驾温度设置为23°C。", "split": "test"}
+{"utterance": "后排风量再大一点", "type": "single", "expected_functions": ["set_fan_speed"], "expected_params": {"set_fan_speed": {"level": 3, "position": "rear"}}, "vehicle_state": {"set_fan_speed/rear": 2}, "expected_reply": "已将后排风速设置为3档。", "split": "test"}
+{"utterance": "音量调小一点", "type": "single", "expected_functions": ["set_volume"], "expected_params": {"set_volume": {"level": 11}}, "vehicle_state": {"set_volume": 12}, "expected_reply": "已将音量调整到11。", "split": "test"}
+{"utterance": "把音量调高", "type": "single", "expected_functions": ["set_volume"], "expected_params": {"set_volume": {"level": 12}}, "vehicle_state": {"set_volume": 10}, "split": "test"}
+{"utterance": "主驾车窗再开一点", "type": "single", "expected_functions": ["set_window_position"], "expected_params": {"set_window_position": {"percent": 40, "position": "driver"}}, "vehicle_state": {"set_window_position/driver": 30}, "expected_reply": "已将主驾车窗开度调整到40%。", "split": "test"}
+{"utterance": "天窗再开大一点", "type": "single", "expected_functions": ["set_sunroof_position"], "expected_params": {"set_sunroof_position": {"percent": 30}}, "vehicle_state": {"set_sunroof_position": 20}, "split": "test"}
+{"utterance": "屏幕亮度调低一点", "type": "single", "expected_functions": ["set_screen_brightness"], "expected_params": {"set_screen_brightness": {"percent": 50}}, "vehicle_state": {"set_screen_brightness": 60}, "expected_reply": "已将屏幕亮度调整到50%。", "split": "test"}
+{"utterance": "主驾座椅加热再高一点", "type": "single", "expected_functions": ["set_seat_heating"], "expected_params": {"set_seat_heating": {"level": 2, "position": "driver"}}, "vehicle_state": {"set_seat_heating/driver": 1}, "expected_reply": "已将主驾座椅加热设置为2档。", "split": "test"}
+{"utterance": "外面有点冷，主驾这边温度再调高一点", "type": "single", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 23, "position": "driver"}}, "vehicle_state": {"set_temperature/driver": 22}, "expected_reply": "已将主驾温度设置为23°C。", "split": "test"}
+{"utterance": "路上有点吵，音量再调大一点", "type": "single", "expected_functions": ["set_volume"], "expected_params": {"set_volume": {"level": 15}}, "vehicle_state": {"set_volume": 14}, "expected_reply": "已将音量调整到15。", "split": "test"}
+{"utterance": "温度再调高一点", "type": "single", "expected_functions": ["set_temperature"], "expected_params": {"set_temperature": {"temperature": 32}}, "vehicle_state": {"set_temperature": 32}, "expected_reply": "温度已经是最高的32度了，没法再调高。", "split": "test"}
