@@ -36,11 +36,18 @@ class PlanExecutor:
                 a.tool_call = tc
                 a.status = "valid"
 
-        # Phase 2: barrier passed — execute the valid subset in order
+        # Phase 2: barrier passed — execute the valid subset in order.
+        # The vehicle gets the last word: a refused action is NOT executed, so it neither
+        # commits the confirmed state layer nor reaches the reply layer as a confirmation.
         executed = []
         for a in plan.actions:
             if a.status == "valid":
-                self.executor.execute(a.tool_call)
+                res = self.executor.execute(a.tool_call)
+                if not res.ok:
+                    a.status = "failed"
+                    a.error = res.error or "exec_failed"
+                    a.detail = res.detail
+                    continue
                 p = primary_numeric_param(self.cards[a.function])
                 if p is not None and p.name in a.tool_call.parameters:
                     self.state.set(state_key(a.function, a.tool_call.parameters),

@@ -60,8 +60,11 @@ class LLMResolver:
             tc, errs = validate_tool_call(res.tool_call.name, res.tool_call.parameters, cards_by_name, offered_names)
             if tc is not None:
                 card = cards_by_name[tc.name]
-                if executor is not None:
-                    executor.execute(tc)
+                exec_res = executor.execute(tc) if executor is not None else None
+                if exec_res is not None and not exec_res.ok:
+                    return ClauseResult(clause=clause, decision=decision, tool_call=tc, needs_llm=True,
+                                        exec_error=ValidationError(exec_res.error or "exec_failed",
+                                                                   exec_res.detail))
                 return ClauseResult(clause=clause, decision=decision, tool_call=tc,
                                     response=render_response(card, tc), needs_llm=True)
             # invalid: retry once, then clarify/reject
@@ -101,7 +104,11 @@ class DeterministicResolver:
         tc, errs = validate_tool_call(decision.chosen, params, self.cards, cand_names)
         if tc is None:
             return ClauseResult(clause=clause, decision=decision, validation_errors=errs)
-        self.executor.execute(tc)
+        # Dispatched is not done: a refused operation must never be rendered as a confirmation.
+        res = self.executor.execute(tc)
+        if not res.ok:
+            return ClauseResult(clause=clause, decision=decision, tool_call=tc,
+                                exec_error=ValidationError(res.error or "exec_failed", res.detail))
         return ClauseResult(clause=clause, decision=decision, tool_call=tc,
                             response=render_response(card, tc))
 
@@ -217,6 +224,12 @@ class Pipeline:
             if a is not None and a.status == "executed":
                 cr.tool_call = a.tool_call
                 cr.response = render_response(self.cards_by_name[a.function], a.tool_call)
+                cr.needs_llm = (source == "llm")
+            # ORDER MATTERS: the vehicle refused this action, which is not a clarification.
+            # If this branch moved below the generic `elif a is not None`, a refusal would be
+            # silently spoken as a question about a request that was understood perfectly.
+            elif a is not None and a.status == "failed":
+                cr.exec_error = ValidationError(a.error or "exec_failed", a.detail)
                 cr.needs_llm = (source == "llm")
             elif a is not None:
                 cr.clarification = clar

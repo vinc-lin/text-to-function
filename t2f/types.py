@@ -127,8 +127,9 @@ class PlannedAction:
     parameters: dict[str, Any] = field(default_factory=dict)
     relative: Optional[RelativeSpec] = None
     tool_call: Optional[ToolCall] = None
-    status: str = "pending"          # pending|valid|executed|clarify|invalid|reject
+    status: str = "pending"          # pending|valid|executed|failed|clarify|invalid|reject
     error: Optional[str] = None      # short reason when not executed
+    detail: str = ""                 # driver-usable specifics when the vehicle refused
 
 
 @dataclass
