@@ -50,6 +50,11 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
     rows = load_dataset(dataset)
     ctx_path = Path("data/eval/context_negatives.jsonl")
     ctx_rows = load_dataset(ctx_path) if ctx_path.exists() else []
+    # Scored in its own file, never appended to gold: eight metrics plus the latency
+    # percentiles have no row-type filter, so extending gold.jsonl would move numbers
+    # throughout RESULTS.md.
+    e2e_path = Path("data/eval/e2e_cases.jsonl")
+    e2e_rows = load_dataset(e2e_path) if e2e_path.exists() else []
 
     if arm == "C":
         pipe = A.build_arm_c(cards, embedder, cfg)  # builds the prototype store once
@@ -79,9 +84,11 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
             pipe.gate = ConfidenceGate(cfg.thresholds)
         rows = [r for r in rows if r.get("split") != "dev"]  # report on test only
         ctx_rows = [r for r in ctx_rows if r.get("split") != "dev"]
+        e2e_rows = [r for r in e2e_rows if r.get("split") != "dev"]
 
     records = [A.predict(pipe, r) for r in rows]
     ctx_records = [A.predict(pipe, r) for r in ctx_rows]
+    e2e_records = [A.predict(pipe, r) for r in e2e_rows]
     latencies = [lat for rec in records for lat in rec["latencies"]]
     lp = M.latency_percentiles(latencies, (50, 95))
     metrics = {
@@ -103,6 +110,13 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         "reply_single_question": M.reply_single_question(records),
         "reply_nonempty_rate": M.reply_nonempty_rate(records),
         "reply_question_drop_rate": M.reply_question_drop_rate(records),
+        # e2e slices — scored over their own file. reply_* span both files because an
+        # expected_reply may be annotated on a gold row too; they are scoped by the
+        # presence of the field, not by which file the row came from.
+        "invalid_no_execution_rate": M.invalid_no_execution_rate(e2e_records),
+        "reply_exact_match": M.reply_exact_match(records + e2e_records),
+        "n_reply_annotated": M.n_reply_annotated(records + e2e_records),
+        "n_e2e_rows": len(e2e_records),
         "candidate_gen_recall@3": M.candidate_gen_recall(records, 3),
         "p50_latency_ms": lp[50], "p95_latency_ms": lp[95],
         "n_rows": len(rows),
