@@ -31,7 +31,6 @@ def _parse_card(d: dict, domain: str) -> FunctionCard:
         params=[_parse_param(p) for p in d.get("params", [])],
         aliases=list(d.get("aliases", [])),
         utterances=list(d.get("utterances", [])),
-        hard_negatives=list(d.get("hard_negatives", [])),
         response_template=d.get("response_template", ""))
 
 

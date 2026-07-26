@@ -30,21 +30,13 @@ def split(text: str) -> list[str]:
 
 
 def segment(text, cards, domain_keywords=None) -> list[Span]:
-    """Split into fragments, label each ACTION/CONTEXT/CONNECTOR, and attach each CONTEXT
-    fragment to the nearest following ACTION (or the previous ACTION if it is trailing)."""
+    """Split into fragments and label each ACTION/CONTEXT/CONNECTOR.
+
+    CONTEXT spans are *suppressed* — the caller routes only ACTION spans. Narration used to be
+    attached to the nearest action span as well, but nothing ever read it, so the carrier field
+    and the attachment pass were removed. If context attribution is wanted later (using the
+    narration to fill a slot), it needs a consumer designed alongside it, not a dead field.
+    """
     alias_index = build_alias_index(cards, domain_keywords)
     raw = split(text)
-    spans = [Span(text=t, role=classify_span(t, extract_features(t), alias_index)) for t in raw]
-
-    actions = [s for s in spans if s.role == SpanRole.ACTION]
-    if not actions:
-        return spans
-
-    for i, s in enumerate(spans):
-        if s.role != SpanRole.CONTEXT:
-            continue
-        following = next((a for a in spans[i + 1:] if a.role == SpanRole.ACTION), None)
-        target = following or next((a for a in reversed(spans[:i]) if a.role == SpanRole.ACTION), None)
-        if target is not None:
-            target.attached_context.append(s.text)
-    return spans
+    return [Span(text=t, role=classify_span(t, extract_features(t), alias_index)) for t in raw]

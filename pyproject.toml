@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "t2f"
 version = "0.1.0"
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.26", "pyyaml>=6", "psutil>=5.9"]
+dependencies = ["numpy>=1.26", "pyyaml>=6"]
 
 [project.optional-dependencies]
 model = ["sentence-transformers>=3.0"]

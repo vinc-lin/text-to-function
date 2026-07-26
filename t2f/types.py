@@ -24,7 +24,6 @@ class FunctionCard:
     params: list[ParamSpec] = field(default_factory=list)
     aliases: list[str] = field(default_factory=list)
     utterances: list[str] = field(default_factory=list)
-    hard_negatives: list[str] = field(default_factory=list)
     response_template: str = ""
 
     def param(self, name: str) -> Optional[ParamSpec]:
@@ -112,7 +111,6 @@ class SpanRole(str, Enum):
 class Span:
     text: str
     role: SpanRole
-    attached_context: list[str] = field(default_factory=list)
 
 
 @dataclass
