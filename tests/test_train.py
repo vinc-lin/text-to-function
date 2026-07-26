@@ -1,5 +1,5 @@
 from pathlib import Path
-from t2f.classify.train import build_training_pairs
+from research.classify.train import build_training_pairs
 
 def test_build_training_pairs_filters_to_single_label(tmp_path):
     ds = tmp_path / "d.jsonl"

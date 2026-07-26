@@ -1,6 +1,6 @@
 from __future__ import annotations
-from t2f.dialog import FollowUpResolver
-from t2f.types import SessionState, PendingState
+from research.dialog import FollowUpResolver
+from research.dialog import SessionState, PendingState
 from t2f.lexical import extract_features
 from t2f.normalize import normalize
 

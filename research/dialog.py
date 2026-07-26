@@ -1,9 +1,27 @@
 from __future__ import annotations
-from .types import ClauseResult, Decision, Band, SessionState, PendingState
-from .params.extract import ParameterExtractor
-from .validate import validate_tool_call
-from .respond import render_response, build_clarification
-from .execute import MockExecutor
+from dataclasses import dataclass, field
+from typing import Any, Optional
+from t2f.types import ClauseResult, Decision, Band
+
+
+@dataclass
+class PendingState:
+    """A clarification awaiting the driver's next turn. Lives here, not in t2f/types.py:
+    Pipeline.route() never reads it — only this resolver does."""
+    pending_function: str
+    known_parameters: dict[str, Any]
+    missing_parameters: list[str]
+
+
+@dataclass
+class SessionState:
+    pending: Optional[PendingState] = None
+    turn_count: int = 0
+
+from t2f.params.extract import ParameterExtractor
+from t2f.validate import validate_tool_call
+from t2f.respond import render_response, build_clarification
+from t2f.execute import MockExecutor
 
 
 class FollowUpResolver:
@@ -24,7 +42,7 @@ class FollowUpResolver:
         card = self.cards.get(session.pending.pending_function)
         if card is None:
             return False
-        from .lexical import extract_features
+        from t2f.lexical import extract_features
         got = self._extract_missing(card, utterance, extract_features(utterance),
                                     session.pending.missing_parameters)
         return len(utterance) < 12 or len(got) > 0

@@ -8,7 +8,7 @@ from eval.calibrate import calibrate_gate
 from t2f.embed import FakeEmbedder
 from t2f.types import LLMResult, ToolCall
 from t2f.llm.client import FakeLLMClient, TransformersXGrammarClient
-from t2f.classify.classifiers import CharNgramLRClassifier
+from research.classify.classifiers import CharNgramLRClassifier
 from eval.dataset import load_dataset
 from eval import arms as A
 from eval import metrics as M

@@ -1,6 +1,7 @@
-from t2f.types import FunctionCard, ParamSpec, PendingState, SessionState
+from t2f.types import FunctionCard, ParamSpec
+from research.dialog import PendingState, SessionState
 from t2f.lexical import extract_features
-from t2f.dialog import FollowUpResolver
+from research.dialog import FollowUpResolver
 
 CARD = FunctionCard("set_temperature", "climate", "温度",
     params=[ParamSpec("temperature", "number", required=True, minimum=16, maximum=32),

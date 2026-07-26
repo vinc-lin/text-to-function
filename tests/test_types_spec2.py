@@ -1,4 +1,5 @@
-from t2f.types import LLMResult, SessionState, PendingState, ToolCall
+from t2f.types import LLMResult, ToolCall
+from research.dialog import SessionState, PendingState
 
 def test_llmresult_defaults():
     r = LLMResult()

@@ -348,7 +348,7 @@ that. Every subset-scoped metric here prints its own denominator, so a vacuous 1
 1. **A failed actuation is spoken as success, and commits vehicle state.** With an executor returning
    `{"ok": False}`, `route("把空调调到25度")` returns `已将当前区域温度设置为25°C。` and writes the
    confirmed state layer. `execute()`'s return value is discarded at all four call sites
-   (`t2f/plan.py:43`, `t2f/pipeline.py:64`, `:104`, `t2f/dialog.py:42`); `t2f/plan.py:48` marks
+   (`t2f/plan.py:43`, `t2f/pipeline.py:64`, `:104`); `t2f/plan.py:48` marks
    `"executed"` unconditionally. **This is the case that matters most** — it is harmless only because
    `MockExecutor` cannot fail, and becomes a live safety defect the day a vehicle adapter is attached.
 2. **`别关车窗` ("don't close the window") dispatches `is_open=False` and closes it.** Polarity is
@@ -403,3 +403,60 @@ document makes: **11 red cases and `reply_exact_match` 0.0811** are the measured
 the Central Model does and what the business workflow specifies. Steps 2 and 4a are in good shape;
 step 3's actuation half and step 4b are not, and both are now guarded so that closing them is
 self-reporting.
+
+---
+
+# Simplification pass — what left `t2f/`, and where it went
+
+**Date:** 2026-07-26
+
+The runtime package had accumulated code no production path could reach. On a target whose
+requirement says *minimize hardware resource consumption as much as possible*, that is not a
+tidiness problem. This pass applied one rule — **if `Pipeline.route()` cannot reach it, it is not
+runtime** — and one guard: **deleting code must not delete evidence.**
+
+Nothing here changes behaviour. No number above moves.
+
+## Moved to `research/` (measured, not shipped, not packaged)
+
+| What | Backs which published number | Why it moved |
+|---|---|---|
+| `t2f/safety/` + `ConfidenceModelGate` | the Spec-3 safety/coverage frontier | no eval arm ever constructed it — **and `t2f/gate.py` imported `confidence_features` at module level**, so the whole path loaded on every gate import |
+| `t2f/classify/` | Spec-2 Arm D | Arm D only; `candidate_gen_recall@3` 0.907, identical to Arm C — no measured gain |
+| `t2f/dialog.py` | Spec-2 multi-turn follow-up **1.000 (n=46)** | never imported by `Pipeline`; the only non-test constructor was `eval/run_followups.py` |
+
+All three remain runnable and their tests still pass in place. `eval/` may import `research/` — neither
+ships — so **Arm D and the follow-up harness stay reproducible**. `t2f/` imports neither.
+
+The Spec-3 entry deserves its own sentence, because it is the one that could mislead: this is not
+promising work parked for later. Spec 4's deterministic Arm C reports OOD false-execution 0.000,
+incorrect-execution 0.031 and P95 73 ms — **better than the learned gate's best published operating
+point** (0.107 / 0.067 / ~275 ms). The simpler approach overtook it. Reviving it needs a reason
+beyond "it exists".
+
+## Moved to `eval/` (offline tooling that was living in the shipped package)
+
+- `calibrate_gate` — 80 lines, the largest function in the runtime package, reachable only under
+  `--calibrate`. On the vehicle, thresholds arrive pre-baked in `config.yaml`.
+- `t2f/tools/` → `eval/tools/` — offline hard-negative mining.
+
+## Deleted outright
+
+| What | Why |
+|---|---|
+| `Span.attached_context` | written for every context span, read by nothing but two test assertions. The attachment pass went with it. |
+| `FunctionCard.hard_negatives` | parsed from every card, read by nothing. The YAML keeps the data. |
+| `PendingState`, `SessionState`, `ClarificationRequest.pending` | `build_clarification` constructed a `PendingState` on the live route path that only `dialog.py` ever read. Now owned by `research/dialog.py`. |
+| `psutil` | declared as a hard dependency, imported by zero files. It can return with the memory benchmarking it was meant for. |
+
+## Result
+
+`t2f/` now contains only what `route()` reaches, and imports nothing from `eval/` or `research/` —
+a layering violation that existed until this pass (`t2f/classify/train.py` imported `eval.dataset`).
+
+**249 passed, 11 xfailed** (from 250 — one test asserted a deleted field's default). Arm C
+re-measured after the move: every metric unchanged.
+
+**Not deleted, deliberately:** `models/clf_charngram.joblib` is **185 MB** for a component with no
+measured recall gain. It is gitignored, so it never was part of the repo, but it must not enter a
+vehicle image. Regenerate with `python3 -m research.classify.train` if Arm D is ever revisited.

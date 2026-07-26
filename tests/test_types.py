@@ -1,5 +1,5 @@
 from t2f.types import (ParamSpec, FunctionCard, Candidate, Band, Decision,
-                       ToolCall, ValidationError, PendingState, LexFeatures)
+                       ToolCall, ValidationError, LexFeatures)
 
 def test_functioncard_param_lookup():
     card = FunctionCard(

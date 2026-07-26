@@ -1,7 +1,7 @@
 from pathlib import Path
 from t2f.cards import load_catalog
-from t2f.dialog import FollowUpResolver
-from t2f.types import SessionState, PendingState
+from research.dialog import FollowUpResolver
+from research.dialog import SessionState, PendingState
 from t2f.lexical import extract_features
 from eval.run_followups import run_followups
 

@@ -75,16 +75,8 @@ class ValidationError:
 
 
 @dataclass
-class PendingState:
-    pending_function: str
-    known_parameters: dict[str, Any]
-    missing_parameters: list[str]
-
-
-@dataclass
 class ClarificationRequest:
     question: str
-    pending: Optional[PendingState] = None
 
 
 @dataclass
@@ -162,9 +154,3 @@ class LLMResult:
     clarification: Optional[str] = None
     raw: str = ""
     error: Optional[str] = None
-
-
-@dataclass
-class SessionState:
-    pending: Optional[PendingState] = None
-    turn_count: int = 0
