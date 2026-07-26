@@ -460,3 +460,96 @@ re-measured after the move: every metric unchanged.
 **Not deleted, deliberately:** `models/clf_charngram.joblib` is **185 MB** for a component with no
 measured recall gain. It is gitignored, so it never was part of the repo, but it must not enter a
 vehicle image. Regenerate with `python3 -m research.classify.train` if Arm D is ever revisited.
+
+---
+
+# Spec 7 — SQLite Vehicle Simulator Results
+
+**Date:** 2026-07-26
+**What:** `sim/` — a SQLite-backed simulated vehicle behind the existing `execute()` seam.
+**Headline:** step 3's actuation half is now covered in simulation, requirement 4b gained its third
+failure category, and the red count went **11 → 9**.
+
+## What existed before
+
+`MockExecutor` was six lines returning `{"ok": True}`, and its return value was discarded at all three
+runtime call sites. `t2f/plan.py` marked every dispatched action `executed`, committed vehicle state
+and rendered a confirmation regardless of what the vehicle said. `VehicleState`'s `live` layer had no
+producer at all.
+
+## The design
+
+**The DB is the car.** Rows are **signals** — `(entity, attribute)` — not functions. That single
+decision is what makes it a simulation rather than a dictionary: `open_window` and
+`set_window_position` address the same physical window and write `window.driver/window_position`,
+instead of the car holding two contradictory beliefs about one window.
+
+Four tables: `signal` (current condition + physical limits), `operation_log` (every attempt and how it
+ended), `device` (availability), `precondition` (as data, not code).
+
+One operation resolves to signals → checks device availability → checks preconditions → checks the
+signal's **physical limits** → writes every signal in one transaction → logs either way.
+
+**Physical limits are deliberately separate from the card's.** A card says a window is 0–100; a jammed
+window is 0–60. Validation and actuation are different questions, and 4b's third branch exists only
+because they can disagree. Proven: `validate_tool_call("set_window_position", {"percent": 90})`
+returns a tool call with zero errors, and the simulator refuses it.
+
+## Measured, end-to-end through `route()` on the real 92-card catalog
+
+| | result |
+|---|---|
+| `把主驾温度调到25度` | `climate.driver/temperature` **24.0 → 25.0**, reply `已将主驾温度设置为25°C。` |
+| same words, A/C off | **24.0 → 24.0 (untouched)**, reply `空调尚未开启。` |
+| `开车窗,主驾温度调高一点`, car at 18 | **18 → 28**, resolved against real vehicle state |
+| mixed plan, one refused | `已为您调整当前区域车窗状态。空调尚未开启。` |
+
+The relative case carries a negative control — the same utterance without the state snapshot gives
+`missing_state` and leaves the car unmoved — so resolution is proven state-driven, not coincidental.
+
+## Five defects found while building, four of them in the plan
+
+The plan was written from reading the code, not running it. Building it found:
+
+1. **25 signal collisions across 54 of 92 functions.** The plan derived the signal attribute from the
+   primary *parameter* name, which is generic — `enabled`, `level`, `direction`. `seat.<pos>/level`
+   was shared by seat heating, ventilation, massage and lumbar support. Turning on heating would have
+   overwritten the massage level. Worse: seeding writes limits last-writer-wins, so that row would
+   have carried lumbar's 0–4 and a **valid** `set_seat_massage{level:5}` would have been refused as
+   physically impossible. Fixed by deriving the attribute from the *function*; now guarded by a
+   catalog-wide test plus a test that the guard cannot pass vacuously.
+2. **A dead precondition.** The plan referenced `window.all/child_lock`; the real attribute is
+   `window_child_lock`. The plan's own test only asserted non-emptiness, so dead config would have
+   passed and then never fired. The replacement guard is mutation-tested.
+3. **Seeded signals with no limits.** `set_signal`'s `ON CONFLICT` refreshes value but not limits, so
+   card-by-card seeding left both aliased pairs with *no physical limit at all* — making the
+   `out_of_range` branch a silent no-op exactly where the alias design put the interesting behaviour.
+4. **A false-green test.** The plan narrowed a seeded row with `set_signal(limits=(0,60))`, which does
+   not narrow limits. Run as written, the window moved to 90 and the test passed anyway.
+5. **Branch-order fragility** in `_route_plan`: with `failed` checked after the generic clarification
+   branch, a refused action is spoken as a question about a request that was understood perfectly.
+   Mutation-tested. Note it is invisible in a *uniformly* failing plan — phase 3's `pending` filter
+   excludes `failed`, so no clarification exists to mis-speak — and only a **mixed** plan exposes it.
+
+## What this did not do
+
+- **The ten validation causes are still dropped.** This spec scoped itself to *executor* causes. The
+  `out_of_range` / `bad_enum` / `type_mismatch` table remains gap 2 and its 7 red cases stay red.
+  `reply_exact_match` is unchanged at **0.0811**.
+- **A single-clause relative command still cannot resolve.** `StateResolver` is reachable only from
+  the plan path, so `温度调高一点` alone still clarifies. Documented in the test, not asserted.
+- **16 catalog functions write no signal.** Eight are correctly momentary (`next_track`,
+  `take_screenshot`). Eight bear real state and do not record it — `lock_doors`/`unlock_doors` is the
+  notable one, since nothing can express "the doors are locked" as a precondition. Needs a
+  constant-write mechanism `resolve_writes` does not have.
+- **One reply-composition nuance:** if one clause is refused *with* a detail and another is silently
+  unresolved, the generic line is suppressed, so the second failure is not separately enumerated. No
+  false affirmation results — the driver is still told something failed.
+
+## Regression
+
+`t2f/` gained the executor-result contract only. The eval harness constructs no executor, so it uses
+`MockExecutor`, which returns `ExecResult(ok=True)` unconditionally and cannot reach any new failure
+branch. Arm C re-measured after the change: unchanged.
+
+**305 passed, 9 xfailed** (from 293/11 before this spec, 250/11 before Spec 6).
