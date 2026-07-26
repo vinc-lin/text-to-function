@@ -975,12 +975,19 @@ git commit -m "eval: e2e_cases.jsonl (invalid / asr_noise / relative slices) wir
 - [ ] **Step 1: Run the full suite**
 
 Run: `python3 -m pytest -q`
-Expected: **`243 passed, 11 xfailed`** — zero failures, zero xpasses.
+Expected: **`250 passed, 11 xfailed`** — zero failures, zero xpasses.
 
-Arithmetic, so a mismatch is diagnosable: 208 existing + 35 new green (Task 2: 10, Task 3: 5,
-Task 5: 4, Task 6: 4, Task 7: 6, Task 8: 6) = 243. Red: Task 2: 1, Task 4: 2, Task 5: 1, Task 6: 7
-= 11. This is fewer than the spec's 13 because Tasks 2–6 dropped three cases as unprovokable in
-Suite A (see READ THIS FIRST, item 3) and merged two others.
+> **Superseded during execution (recorded 2026-07-26).** This step originally predicted `243 passed`.
+> The delivered figure is **250**, and the difference is entirely deliberate additions:
+> +2 validator tests and +3 metric tests beyond the six each specified here (extra regression guards),
+> and +2 from splitting `test_s4b_06`/`07` — and later `test_s3_08` — into a green safety test plus a
+> red explanation test, after review found that an assertion inside an `xfail(strict=True)` body is
+> unguarded (the marker reports the same result whichever line trips). One byte-identical duplicate
+> (`test_s3_06`) was deleted, netting zero.
+
+Arithmetic as delivered: 208 existing + 42 new green (e2e 25, validator 8, metrics 9) = 250.
+Red: 11 (S2: 1, S3: 2, S4a: 1, S4b: 7). That is fewer than the spec's 13 because Tasks 2–6 dropped
+three cases as unprovokable in Suite A (see READ THIS FIRST, item 3) and merged two others.
 
 Record the exact numbers. If any xpass appears, a gap closed or an assertion is wrong; investigate
 before proceeding — do not delete the case.
@@ -1029,7 +1036,7 @@ git commit -m "docs: Spec 6 results — e2e suite, 13 red cases, gold metrics pr
 
 ## Definition of done
 
-1. `python3 -m pytest -q` — `243 passed, 11 xfailed`; zero failures, zero xpasses.
+1. `python3 -m pytest -q` — `250 passed, 11 xfailed`; zero failures, zero xpasses.
 2. Both eval arms reproduce every pre-existing metric to four decimals.
 3. `invalid_no_execution_rate` reports a real value over a non-zero denominator.
 4. Every case ID in the spec's §6 maps to a test, a row, or a written note explaining why it moved to

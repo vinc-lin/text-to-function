@@ -25,10 +25,17 @@ def test_s4a_03_two_confirmations_are_sentence_joined():
 
 
 def test_s4a_04_every_dispatched_call_is_mentioned():
-    """Coverage invariant: nothing is actuated silently."""
+    """Coverage invariant: nothing is actuated silently.
+
+    Distinct from S2-08, which pins the exact composed string. This one pins the exact
+    dispatch list and then asserts each call has a corresponding confirmation — the
+    property that would break if a fourth action were dispatched without being spoken.
+    """
     pipe, ex = build_pipeline()
     result = pipe.route("开车窗,风速调到三档,温度调到25度")
-    assert len(ex.dispatched) == 3
+    assert ex.dispatched == [("open_window", {"is_open": True}),
+                             ("set_fan_speed", {"level": 3}),
+                             ("set_temperature", {"temperature": 25.0})]
     for confirmation in (WINDOW, FAN3, TEMP25):
         assert confirmation in result.reply
 
