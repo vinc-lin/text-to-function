@@ -13,6 +13,7 @@ import pytest
 from t2f.cards import load_catalog
 from t2f.types import ToolCall
 from t2f.validate import validate_tool_call
+from t2f.state import primary_numeric_param
 from sim.vehicle import SqliteVehicle
 from sim.seed import seed_from_catalog
 from sim.executor import SqliteExecutor
@@ -90,8 +91,38 @@ def test_physical_limit_tighter_than_the_card(ex):
     assert valid is not None and errs == [], "the catalog accepts 90; only the car can refuse it"
 
     r = ex.execute(call)
-    assert not r.ok and r.error == "out_of_range" and "60" in r.detail
+    assert not r.ok and r.error == "out_of_range"
+    # The WHOLE sentence, not just the number. Asserting `"60" in r.detail` was what let
+    # `window_position 最高只能到 60` — an internal signal address — reach a driver's ears.
+    assert r.detail == "车窗开度最高只能到60%"
     assert ex.car.get_signal("window.driver", "window_position") == 10
+
+
+def test_no_refusal_ever_speaks_an_internal_signal_name(ex):
+    """The durable guard. A refusal detail is spoken verbatim to the driver, so it may never
+    contain a signal attribute (`window_position`), an entity (`climate.driver`), or a raw
+    function name — those are addresses, not words. Sweeps every refusable numeric param in
+    the real catalog rather than the one case that happened to be noticed.
+    """
+    from sim.mapping import resolve_writes
+    leaks = []
+    for card in BY.values():
+        param = primary_numeric_param(card)
+        if param is None or param.maximum is None:
+            continue
+        params = {"position": "driver"} if card.param("position") else {}
+        params[param.name] = param.maximum + 1_000          # certain to exceed any limit
+        writes = resolve_writes(card, ToolCall(card.name, params))
+        if not writes:
+            continue
+        entity, attribute, _ = writes[0]
+        _jam(ex.car, entity, attribute, param.minimum or 0, param.maximum or 1)
+        r = ex.execute(ToolCall(card.name, params))
+        if not r.ok and r.error == "out_of_range":
+            for address in (attribute, entity, card.name, param.name):
+                if address in r.detail:
+                    leaks.append((card.name, address, r.detail))
+    assert leaks == [], f"internal addresses spoken to the driver: {leaks}"
 
 
 # --- refusals are whole: no state, and a log row anyway -----------------------------------

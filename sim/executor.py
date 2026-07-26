@@ -25,6 +25,30 @@ def _fmt(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else str(value)
 
 
+# What a driver hears after a number. `frequency` and `index` carry no unit and get nothing.
+_UNIT_CN = {"percent": "%", "celsius": "度", "level": "档"}
+
+
+def _subject(card: FunctionCard) -> str:
+    """A driver-facing name for the thing being limited.
+
+    NOT the signal attribute. `window_position` is an internal address; the catalog already
+    holds the words a driver would use (`车窗开度`), and speaking the address instead leaks
+    implementation into the cabin. Descriptions like `加热档位，0为关闭` carry a parenthetical
+    clause that reads badly mid-sentence, so only the part before the comma is used.
+    """
+    param = primary_numeric_param(card)
+    description = (param.description if param else "") or ""
+    subject = description.split("，")[0].strip()
+    return subject or card.description.split("，")[0].strip() or card.name
+
+
+def _limit_detail(card: FunctionCard, bound: float, direction: str) -> str:
+    param = primary_numeric_param(card)
+    unit = _UNIT_CN.get(param.unit if param else None, "")
+    return f"{_subject(card)}{direction}只能到{_fmt(bound)}{unit}"
+
+
 class SqliteExecutor:
     def __init__(self, car: SqliteVehicle, cards_by_name: dict[str, FunctionCard]):
         self.car = car
@@ -56,9 +80,9 @@ class SqliteExecutor:
                 continue
             lo, hi = self.car.limits_of(ent, attr)
             if lo is not None and value < lo:
-                return self._refuse(tool_call, "out_of_range", f"{attr} 最低只能到 {_fmt(lo)}")
+                return self._refuse(tool_call, "out_of_range", _limit_detail(card, lo, "最低"))
             if hi is not None and value > hi:
-                return self._refuse(tool_call, "out_of_range", f"{attr} 最高只能到 {_fmt(hi)}")
+                return self._refuse(tool_call, "out_of_range", _limit_detail(card, hi, "最高"))
 
         self.car.write_many(writes)
         self.car.log(tool_call.name, tool_call.parameters, "executed", None, "")
