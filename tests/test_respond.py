@@ -17,4 +17,4 @@ def test_clarification_for_missing_position():
     assert "区域" in c.question or "位置" in c.question
 
 def test_mock_executor():
-    assert MockExecutor().execute(ToolCall("x", {"a": 1}))["ok"] is True
+    assert MockExecutor().execute(ToolCall("x", {"a": 1})).ok is True

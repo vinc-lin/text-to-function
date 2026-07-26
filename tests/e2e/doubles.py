@@ -5,7 +5,7 @@ so a vehicle-side failure is currently inexpressible. `FailingExecutor` is what 
 requirement 4b's "the car refused" branch testable at all.
 """
 from __future__ import annotations
-from t2f.types import ToolCall
+from t2f.types import ToolCall, ExecResult
 
 
 class RecordingExecutor:
@@ -15,9 +15,9 @@ class RecordingExecutor:
         self.calls: list[ToolCall] = []
         self.ok = ok
 
-    def execute(self, tool_call: ToolCall) -> dict:
+    def execute(self, tool_call: ToolCall) -> ExecResult:
         self.calls.append(tool_call)
-        return {"ok": self.ok, "name": tool_call.name, "parameters": tool_call.parameters}
+        return ExecResult(ok=self.ok)
 
     @property
     def dispatched(self) -> list[tuple[str, dict]]:
@@ -29,10 +29,11 @@ class FailingExecutor(RecordingExecutor):
     """Reports a vehicle-side failure. Still records, so a case can assert that the call
     WAS attempted and the reply nonetheless must not claim success."""
 
-    def __init__(self, error: str = "device_unavailable"):
+    def __init__(self, error: str = "device_unavailable", detail: str = "执行器无响应"):
         super().__init__(ok=False)
         self.error = error
+        self.detail = detail
 
-    def execute(self, tool_call: ToolCall) -> dict:
+    def execute(self, tool_call: ToolCall) -> ExecResult:
         self.calls.append(tool_call)
-        return {"ok": False, "error": self.error, "name": tool_call.name}
+        return ExecResult(ok=False, error=self.error, detail=self.detail)

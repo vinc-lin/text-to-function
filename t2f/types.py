@@ -75,6 +75,15 @@ class ValidationError:
 
 
 @dataclass
+class ExecResult:
+    """What the vehicle reports back. The router MUST read this: an operation that was
+    dispatched is not an operation that happened."""
+    ok: bool
+    error: Optional[str] = None    # device_unavailable | precondition_failed | out_of_range
+    detail: str = ""               # driver-usable specifics
+
+
+@dataclass
 class ClarificationRequest:
     question: str
 
@@ -118,8 +127,9 @@ class PlannedAction:
     parameters: dict[str, Any] = field(default_factory=dict)
     relative: Optional[RelativeSpec] = None
     tool_call: Optional[ToolCall] = None
-    status: str = "pending"          # pending|valid|executed|clarify|invalid|reject
+    status: str = "pending"          # pending|valid|executed|failed|clarify|invalid|reject
     error: Optional[str] = None      # short reason when not executed
+    detail: str = ""                 # driver-usable specifics when the vehicle refused
 
 
 @dataclass
@@ -138,6 +148,8 @@ class ClauseResult:
     response: Optional[str] = None
     needs_llm: bool = False
     latency_ms: float = 0.0
+    # The vehicle refused. Last field so existing keyword construction is unaffected.
+    exec_error: Optional[ValidationError] = None
 
 
 @dataclass

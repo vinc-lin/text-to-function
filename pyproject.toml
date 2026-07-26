@@ -13,7 +13,7 @@ model = ["sentence-transformers>=3.0"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["t2f*", "eval*"]   # research/ is deliberately NOT packaged
+include = ["t2f*", "eval*", "sim*"]   # research/ is deliberately NOT packaged
 
 [tool.pytest.ini_options]
 markers = ["model: tests that load the real embedding model (needs network/torch)"]
