@@ -62,6 +62,23 @@ def test_s3_08_failed_actuation_is_not_confirmed_as_success():
     assert pipe.route("把空调调到25度").reply != "已将当前区域温度设置为25°C。"
 
 
+def test_s3_08_the_vehicles_own_words_reach_the_driver():
+    """Requirement 4b's third branch, wired end-to-end: the refusal detail travels
+    executor → ExecResult.detail → ClauseResult.exec_error → result.reply.
+
+    tests/test_reply_exec.py proves compose_reply speaks a detail it is handed; only a real
+    route() proves it is handed one at all. Asserting against `ex.detail` — the double's own
+    string, not a constant restated here — means no hard-coded line in reply.py could pass.
+    """
+    ex = FailingExecutor(error="precondition_failed", detail="空调尚未开启")
+    pipe, _ = build_pipeline(executor=ex)
+    result = pipe.route("把空调调到25度")
+    assert ex.dispatched == [("set_temperature", {"temperature": 25.0})]   # it really was tried
+    assert result.reply == ex.detail + "。"                                 # ...and refused, out loud
+    assert TEMP25 not in result.reply       # never the confirmation for the action that failed
+    assert "没能完成" not in result.reply    # the specific cause REPLACES the generic line
+
+
 def test_s3_09_failed_action_does_not_commit_vehicle_state():
     """GUARANTEED: PlanExecutor phase 2 commits the confirmed state layer only AFTER the
     vehicle reports success, so a refusal leaves the state a later relative command

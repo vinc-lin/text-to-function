@@ -46,6 +46,25 @@ def _questions(clauses) -> list[str]:
     return out
 
 
+def _exec_failures(clauses) -> list[str]:
+    """Vehicle-reported refusals, in clause order, de-duplicated. The detail is authored by
+    the simulator for the driver, so it is spoken verbatim.
+
+    This is requirement 4b's THIRD failure branch — "I understood you, I tried, and the car
+    said no" — as opposed to "I didn't understand" (a clarification question) and "a parameter
+    is unusable" (the validation table, still unspoken). Only the executor's own detail is
+    spoken; an exec_error with a blank detail has nothing driver-usable in it and falls back
+    to the generic line via `_has_failure`.
+    """
+    out: list[str] = []
+    for cl in clauses:
+        err = getattr(cl, "exec_error", None)      # defensive: compose_reply must never raise
+        detail = ((err.message if err else "") or "").strip()
+        if detail and detail not in out:
+            out.append(detail)
+    return out
+
+
 def _has_failure(clauses) -> bool:
     """A clause that produced nothing the driver can hear.
 
@@ -68,12 +87,18 @@ def compose_reply(result: RouteResult) -> str:
 
     好的。 is spoken ONLY when there were no clauses at all. A clause that produced nothing
     is an unresolved request and yields the failure line instead — never a false affirmation.
+
+    Refusals follow the confirmations, so an utterance where one action succeeded and another
+    was refused reports BOTH, with what actually happened first. A spoken refusal replaces the
+    generic failure line — repeating it after a specific cause says nothing extra.
     """
     clauses = result.clauses or []
     parts = [_sentence(t) for t in _confirmations(clauses)]
+    refusals = _exec_failures(clauses)
+    parts += [_sentence(t) for t in refusals]
     questions = _questions(clauses)
     if questions:                      # at most ONE question per reply
         parts.append(_sentence(questions[0]))
-    elif _has_failure(clauses):
+    elif _has_failure(clauses) and not refusals:
         parts.append(_FAILURE)
     return "".join(parts) if parts else _ACK
