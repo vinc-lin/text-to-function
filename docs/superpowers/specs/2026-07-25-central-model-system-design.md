@@ -255,7 +255,13 @@ would cost 184 MB for no measured gain.
 
 ## 5. Question 2 — what is in the repo that the workflow does not ask for
 
-Of ~2,115 lines across `t2f/` and `eval/`, the split is:
+Of ~2,115 lines in `t2f/` (plus ~560 in `eval/` — the figure originally given here conflated the
+two), the split is:
+
+> **Superseded 2026-07-26 by the simplification pass.** `t2f/` is now **1,637 lines**; the classifier,
+> the learned confidence gate and the multi-turn resolver moved to `research/`, and the offline
+> calibrator and mining tool moved to `eval/`. See the pass's record in `RESULTS.md`. The
+> classification below is what *drove* that pass, and is kept as written.
 
 **On the runtime path and directly implementing steps 2–4** (~18 modules): normalize, segment,
 actionability, lexical, numerals, embed, retrieve, score, signals, params, gate, validate, state,
