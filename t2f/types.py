@@ -24,7 +24,6 @@ class FunctionCard:
     params: list[ParamSpec] = field(default_factory=list)
     aliases: list[str] = field(default_factory=list)
     utterances: list[str] = field(default_factory=list)
-    hard_negatives: list[str] = field(default_factory=list)
     response_template: str = ""
 
     def param(self, name: str) -> Optional[ParamSpec]:
@@ -76,16 +75,8 @@ class ValidationError:
 
 
 @dataclass
-class PendingState:
-    pending_function: str
-    known_parameters: dict[str, Any]
-    missing_parameters: list[str]
-
-
-@dataclass
 class ClarificationRequest:
     question: str
-    pending: Optional[PendingState] = None
 
 
 @dataclass
@@ -112,7 +103,6 @@ class SpanRole(str, Enum):
 class Span:
     text: str
     role: SpanRole
-    attached_context: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -164,9 +154,3 @@ class LLMResult:
     clarification: Optional[str] = None
     raw: str = ""
     error: Optional[str] = None
-
-
-@dataclass
-class SessionState:
-    pending: Optional[PendingState] = None
-    turn_count: int = 0

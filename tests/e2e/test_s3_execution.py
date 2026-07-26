@@ -41,7 +41,7 @@ def test_s3_04_barrier_names_the_unexecuted_action_in_the_reply():
 # same property across three utterances. Not restated here.
 
 GAP1 = ("gap 1: execute()'s return value is discarded at all four call sites "
-        "(t2f/plan.py:43, t2f/pipeline.py:64,104, t2f/dialog.py:42) and no dataclass "
+        "(t2f/plan.py:43, t2f/pipeline.py:64,104) and no dataclass "
         "carries a vehicle-reported outcome, so a failed actuation is spoken as success.")
 
 

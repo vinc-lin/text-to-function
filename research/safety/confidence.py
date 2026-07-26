@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
-from .features import FEATURE_ORDER, confidence_features
+from research.safety.features import FEATURE_ORDER, confidence_features
 
 
 @dataclass

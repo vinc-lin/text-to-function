@@ -1,4 +1,4 @@
-from t2f.classify.classifiers import CharNgramLRClassifier, EmbeddingLRClassifier
+from research.classify.classifiers import CharNgramLRClassifier, EmbeddingLRClassifier
 from t2f.embed import FakeEmbedder
 
 TEXTS = ["把空调调到25度", "温度调高", "空调设成22度", "风速调到三档", "风大一点", "把风量开到最大",

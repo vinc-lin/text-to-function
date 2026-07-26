@@ -1,9 +1,5 @@
 from t2f.types import SpanRole, Span, RelativeSpec, PlannedAction, ActionPlan, RouteResult, LexFeatures
 
-def test_span_defaults():
-    s = Span(text="开空调", role=SpanRole.ACTION)
-    assert s.attached_context == []
-
 def test_planned_action_and_plan():
     a = PlannedAction(span="天窗开到一半", function="set_sunroof_position",
                       parameters={"percent": 50})

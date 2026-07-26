@@ -12,7 +12,6 @@ def test_segment_labels_and_attaches_context():
     roles = [(s.text, s.role) for s in spans]
     actions = [s for s in spans if s.role == SpanRole.ACTION]
     assert len(actions) == 1 and actions[0].text == "把车窗锁打开"
-    assert "后排小孩老去按车窗" in actions[0].attached_context
 
 def test_segment_multi_action():
     spans = segment("把车窗锁打开，天窗开到一半", CARDS)

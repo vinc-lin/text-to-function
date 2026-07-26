@@ -4,9 +4,9 @@ def test_confidence_gate_pipeline_fake():
     from t2f.config import Config
     from t2f.score import Scorer
     from t2f.pipeline import Pipeline
-    from t2f.safety.features import FEATURE_ORDER
-    from t2f.safety.confidence import ExecutionConfidence, ConfidenceThresholds
-    from t2f.gate import ConfidenceModelGate
+    from research.safety.features import FEATURE_ORDER
+    from research.safety.confidence import ExecutionConfidence, ConfidenceThresholds
+    from research.safety.gate import ConfidenceModelGate
     cards = load_catalog("data/catalog")
     cfg = Config.default()
 

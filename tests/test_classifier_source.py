@@ -1,5 +1,5 @@
 from t2f.types import Candidate
-from t2f.classify.source import ClassifierCandidateSource
+from research.classify.source import ClassifierCandidateSource
 
 class _StubClf:
     def predict_topk(self, text, k=3):

@@ -1,4 +1,4 @@
-from t2f.safety.confidence import calibrate_thresholds, ConfidenceThresholds
+from research.safety.confidence import calibrate_thresholds, ConfidenceThresholds
 
 
 def test_calibrate_two_band_keeps_medium_zone():

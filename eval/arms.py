@@ -2,7 +2,7 @@ from __future__ import annotations
 from t2f.pipeline import Pipeline, LLMResolver
 from t2f.score import Scorer, EmbeddingOnlyScorer
 from t2f.gate import ConfidenceGate
-from t2f.classify.source import ClassifierCandidateSource
+from research.classify.source import ClassifierCandidateSource
 
 
 def build_arm_c(cards, embedder, config) -> Pipeline:

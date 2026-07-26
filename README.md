@@ -100,16 +100,16 @@ Full analysis and the safety/coverage frontier are in **[`docs/superpowers/RESUL
 ## Layout
 
 ```
-t2f/
+t2f/          # the shipped runtime. Everything here is reachable from Pipeline.route().
   normalize · segment · embed · retrieve · score · gate · params/ · validate · respond · pipeline
   llm/        # LLMClient interface + xgrammar-constrained Qwen3-0.6B + FakeLLMClient (Spec 2)
-  classify/   # char-ngram + embedding LR classifiers, candidate source, training (Spec 2, Arm D only)
-  dialog.py   # bounded multi-turn follow-up resolver — NOT reachable from Pipeline.route()
-  safety/     # execution-confidence features + model + calibration (Spec 3, not wired into an arm)
-  tools/      # hard-negative mining (Spec 3, offline)
   actionability · state · plan   # context filter, mock vehicle state, plan barrier (Spec 4)
   reply.py    # utterance-level reply composition (Spec 5)
   execute.py  # MockExecutor — the vehicle-adapter seam, stub only
+research/     # measured, NOT shipped and NOT packaged — see research/README.md
+  safety/     # Spec-3 learned confidence gate (no arm constructs it; the plain gate measures better)
+  classify/   # Spec-2 char-ngram + embedding classifiers (Arm D only; no measured recall gain)
+  dialog.py   # Spec-2 multi-turn follow-up resolver (never reachable from Pipeline.route())
 data/
   catalog/    # 92 function cards across 10 domains (YAML)
   eval/       # hand-verified gold.jsonl (328) + context_negatives.jsonl (14)
@@ -140,7 +140,7 @@ python3 -m eval.run_eval --arm C --dataset data/eval/gold.jsonl --fake --permiss
 
 # Real models (calibrate the gate on dev, report on test):
 python3 -m eval.run_eval --arm C        --dataset data/eval/gold.jsonl --calibrate   # Spec 1
-python3 -m t2f.classify.train --embedding                                            # Spec 2: train classifiers
+python3 -m research.classify.train --embedding                                            # Spec 2: train classifiers
 python3 -m eval.run_eval --arm C_llm    --dataset data/eval/gold.jsonl --calibrate   # Spec 2: + LLM fallback
 python3 -m eval.run_eval --arm D        --dataset data/eval/gold.jsonl --calibrate   # Spec 2: classifier + LLM
 ```

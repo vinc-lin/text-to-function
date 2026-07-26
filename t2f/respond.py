@@ -1,6 +1,6 @@
 # t2f/respond.py
 from __future__ import annotations
-from .types import FunctionCard, ToolCall, ClarificationRequest, PendingState
+from .types import FunctionCard, ToolCall, ClarificationRequest
 
 _POSITION_CN = {"driver": "主驾", "passenger": "副驾", "rear": "后排", "all": "全车",
                 "left": "左侧", "right": "右侧"}
@@ -35,16 +35,15 @@ def render_response(card: FunctionCard, tool_call: ToolCall) -> str:
 def build_clarification(card: FunctionCard, missing: list[str]) -> ClarificationRequest:
     first = missing[0] if missing else ""
     question = _CLARIFY.get(first, "请补充更多信息。")
-    pending = PendingState(pending_function=card.name, known_parameters={}, missing_parameters=missing)
-    return ClarificationRequest(question=question, pending=pending)
+    return ClarificationRequest(question=question)
 
 
 def build_low_confidence_clarification() -> ClarificationRequest:
     """Clarification for LOW-band / out-of-scope requests where no function is chosen."""
-    return ClarificationRequest(question="抱歉，我不太确定您的意思，可以换个说法吗？", pending=None)
+    return ClarificationRequest(question="抱歉，我不太确定您的意思，可以换个说法吗？")
 
 
 def build_plan_clarification(pending) -> ClarificationRequest:
     """One question covering all unresolved actions in a multi-action plan."""
     spans = "」「".join(a.span for a in pending)
-    return ClarificationRequest(question=f"关于「{spans}」我还需要确认一下，请补充信息。", pending=None)
+    return ClarificationRequest(question=f"关于「{spans}」我还需要确认一下，请补充信息。")

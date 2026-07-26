@@ -1,5 +1,5 @@
 from __future__ import annotations
-from ..types import Candidate
+from t2f.types import Candidate
 
 
 class ClassifierCandidateSource:

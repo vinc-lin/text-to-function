@@ -1,4 +1,4 @@
-from t2f.tools.mine_hard_negatives import mine_confusions, summarize
+from eval.tools.mine_hard_negatives import mine_confusions, summarize
 
 def test_mine_and_summarize():
     rows = [{"utterance": "u1", "expected_functions": ["set_temperature"], "type": "single"},

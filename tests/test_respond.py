@@ -14,7 +14,6 @@ def test_clarification_for_missing_position():
     card = FunctionCard("set_temperature", "climate", "温度",
         params=[ParamSpec("position", "enum", required=True, enum=["driver", "passenger"])])
     c = build_clarification(card, ["position"])
-    assert c.pending.pending_function == "set_temperature"
     assert "区域" in c.question or "位置" in c.question
 
 def test_mock_executor():

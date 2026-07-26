@@ -2,7 +2,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 from eval.dataset import load_dataset
-from .classifiers import CharNgramLRClassifier, EmbeddingLRClassifier
+from research.classify.classifiers import CharNgramLRClassifier, EmbeddingLRClassifier
 
 
 def build_training_pairs(dataset_paths: list[str], splits: set[str] | None = None):

@@ -1,8 +1,8 @@
 from t2f.types import Candidate, LexFeatures, Band
 from t2f.retrieve import OOD_MARKER
-from t2f.safety.confidence import ExecutionConfidence, ConfidenceThresholds
-from t2f.safety.features import FEATURE_ORDER
-from t2f.gate import ConfidenceModelGate
+from research.safety.confidence import ExecutionConfidence, ConfidenceThresholds
+from research.safety.features import FEATURE_ORDER
+from research.safety.gate import ConfidenceModelGate
 
 def _model():
     def f(s):
