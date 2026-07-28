@@ -11,7 +11,7 @@ _POSITION = [
     ("right", ["右边", "右侧", "右"]),
 ]
 _ON = ["打开", "开启", "开一下", "启动", "开"]
-_OFF = ["关闭", "关掉", "关上", "关一下", "关"]
+_OFF = ["关闭", "关掉", "关上", "关一下", "解开", "松开", "解锁", "关"]
 # A negated instruction is NOT the opposite instruction. 别关车窗 does not mean "open the
 # window" — the driver may want it left exactly where it is — so a negated cue yields None
 # and the missing-parameter path asks 您想打开还是关闭车窗？ Guessing the inverse would be a

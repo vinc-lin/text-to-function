@@ -61,6 +61,7 @@ _ENUM_ALIASES = {
     "purple": ["紫"], "orange": ["橙"], "cyan": ["青"],
     "bluetooth": ["蓝牙"], "usb": ["USB", "usb", "U盘"], "radio": ["收音机", "电台"],
     "aux": ["AUX", "aux"], "local": ["本地"],
+    "fm": ["FM", "fm", "调频"], "am": ["AM", "am", "调幅"],
     # 音源切到U盘 and 走最省时间的路 are the catalog's own examples; the words are the driver's.
     "pop": ["流行"], "rock": ["摇滚"], "classical": ["古典"], "jazz": ["爵士"],
     "vocal": ["人声"], "standard": ["标准"],
