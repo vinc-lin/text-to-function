@@ -94,7 +94,9 @@ def test_physical_limit_tighter_than_the_card(ex):
     assert not r.ok and r.error == "out_of_range"
     # The WHOLE sentence, not just the number. Asserting `"60" in r.detail` was what let
     # `window_position 最高只能到 60` — an internal signal address — reach a driver's ears.
-    assert r.detail == "车窗开度最高只能到60%"
+    # The whole permitted range, not just the bound that was broken: a driver who asked
+    # for 90 can act on "0 to 60" and has to guess after "at most 60".
+    assert r.detail == "车窗开度只能设置在0到60%之间"
     assert ex.car.get_signal("window.driver", "window_position") == 10
 
 

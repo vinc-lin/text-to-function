@@ -1,9 +1,8 @@
 # t2f/respond.py
 from __future__ import annotations
 from .types import FunctionCard, ToolCall, ClarificationRequest
+from .phrase import POSITION_CN as _POSITION_CN, missing_phrase
 
-_POSITION_CN = {"driver": "主驾", "passenger": "副驾", "rear": "后排", "all": "全车",
-                "left": "左侧", "right": "右侧"}
 _CLARIFY = {"position": "您想调整哪个区域？（主驾/副驾/后排）",
             "temperature": "您想设置到多少度？",
             "level": "您想调到几档？"}
@@ -33,8 +32,14 @@ def render_response(card: FunctionCard, tool_call: ToolCall) -> str:
 
 
 def build_clarification(card: FunctionCard, missing: list[str]) -> ClarificationRequest:
+    """Ask for the missing parameter BY NAME.
+
+    The three hand-written questions stay — they read better than anything generated. Every
+    other required parameter used to fall through to 请补充更多信息。, which does not tell the
+    driver what is missing; the catalog's own `description` answers that for all 17 of them.
+    """
     first = missing[0] if missing else ""
-    question = _CLARIFY.get(first, "请补充更多信息。")
+    question = _CLARIFY.get(first) or missing_phrase(card, card.param(first)) or "请补充更多信息。"
     return ClarificationRequest(question=question)
 
 

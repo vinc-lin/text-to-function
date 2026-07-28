@@ -71,7 +71,8 @@ class ToolCall:
 @dataclass
 class ValidationError:
     code: str
-    message: str
+    message: str          # diagnostic, for logs and metrics — never spoken
+    detail: str = ""      # driver-facing Chinese, authored by the producer, spoken verbatim
 
 
 @dataclass
