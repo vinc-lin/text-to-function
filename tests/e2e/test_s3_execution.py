@@ -30,8 +30,9 @@ def test_s3_04_barrier_names_the_unexecuted_action_in_the_reply():
     """The refused action must not vanish — the driver has to hear that it did not happen."""
     pipe, ex = build_pipeline()
     result = pipe.route("开车窗,把温度调到99度")
-    assert result.reply == WINDOW + "关于「把温度调到99度」我还需要确认一下，请补充信息。"
-    assert "把温度调到99度" in result.reply
+    assert result.reply == WINDOW + "目标温度只能设置在16到32度之间。"
+    # The refused action is named by its CAUSE now, not by echoing the span back.
+    # Echoing told the driver only that we were unsure; the cause tells them what to say.
 
 
 # S3-06 (an out-of-range value alone dispatches nothing) is owned by

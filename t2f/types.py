@@ -130,6 +130,7 @@ class PlannedAction:
     tool_call: Optional[ToolCall] = None
     status: str = "pending"          # pending|valid|executed|failed|clarify|invalid|reject
     error: Optional[str] = None      # short reason when not executed
+    validation_errors: list = field(default_factory=list)   # driver-facing causes, for 4b
     detail: str = ""                 # driver-usable specifics when the vehicle refused
 
 

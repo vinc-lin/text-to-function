@@ -128,6 +128,10 @@ def type_phrase(card: FunctionCard, param: Optional[ParamSpec]) -> str:
         return f"{param_subject(card, param)}需要一个数值"
     if kind == "boolean":
         return f"{param_subject(card, param)}只能是开或关"
+    if kind == "string":
+        return f"{param_subject(card, param)}需要一段文字"
+    if kind == "enum":
+        return enum_phrase(card, param)
     return ""
 
 

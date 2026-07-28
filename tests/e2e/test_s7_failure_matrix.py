@@ -182,26 +182,21 @@ def test_a_numeric_parameter_given_a_word_is_told_it_needs_a_number():
     assert ex.car.get_signal("climate.all", "temperature") == before
 
 
-def test_a_string_parameter_type_mismatch_falls_back_to_the_generic_line():
-    """FINDING, pinned rather than papered over.
+def test_a_string_parameter_type_mismatch_states_its_cause():
+    """导航到3 puts a number where `navigate_to` wants a destination.
 
-    导航到3 puts a number where `navigate_to` wants a destination string. The cause IS computed
-    — `validation_errors` holds `type_mismatch` — but `t2f/phrase.py::type_phrase` words only
-    number/integer/boolean and returns "" for `string`, so the detail is empty and the reply
-    layer falls back to the generic line. The driver hears nothing specific.
-
-    The safety half is intact (nothing dispatched); it is the explanation half that is missing,
-    which is exactly requirement 4b. Asserted as equality so this test turns red the moment the
-    string case is worded.
+    This was a pinned FINDING: the cause was computed but `t2f/phrase.py::type_phrase` worded
+    only number/integer/boolean, returned "" for `string`, and the reply fell back to the
+    generic line. The pin was written as an equality precisely so it would turn red the moment
+    the string case was worded — which it did, and this now asserts the wording.
     """
     pipe, ex = _pipeline()
 
     result = pipe.route("导航到3")
 
-    assert result.reply == GENERIC
+    assert result.reply == "目的地名称或地址需要一段文字。"
     assert [e.code for e in result.clauses[0].validation_errors] == ["type_mismatch"]
-    assert result.clauses[0].validation_errors[0].detail == ""      # the gap, precisely
-    assert ex.car.recent_operations() == []
+    assert ex.car.recent_operations() == []                         # never reached the vehicle
 
 
 # ==========================================================================================
@@ -389,27 +384,28 @@ def test_in_a_mixed_utterance_the_success_is_confirmed_and_the_refusal_explained
            [("set_temperature", "refused"), ("open_window", "executed")]   # newest first
 
 
-def test_in_a_mixed_utterance_a_bad_value_loses_its_cause():
+def test_in_a_mixed_utterance_a_bad_value_keeps_its_cause():
     """FINDING, pinned rather than papered over.
 
-    Alone, 风速调到20档 is answered with 风速档位只能设置在1到7档之间。 In a two-action utterance
-    the identical span is answered with the span read back and a generic ask: `PlanExecutor`
-    keeps only the error CODES on the action and `Pipeline._route_plan` sets `clarification` for
-    a non-executed action without ever populating `ClauseResult.validation_errors`, which is the
-    only channel `t2f/reply.py::_validation_failures` reads. So the cause exists, and multi-intent
-    drops it.
+    Alone and inside a multi-intent utterance, the identical span now gets the identical
+    sentence. It did not always: `PlanExecutor` kept only the error CODES on the action and
+    `Pipeline._route_plan` set a generic `clarification` without populating
+    `ClauseResult.validation_errors`, the only channel `t2f/reply.py::_validation_failures`
+    reads — so the cause was computed by the barrier and dropped on the way to the driver,
+    who heard the span read back and a vague ask. The barrier now keeps the ValidationError
+    objects and the plan path forwards them.
 
-    Safety is unaffected — only the valid action was dispatched, and the fan never moved — so
-    this is the explanation half of 4b regressing under multi-intent, not the execution half.
+    Safety was never the issue: only the valid action was ever dispatched. This is the
+    explanation half of 4b, which used to regress the moment an utterance had two clauses.
     """
     pipe, ex = _pipeline()
     fan_before = ex.car.get_signal("climate.all", "fan_speed")
 
     result = pipe.route("开车窗,风速调到20档")
 
-    assert result.reply == "已为您调整当前区域车窗状态。关于「风速调到20档」我还需要确认一下，请补充信息。"
-    assert "1到7档" not in result.reply                        # the cause the single-intent path speaks
-    assert all(cr.validation_errors == [] for cr in result.clauses)   # the channel is empty
+    assert result.reply == "已为您调整当前区域车窗状态。风速档位只能设置在1到7档之间。"
+    assert "1到7档" in result.reply                            # the same cause the single-intent path speaks
+    assert any(cr.validation_errors for cr in result.clauses)  # the channel carries it
     assert ex.car.get_signal("climate.all", "fan_speed") == fan_before
     assert [(r["function"], r["outcome"]) for r in ex.car.recent_operations()] == \
            [("open_window", "executed")]                      # only the valid action was dispatched

@@ -345,20 +345,28 @@ def test_one_invalid_action_does_not_stop_the_valid_one_and_is_still_mentioned()
     assert [tc.name for tc in _executed(ex.car)] == ["open_window"]
     assert _refused(ex.car) == []                       # rejected before the car, not by it
     assert res.reply.startswith(WINDOW)
-    assert "风速调到20档" in res.reply                   # mentioned, not silently dropped
+    # Mentioned by its CAUSE, not by echoing the span. Either way the point stands: the
+    # action the driver asked for is not silently dropped.
+    assert "风速档位只能设置在1到7档之间" in res.reply
     assert FAN3 not in res.reply and "已将当前区域风速" not in res.reply
 
 
 def test_several_failed_clauses_still_produce_exactly_one_question():
-    """Two invalid actions in one utterance: one consolidated question naming both, never
-    two questions. Invariant 2, at the shape where it is most likely to break."""
+    """Two invalid actions in one utterance. Invariant 2, at the shape where it is most
+    likely to break.
+
+    The invariant is AT MOST ONE QUESTION, and it now holds by there being none: each bad
+    value explains itself, so neither needs to be asked about. Both causes are stated —
+    two statements are not two questions, and the driver can act on both.
+    """
     pipe, ex = _pipeline()
 
     res = pipe.route("开车窗，风速调到20档，屏幕亮度调到200%")
 
     assert [tc.name for tc in _executed(ex.car)] == ["open_window"]
-    assert res.reply.count("我还需要确认一下") == 1
-    assert "风速调到20档" in res.reply and "屏幕亮度调到200%" in res.reply
+    assert res.reply.count("？") == 0 and res.reply.count("我还需要确认一下") == 0
+    assert "风速档位只能设置在1到7档之间" in res.reply
+    assert "屏幕亮度只能设置在0到100%之间" in res.reply
 
 
 def test_narration_beside_an_action_is_not_acted_on():

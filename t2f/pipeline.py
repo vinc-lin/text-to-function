@@ -232,7 +232,11 @@ class Pipeline:
                 cr.exec_error = ValidationError(a.error or "exec_failed", a.detail)
                 cr.needs_llm = (source == "llm")
             elif a is not None:
-                cr.clarification = clar
+                # An unusable VALUE explains itself; only an unanswerable action becomes a
+                # question. Without this the plan path drops the cause the barrier computed.
+                cr.validation_errors = list(getattr(a, "validation_errors", []) or [])
+                if not any((e.detail or "") for e in cr.validation_errors):
+                    cr.clarification = clar
                 cr.needs_llm = (source == "llm")
             else:
                 cr.needs_llm = (d.band == Band.MEDIUM)
