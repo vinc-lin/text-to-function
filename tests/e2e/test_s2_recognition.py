@@ -55,12 +55,16 @@ def test_s2_09_relative_without_value_does_not_execute():
     assert result.reply == "抱歉，这个操作没能完成。"
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="别关车窗 ('don't close the window') dispatches is_open=False and "
-                          "closes it — polarity is keyword-derived with no negation handling "
-                          "(t2f/lexical.py:70-73). Executing the opposite of the instruction.")
 def test_s2_11_negation_must_not_invert_the_action():
+    """别关车窗 is "don't close the window" — which is not "open the window".
+
+    This was red: polarity was pure substring matching with no negation awareness, so the
+    system closed the window it was told not to close. It now declines to guess and asks,
+    because a negated instruction says what the driver does NOT want and leaves what they
+    do want unstated.
+    """
     pipe, ex = build_pipeline()
     result = pipe.route("别关车窗")
-    # Correct behaviour is to NOT close the window. Either take no action, or ask.
     assert ("open_window", {"is_open": False}) not in ex.dispatched
+    assert ex.dispatched == []                       # nor the inverse — nothing is guessed
+    assert result.reply == "您想打开还是关闭车窗？"

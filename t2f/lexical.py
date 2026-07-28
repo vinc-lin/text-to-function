@@ -12,6 +12,11 @@ _POSITION = [
 ]
 _ON = ["打开", "开启", "开一下", "启动", "开"]
 _OFF = ["关闭", "关掉", "关上", "关一下", "关"]
+# A negated instruction is NOT the opposite instruction. 别关车窗 does not mean "open the
+# window" — the driver may want it left exactly where it is — so a negated cue yields None
+# and the missing-parameter path asks 您想打开还是关闭车窗？ Guessing the inverse would be a
+# second way to act against what was said.
+_NEGATE = ["别", "不要", "不用", "甭", "勿", "先别"]
 _MAX = ["最大", "最高", "开到最大", "拉满"]
 _MIN = ["最小", "最低"]
 _INC = ["调高", "升高", "大一点", "高一点", "增大", "提高", "热一点", "升"]
@@ -51,6 +56,25 @@ def _match_positions(text: str) -> list[str]:
     return found
 
 
+def _polarity(clause: str):
+    """on / off / unknown, decided by POSITION rather than by table order.
+
+    The old rule tested every _OFF form before any _ON form, so the 关 inside 关窗 beat a
+    leading 打开 and 打开下雨自动关窗 disabled the feature it asked to enable. The governing
+    cue in a Chinese imperative is the leading verb, so the earliest match wins, and the
+    longest match wins a tie so 打开 is preferred over the 开 inside it.
+    """
+    hits = [(clause.find(k), False, k) for k in _OFF if k in clause]
+    hits += [(clause.find(k), True, k) for k in _ON if k in clause]
+    if not hits:
+        return None
+    position, polarity, _ = min(hits, key=lambda h: (h[0], -len(h[2])))
+    for marker in _NEGATE:
+        if clause[max(0, position - len(marker)):position] == marker:
+            return None                      # negated: refuse to guess, ask instead
+    return polarity
+
+
 def extract_features(clause: str) -> LexFeatures:
     f = LexFeatures(raw=clause)
     f.numbers = find_numbers(clause)
@@ -67,10 +91,7 @@ def extract_features(clause: str) -> LexFeatures:
         f.operation = "increase"
     elif any(k in clause for k in _DEC):
         f.operation = "decrease"
-    if any(k in clause for k in _OFF):
-        f.on_off = False
-    elif any(k in clause for k in _ON):
-        f.on_off = True
+    f.on_off = _polarity(clause)
 
     # fraction words -> percent (e.g. 一半 -> 50); only when no explicit % was found
     if not f.percentages:
