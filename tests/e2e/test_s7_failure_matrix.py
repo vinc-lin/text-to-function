@@ -122,9 +122,9 @@ UNUSABLE_VALUE = [
     ("out_of_range below min · integer index · seat", "座椅记忆恢复到0",
      "记忆位置编号只能设置在1到3之间。", ("seat.all", "recall_seat_memory")),
     ("bad_enum · climate", "空调模式调到3",
-     "空调模式只支持制冷/制热/自动/除湿/送风。", ("climate.all", "ac_mode")),
+     "空调模式支持制冷/制热/自动/除湿/送风，您想设置成哪个？", ("climate.all", "ac_mode")),
     ("bad_enum · light", "氛围灯颜色调到3",
-     "氛围灯颜色只支持红色/蓝色/绿色/白色/紫色/橙色/青色。", ("light.all", "ambient_light_color")),
+     "氛围灯颜色支持红色/蓝色/绿色/白色/紫色/橙色/青色，您想设置成哪个？", ("light.all", "ambient_light_color")),
 ]
 
 

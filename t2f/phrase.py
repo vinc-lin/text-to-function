@@ -46,6 +46,45 @@ _ENUM_CN = {
 }
 
 
+# Surface forms a driver actually uses for each enum value, mined from the catalog's own
+# `utterances` rather than invented — 空调吹脸 and 风向调成吹面 are both `face`. The label in
+# _ENUM_CN is always included, so this table only carries the ADDITIONAL ways of saying it.
+_ENUM_ALIASES = {
+    "cool": ["制冷", "冷风"], "heat": ["制热", "暖风", "热风"], "dry": ["除湿"],
+    "fan": ["送风", "吹风"],
+    "face": ["吹面", "吹脸"], "feet": ["吹脚"], "windshield": ["挡风玻璃", "吹窗", "除雾"],
+    "mix": ["混合", "上下都吹"],
+    "internal": ["内循环"], "external": ["外循环"],
+    "day": ["日间", "白天"], "night": ["夜间", "夜晚"],
+    "low_beam": ["近光"], "high_beam": ["远光"],
+    "red": ["红"], "blue": ["蓝"], "green": ["绿"], "white": ["白"],
+    "purple": ["紫"], "orange": ["橙"], "cyan": ["青"],
+    "bluetooth": ["蓝牙"], "usb": ["USB", "usb", "U盘"], "radio": ["收音机", "电台"],
+    "aux": ["AUX", "aux"], "local": ["本地"],
+    # 音源切到U盘 and 走最省时间的路 are the catalog's own examples; the words are the driver's.
+    "pop": ["流行"], "rock": ["摇滚"], "classical": ["古典"], "jazz": ["爵士"],
+    "vocal": ["人声"], "standard": ["标准"],
+    "fastest": ["最快", "最省时间"], "shortest": ["最短"],
+    "avoid_highway": ["避开高速", "别上高速", "不上高速"],
+    "avoid_toll": ["避开收费", "不走收费", "躲避收费"],
+    "front": ["往前", "向前", "前移", "前挪"],
+    "back": ["往后", "向后", "后移", "后退", "后调"],
+    "recline": ["放倒", "往后躺", "往后调", "放平", "后躺"],
+    "upright": ["立起来", "立直", "调直", "竖直"],
+    "up": ["升高", "往上", "调高", "上升", "抬高"],
+    "down": ["降低", "往下", "调低", "下降", "降下来"],
+}
+
+
+def enum_surface_forms(value: str) -> list[str]:
+    """Every way a driver might say this enum value, longest first."""
+    forms = list(_ENUM_ALIASES.get(value, []))
+    label = _ENUM_CN.get(value)
+    if label and label not in forms:
+        forms.append(label)
+    return sorted(forms, key=len, reverse=True)
+
+
 def fmt_num(value) -> str:
     """25.0 -> 25, 22.5 -> 22.5. Limits are stored as REAL and must not be spoken as floats."""
     if isinstance(value, float) and value.is_integer():
@@ -146,7 +185,9 @@ def missing_phrase(card: FunctionCard, param: Optional[ParamSpec]) -> str:
         return f"您想打开还是关闭{card_subject(card)}？"
     if kind == "enum":
         options = enum_options(param)
-        return f"您想设置{param_subject(card, param)}的哪个选项？（{options}）" if options else ""
+        # Options first so the sentence ends on the question mark; a trailing parenthetical
+        # makes the reply layer append 。 after ）, which reads as a stumble.
+        return f"{param_subject(card, param)}支持{options}，您想设置成哪个？" if options else ""
     if kind in ("number", "integer"):
         return f"您想把{param_subject(card, param)}设置成多少？"
     if kind == "string":

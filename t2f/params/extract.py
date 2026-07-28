@@ -15,6 +15,8 @@ def _dispatch(clause, features, spec):
         return ex.extract_level(clause, features, spec)
     if spec.type == "enum" and spec.enum and set(spec.enum) & _POSITION_ENUM:
         return ex.extract_position(clause, features, spec)
+    if spec.type == "enum" and spec.enum:
+        return ex.extract_enum(clause, features, spec)
     if spec.type == "boolean":
         return ex.extract_boolean(clause, features, spec)
     return ex.extract_number(clause, features, spec)

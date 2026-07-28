@@ -1,6 +1,7 @@
 # t2f/params/extractors.py
 from __future__ import annotations
 from ..types import ParamSpec, LexFeatures
+from ..phrase import enum_surface_forms
 
 
 def _coerce(value: float, spec: ParamSpec):
@@ -29,6 +30,22 @@ def extract_position(clause, f: LexFeatures, spec: ParamSpec):
     for p in f.positions:
         if p in spec.enum:
             return p
+    return None
+
+
+def extract_enum(clause, f: LexFeatures, spec: ParamSpec):
+    """Match an enum value by the words a driver uses for it.
+
+    Longest surface form first across ALL of the spec's values, so 避开高速 wins over any
+    shorter form it contains. Scoped to one card's enum, so `自动` being a value of three
+    different enums is not a collision — routing has already chosen the card.
+    """
+    if not spec.enum:
+        return None
+    candidates = [(form, value) for value in spec.enum for form in enum_surface_forms(value)]
+    for form, value in sorted(candidates, key=lambda c: -len(c[0])):
+        if form in clause:
+            return value
     return None
 
 
