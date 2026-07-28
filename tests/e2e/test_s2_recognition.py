@@ -47,20 +47,28 @@ def test_s2_07_context_is_suppressed_and_absent_from_reply():
 
 
 def test_s2_09_relative_without_value_does_not_execute():
-    """A relative op with no state reaches MEDIUM with no LLM: it must fail honestly,
-    never silently succeed. (Spec 5's falsely-affirmative fix.)"""
+    """A relative op with no state reaches MEDIUM with no LLM: it must not execute, and it
+    must not silently succeed either. (Spec 5's falsely-affirmative fix.)
+
+    It used to answer 抱歉，这个操作没能完成。 The medium band now asks for the slot it could
+    name, which executes nothing and is something the driver can actually answer.
+    """
     pipe, ex = build_pipeline()
     result = pipe.route("温度调高一点")
     assert ex.dispatched == []
-    assert result.reply == "抱歉，这个操作没能完成。"
+    assert result.reply == "您想设置到多少度？"
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="别关车窗 ('don't close the window') dispatches is_open=False and "
-                          "closes it — polarity is keyword-derived with no negation handling "
-                          "(t2f/lexical.py:70-73). Executing the opposite of the instruction.")
 def test_s2_11_negation_must_not_invert_the_action():
+    """别关车窗 is "don't close the window" — which is not "open the window".
+
+    This was red: polarity was pure substring matching with no negation awareness, so the
+    system closed the window it was told not to close. It now declines to guess and asks,
+    because a negated instruction says what the driver does NOT want and leaves what they
+    do want unstated.
+    """
     pipe, ex = build_pipeline()
     result = pipe.route("别关车窗")
-    # Correct behaviour is to NOT close the window. Either take no action, or ask.
     assert ("open_window", {"is_open": False}) not in ex.dispatched
+    assert ex.dispatched == []                       # nor the inverse — nothing is guessed
+    assert result.reply == "您想打开还是关闭车窗？"

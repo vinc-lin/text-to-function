@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-28
 **Scope:** the 131 end-to-end cases covering the Central Model's business workflow
-**Suite:** 393 passed · 2 xfailed · 3 deselected (398 collected)
+**Suite:** 456 passed · 1 xfailed · 3 deselected
+**Updated 2026-07-29** after the extractor and negation fixes — see §8.
 **Evaluation:** arm C (deterministic, zero LLM), real embedder, gold test split n=192
 
 ---
@@ -145,13 +146,15 @@ Arm C, real embedder, gold test split (n=192), plus the 54-row e2e slice:
 | `reply_action_coverage` | **1.0000** | nothing actuated silently |
 | `reply_single_question` | **1.0000** | contract holds |
 | `invalid_no_execution_rate` | **1.0000** (22) | no unusable value reached the vehicle |
-| `reply_cause_coverage` | **0.8667** (15) | the cause is conveyed in 13 of 15 |
+| `reply_cause_coverage` | **1.0000** (15) | the cause is conveyed in every annotated row |
 | `reply_exact_match` | 0.0811 (37) | **measures wording, not capability — see §6** |
-| recall@1 | 0.8644 | unchanged |
+| recall@1 | 0.8644 | unchanged — extraction does not affect routing |
 | multi-intent set-recall | 0.8194 | unchanged |
 | OOD / context false-action | **0.0000** | unchanged |
-| incorrect execution | 0.0312 | unchanged |
-| P95 latency | 82.7 ms | unchanged |
+| **incorrect execution** | **0.0000** | was 0.0312 |
+| **param exact-match** | **0.4133** | was 0.2733 |
+| **e2e deterministic** | **0.1333** | was 0.1067 |
+| **schema-valid rate** | **0.6212** | was 0.5000 |
 
 Every routing metric is identical to the pre-change baseline. One metric moved and is explained in §6.
 
@@ -207,7 +210,7 @@ The first is the more serious: the system executes the **inverse** of the instru
 
 ## 8. Findings
 
-**1. String and non-position enum parameters cannot be extracted at all.**
+**1. String and non-position enum parameters cannot be extracted at all. — FIXED 2026-07-29.**
 `t2f/params/extract.py:9-20` has no branch for `type: string`, and none for an enum whose values are
 not positions — both fall through to `extract_number`. So `make_call`, `send_message`, `navigate_to`,
 `find_nearby`, `add_waypoint` and ~11 enum-driven functions (`set_ac_mode`, `set_audio_source`,
@@ -219,6 +222,18 @@ This is one missing dispatch branch, and it is a large part of why `param_exact_
 and `e2e_deterministic` at 0.1067 — the router is being blamed for an extractor gap. **Highest-value
 open item.**
 
+> **Closed.** Enum extraction now reads the driver's vocabulary, mined from the catalog's own
+> `utterances` (101 of its 104 examples fill their parameter). Free-text extraction reads one shape —
+> trigger, connector, object — at **100% precision on the catalog corpus**: 22 correct, 0 wrong, 26
+> asked, because a wrong destination navigates somewhere else while declining costs one question.
+> `param_exact_match` 0.2733 → **0.4133**, `e2e_deterministic` 0.1067 → **0.1333**,
+> `schema_valid_rate` 0.5000 → **0.6212**, and `incorrect_execution_rate` 0.0312 → **0.0000**.
+>
+> Unblocking execution briefly *raised* incorrect-execution to 0.0556, which turned out to be two
+> genuine parameter bugs rather than a safety regression — zero wrong-function executions throughout.
+> `收音机调到FM101.7` dropped `band` because the vocabulary had 调频 but not `FM`, and 车窗儿童锁解开
+> read 解开 as "on" via the 开 inside it. Both fixed.
+
 **2. Correct recognition does not reach execution under production thresholds.**
 With the shipped gate (`high_top1 0.35 / high_margin 0.12`), utterances route to the **correct**
 function at top1 0.74–0.80 but fall under the margin, landing in MEDIUM — which the zero-LLM arm never
@@ -226,8 +241,11 @@ executes. Nine consecutive utterances in a live demo produced nine generic apolo
 `e2e_deterministic 0.1067` made visible. Widening the margin is a safety trade, and it is entangled
 with the arm decision that is still unrecorded anywhere.
 
-**3. A polarity miss.** `打开下雨自动关窗` routes correctly to `set_rain_close_window` but extracts
-`enabled=False` from a 打开 utterance, so the signal never moves. Same family as the negation defect.
+**3. A polarity miss. — FIXED 2026-07-29.** `打开下雨自动关窗` extracted `enabled=False` from a 打开
+utterance, because every `_OFF` form was tested before any `_ON` form and the 关 inside 关窗 outranked
+the leading verb. Polarity is now positional. The negation defect went with it: 别关车窗 no longer
+closes the window and 别开空调 no longer turns the A/C on — a negated cue yields *unknown* and asks,
+because "don't close it" is not "open it".
 
 **4. Duplicate actions are de-duplicated at the reply layer only.** `主驾温度调到25度` twice dispatches
 twice and confirms once. Outside the stated contract, so it is documented rather than judged.

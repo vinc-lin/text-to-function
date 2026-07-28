@@ -20,11 +20,16 @@ class NullMediumResolver:
     """Spec-1 behavior: mark needs_llm, attempt validation for the ceiling metric, do not execute."""
     def resolve(self, clause, features, decision, cards_by_name, extractor, executor) -> ClauseResult:
         card = cards_by_name[decision.chosen]
-        params, _ = extractor.extract(clause, features, card)
+        params, missing = extractor.extract(clause, features, card)
         cand_names = [c.function for c in decision.candidates]
         tc, errs = validate_tool_call(decision.chosen, params, cards_by_name, cand_names)
+        # A missing parameter is ANSWERABLE, and asking executes nothing — so the medium band
+        # asks rather than apologising. Without this the driver heard 抱歉，这个操作没能完成。
+        # for a request we understood well enough to name the missing slot, and with production
+        # thresholds the medium band is where most utterances land.
+        clar = build_clarification(card, missing) if missing else None
         return ClauseResult(clause=clause, decision=decision, tool_call=tc,
-                            validation_errors=errs, needs_llm=True)
+                            validation_errors=errs, clarification=clar, needs_llm=True)
 
 
 class LLMResolver:
