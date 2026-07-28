@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from t2f.types import ExecResult, FunctionCard, ToolCall
 from t2f.state import primary_numeric_param, state_key
+from t2f.phrase import limit_phrase
 from sim.mapping import resolve_writes, signal_for_function
 # One definition of "the positions this card can be called with", shared with the seeder:
 # if the snapshot invented positions the seeder never created it would read empty rows, and
@@ -25,28 +26,6 @@ def _fmt(value: float) -> str:
     return str(int(value)) if float(value).is_integer() else str(value)
 
 
-# What a driver hears after a number. `frequency` and `index` carry no unit and get nothing.
-_UNIT_CN = {"percent": "%", "celsius": "度", "level": "档"}
-
-
-def _subject(card: FunctionCard) -> str:
-    """A driver-facing name for the thing being limited.
-
-    NOT the signal attribute. `window_position` is an internal address; the catalog already
-    holds the words a driver would use (`车窗开度`), and speaking the address instead leaks
-    implementation into the cabin. Descriptions like `加热档位，0为关闭` carry a parenthetical
-    clause that reads badly mid-sentence, so only the part before the comma is used.
-    """
-    param = primary_numeric_param(card)
-    description = (param.description if param else "") or ""
-    subject = description.split("，")[0].strip()
-    return subject or card.description.split("，")[0].strip() or card.name
-
-
-def _limit_detail(card: FunctionCard, bound: float, direction: str) -> str:
-    param = primary_numeric_param(card)
-    unit = _UNIT_CN.get(param.unit if param else None, "")
-    return f"{_subject(card)}{direction}只能到{_fmt(bound)}{unit}"
 
 
 class SqliteExecutor:
@@ -80,9 +59,13 @@ class SqliteExecutor:
                 continue
             lo, hi = self.car.limits_of(ent, attr)
             if lo is not None and value < lo:
-                return self._refuse(tool_call, "out_of_range", _limit_detail(card, lo, "最低"))
+                return self._refuse(tool_call, "out_of_range",
+                                    limit_phrase(card, primary_numeric_param(card), lo, "最低",
+                                                 low=lo, high=hi))
             if hi is not None and value > hi:
-                return self._refuse(tool_call, "out_of_range", _limit_detail(card, hi, "最高"))
+                return self._refuse(tool_call, "out_of_range",
+                                    limit_phrase(card, primary_numeric_param(card), hi, "最高",
+                                                 low=lo, high=hi))
 
         self.car.write_many(writes)
         self.car.log(tool_call.name, tool_call.parameters, "executed", None, "")

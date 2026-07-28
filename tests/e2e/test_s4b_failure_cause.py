@@ -34,14 +34,12 @@ def test_s4b_invalid_value_dispatches_nothing(case_id, utterance):
 
 
 @pytest.mark.parametrize("case_id,utterance", NO_EXECUTION, ids=[c[0] for c in NO_EXECUTION])
-@pytest.mark.xfail(strict=True, reason=GAP2)
 def test_s4b_invalid_value_explains_the_cause(case_id, utterance):
-    """RED — the explanation half. The driver is told nothing about WHY."""
+    """The explanation half — was red until the validation cause table landed."""
     pipe, _ = build_pipeline()
     assert pipe.route(utterance).reply != GENERIC
 
 
-@pytest.mark.xfail(strict=True, reason=GAP2)
 def test_s4b_03_out_of_range_names_the_limit():
     """The bounds are in the card (minimum 16, maximum 32) and never spoken."""
     pipe, _ = build_pipeline()
@@ -56,9 +54,8 @@ def test_s4b_02_missing_required_param_dispatches_nothing():
     assert ex.dispatched == []
 
 
-@pytest.mark.xfail(strict=True, reason=GAP3)
 def test_s4b_02_missing_required_param_names_what_is_missing():
-    """RED — the question does not say WHICH parameter it needs."""
+    """The question names the parameter — was red until build_clarification used the catalog."""
     pipe, _ = build_pipeline()
     assert pipe.route("车窗").reply != GENERIC_QUESTION
 
@@ -85,9 +82,8 @@ def test_s4b_06_bad_enum_dispatches_nothing():
     assert ex.dispatched == []
 
 
-@pytest.mark.xfail(strict=True, reason=GAP2)
 def test_s4b_06_bad_enum_explains_the_cause():
-    """RED — the card's enum list is in the ValidationError message and never spoken."""
+    """The card's enum list is now spoken, not just computed."""
     pipe, _ = build_pipeline(llm_client=_bad_enum_llm())
     assert pipe.route("温度调高一点").reply != GENERIC
 
@@ -104,7 +100,6 @@ def test_s4b_07_type_mismatch_dispatches_nothing():
     assert ex.dispatched == []
 
 
-@pytest.mark.xfail(strict=True, reason=GAP2)
 def test_s4b_07_type_mismatch_explains_the_cause():
     """RED — 'temperature must be numeric' is computed and never spoken."""
     pipe, _ = build_pipeline(llm_client=_type_mismatch_llm())

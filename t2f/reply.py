@@ -65,6 +65,31 @@ def _exec_failures(clauses) -> list[str]:
     return out
 
 
+def _validation_failures(clauses) -> list[str]:
+    """Unusable-parameter causes, in clause order, de-duplicated.
+
+    Requirement 4b's SECOND failure branch — "I understood you, but a value you gave me will
+    not work". The cause has been computed since Spec 1 (t2f/validate.py) and reached this
+    layer on ClauseResult.validation_errors; until now it was dropped and every one of them
+    collapsed into the single generic line.
+
+    `missing_required` is deliberately excluded: a missing parameter is answerable, so it is
+    routed to a QUESTION by build_clarification rather than stated as a fact. Codes with no
+    driver-facing detail (unknown_function, not_in_candidates, llm_no_toolcall — internal
+    conditions a driver can do nothing about) carry an empty detail and fall through to the
+    generic line, which is the honest thing to say about them.
+    """
+    out: list[str] = []
+    for cl in clauses:
+        for err in (getattr(cl, "validation_errors", None) or []):
+            if err.code == "missing_required":
+                continue
+            detail = (getattr(err, "detail", "") or "").strip()
+            if detail and detail not in out:
+                out.append(detail)
+    return out
+
+
 def _has_failure(clauses) -> bool:
     """A clause that produced nothing the driver can hear.
 
@@ -94,7 +119,7 @@ def compose_reply(result: RouteResult) -> str:
     """
     clauses = result.clauses or []
     parts = [_sentence(t) for t in _confirmations(clauses)]
-    refusals = _exec_failures(clauses)
+    refusals = _exec_failures(clauses) + _validation_failures(clauses)
     parts += [_sentence(t) for t in refusals]
     questions = _questions(clauses)
     if questions:                      # at most ONE question per reply

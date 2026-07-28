@@ -1,6 +1,7 @@
 # t2f/validate.py
 from __future__ import annotations
 from .types import FunctionCard, ToolCall, ValidationError
+from .phrase import limit_phrase, enum_phrase, type_phrase
 
 
 def validate_tool_call(name: str, params: dict, cards_by_name: dict[str, FunctionCard],
@@ -26,23 +27,30 @@ def validate_tool_call(name: str, params: dict, cards_by_name: dict[str, Functio
             continue
         if spec.type in ("number", "integer"):
             if not isinstance(v, (int, float)) or isinstance(v, bool):
-                errs.append(ValidationError("type_mismatch", f"{k} must be numeric"))
+                errs.append(ValidationError("type_mismatch", f"{k} must be numeric",
+                                            type_phrase(card, spec)))
                 continue
             if spec.type == "integer" and float(v) != int(v):
-                errs.append(ValidationError("type_mismatch", f"{k} must be integer"))
+                errs.append(ValidationError("type_mismatch", f"{k} must be integer",
+                                            type_phrase(card, spec)))
             if spec.minimum is not None and v < spec.minimum:
-                errs.append(ValidationError("out_of_range", f"{k} < {spec.minimum}"))
+                errs.append(ValidationError("out_of_range", f"{k} < {spec.minimum}",
+                                            limit_phrase(card, spec, spec.minimum, "最低")))
             if spec.maximum is not None and v > spec.maximum:
-                errs.append(ValidationError("out_of_range", f"{k} > {spec.maximum}"))
+                errs.append(ValidationError("out_of_range", f"{k} > {spec.maximum}",
+                                            limit_phrase(card, spec, spec.maximum, "最高")))
         elif spec.type == "boolean":
             if not isinstance(v, bool):
-                errs.append(ValidationError("type_mismatch", f"{k} must be boolean"))
+                errs.append(ValidationError("type_mismatch", f"{k} must be boolean",
+                                            type_phrase(card, spec)))
         elif spec.type == "enum":
             if spec.enum and v not in spec.enum:
-                errs.append(ValidationError("bad_enum", f"{k}={v} not in {spec.enum}"))
+                errs.append(ValidationError("bad_enum", f"{k}={v} not in {spec.enum}",
+                                            enum_phrase(card, spec)))
         elif spec.type == "string":
             if not isinstance(v, str):
-                errs.append(ValidationError("type_mismatch", f"{k} must be string"))
+                errs.append(ValidationError("type_mismatch", f"{k} must be string",
+                                            type_phrase(card, spec)))
 
     if errs:
         return None, errs

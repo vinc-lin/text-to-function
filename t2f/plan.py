@@ -32,6 +32,12 @@ class PlanExecutor:
             if tc is None:
                 a.status = "clarify" if any(e.code == "missing_required" for e in errs) else "invalid"
                 a.error = ";".join(e.code for e in errs)
+                # Keep the errors themselves, not just their codes. The driver-facing detail
+                # lives on the ValidationError, and joining codes into a string threw away the
+                # only thing 4b can say — so a bad value inside a multi-intent utterance used
+                # to degrade to "I need to check about 「…」" while the same value alone
+                # explained itself.
+                a.validation_errors = list(errs)
             else:
                 a.tool_call = tc
                 a.status = "valid"

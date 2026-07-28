@@ -75,9 +75,14 @@ def test_e2e_every_executed_confirmation_appears():                      # cover
 
 
 def test_e2e_hard_failure_line():                                        # E8
-    """An out-of-range value fails validation with no clarification -> the failure line."""
+    """An out-of-range value fails validation and now states its own cause.
+
+    Spec 5 pinned the generic 抱歉，这个操作没能完成。 here, because the cause was computed
+    and discarded. It is now spoken, so this test pins the improvement rather than the
+    limitation. The generic line still covers causes a driver can do nothing about.
+    """
     res = _pipeline().route("把空调调到99度")
-    assert res.reply == "抱歉，这个操作没能完成。"
+    assert res.reply == "目标温度只能设置在16到32度之间。"
 
 
 def _medium_pipeline():

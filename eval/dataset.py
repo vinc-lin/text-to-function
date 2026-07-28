@@ -60,6 +60,8 @@ def validate_against_catalog(rows: list[dict], function_names: set[str]) -> list
                 problems.append(f"row {i}: invalid needs expected_cause")
             elif cause not in KNOWN_CAUSES:
                 problems.append(f"row {i}: unknown expected_cause {cause}")
+        if not isinstance(r.get("expected_reply_contains", []), list):
+            problems.append(f"row {i}: expected_reply_contains must be a list")
         if r["type"] == "asr_noise" and not r.get("source_utterance"):
             problems.append(f"row {i}: asr_noise needs source_utterance")
     return problems
