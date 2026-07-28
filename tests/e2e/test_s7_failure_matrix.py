@@ -182,20 +182,24 @@ def test_a_numeric_parameter_given_a_word_is_told_it_needs_a_number():
     assert ex.car.get_signal("climate.all", "temperature") == before
 
 
-def test_a_string_parameter_type_mismatch_states_its_cause():
+def test_a_number_where_text_belongs_is_asked_about_not_guessed():
     """导航到3 puts a number where `navigate_to` wants a destination.
 
-    This was a pinned FINDING: the cause was computed but `t2f/phrase.py::type_phrase` worded
-    only number/integer/boolean, returned "" for `string`, and the reply fell back to the
-    generic line. The pin was written as an equality precisely so it would turn red the moment
-    the string case was worded — which it did, and this now asserts the wording.
+    Twice improved. It first spoke the generic line, because `type_phrase` had no wording for
+    `string`. Then it spoke 目的地名称或地址需要一段文字。 once that was written. Now the string
+    extractor exists and declines a one-character remainder outright, so the deterministic path
+    cannot produce a string type_mismatch at all — it asks instead, which a driver can answer.
+    Note 导航到3号楼 DOES extract, so the guard is length-based, not digit-phobic.
     """
     pipe, ex = _pipeline()
 
     result = pipe.route("导航到3")
 
-    assert result.reply == "目的地名称或地址需要一段文字。"
-    assert [e.code for e in result.clauses[0].validation_errors] == ["type_mismatch"]
+    assert result.reply == "请告诉我目的地名称或地址。"
+    # A missing required parameter is ANSWERABLE, so it becomes a clarification rather than a
+    # stated validation error — which is why validation_errors is empty here.
+    assert result.clauses[0].clarification is not None
+    assert result.clauses[0].validation_errors == []
     assert ex.car.recent_operations() == []                         # never reached the vehicle
 
 

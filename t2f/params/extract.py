@@ -6,7 +6,7 @@ from . import extractors as ex
 _POSITION_ENUM = {"driver", "passenger", "rear", "all", "left", "right"}
 
 
-def _dispatch(clause, features, spec):
+def _dispatch(clause, features, spec, card=None):
     if spec.unit == "celsius":
         return ex.extract_temperature(clause, features, spec)
     if spec.unit == "percent":
@@ -19,6 +19,8 @@ def _dispatch(clause, features, spec):
         return ex.extract_enum(clause, features, spec)
     if spec.type == "boolean":
         return ex.extract_boolean(clause, features, spec)
+    if spec.type == "string":
+        return ex.extract_string(clause, features, spec, card)
     return ex.extract_number(clause, features, spec)
 
 
@@ -27,7 +29,7 @@ class ParameterExtractor:
         params: dict = {}
         missing: list[str] = []
         for spec in card.params:
-            val = _dispatch(clause, features, spec)
+            val = _dispatch(clause, features, spec, card)
             if val is not None:
                 params[spec.name] = val
             elif spec.required:
