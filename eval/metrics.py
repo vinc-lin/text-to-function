@@ -302,3 +302,27 @@ def reply_exact_match(records) -> float:
 def n_reply_annotated(records) -> int:
     """The denominator of reply_exact_match. Emitted so a vacuous 1.0 is visible."""
     return sum(1 for r in records if r["row"].get("expected_reply"))
+
+
+def reply_cause_coverage(records) -> float:
+    """Of rows declaring facts the reply MUST convey, the fraction that convey all of them.
+
+    `reply_exact_match` scores WORDING; this scores CAPABILITY. A driver told
+    「目标温度只能设置在16到32度之间」 has been given the same two facts as one told
+    「温度最低只能设到16度」 plus more, and an exact-match metric scores the first zero
+    against an annotation written in the style of the second. Requirement 4b asks for the
+    cause to be explained, not for it to be phrased a particular way.
+
+    Empty denominator -> 1.0, matching the want-1.0 convention.
+    """
+    rows = [r for r in records if r["row"].get("expected_reply_contains")]
+    if not rows:
+        return 1.0
+    hit = sum(1 for r in rows
+              if all(frag in _reply_of(r) for frag in r["row"]["expected_reply_contains"]))
+    return hit / len(rows)
+
+
+def n_cause_annotated(records) -> int:
+    """Denominator of reply_cause_coverage, printed so a vacuous 1.0 is visible."""
+    return sum(1 for r in records if r["row"].get("expected_reply_contains"))

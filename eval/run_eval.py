@@ -116,6 +116,8 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         # presence of the field, not by which file the row came from.
         "invalid_no_execution_rate": M.invalid_no_execution_rate(e2e_records),
         "reply_exact_match": M.reply_exact_match(records + e2e_records),
+        "reply_cause_coverage": M.reply_cause_coverage(records + e2e_records),
+        "n_cause_annotated": M.n_cause_annotated(records + e2e_records),
         "n_reply_annotated": M.n_reply_annotated(records + e2e_records),
         "n_e2e_rows": len(e2e_records),
         "candidate_gen_recall@3": M.candidate_gen_recall(records, 3),
