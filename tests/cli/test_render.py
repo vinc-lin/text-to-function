@@ -90,8 +90,9 @@ def test_an_unresolved_span_says_why_nothing_happened():
 
 def test_an_executed_span_that_moved_no_signal_says_so():
     """lock_doors and friends write nothing; a silent 'executed' would look like a failure."""
-    out = render(_turn(reply="ok", spans=[_span(function="lock_doors", deltas=[])]))
-    assert "executed" in out and "no signal for this function" in out
+    out = render(_turn(reply="ok", spans=[_span(function="lock_doors", deltas=[],
+                                                writes_signals=False)]))
+    assert "executed" in out and "holds no state" in out
 
 
 # --- shape and robustness ---------------------------------------------------------------
@@ -149,3 +150,18 @@ def test_an_escalated_high_band_span_is_not_labelled_as_the_models_work():
     would misattribute the routing."""
     out = render(_turn(reply="ok", spans=[_span(band="high", escalated=True)]))
     assert "resolved by LLM" not in out
+
+
+def test_no_change_and_no_state_are_different_sentences():
+    """打开空调 against an already-on A/C is a success that moved nothing. Rendering that as
+    "no signal for this function" would be a lie — the function has a signal, it was already
+    at the requested value."""
+    moved_nothing = Turn(utterance="u", reply="已为您调整空调开关状态。", spans=[SpanOutcome(
+        clause="打开空调", function="set_ac_power", parameters={"enabled": True}, band="high",
+        escalated=False, outcome="executed", deltas=[], writes_signals=True)])
+    holds_nothing = Turn(utterance="u", reply="好的。", spans=[SpanOutcome(
+        clause="下一首", function="next_track", parameters={}, band="high",
+        escalated=False, outcome="executed", deltas=[], writes_signals=False)])
+    assert "already at that value" in render(moved_nothing)
+    assert "holds no state" in render(holds_nothing)
+    assert render(moved_nothing) != render(holds_nothing)

@@ -21,7 +21,10 @@ def _outcome_lines(span) -> list[str]:
         if span.deltas:
             return [f"  executed     {d.entity}/{d.attribute}   {d.before} → {d.after}"
                     for d in span.deltas]
-        return ["  executed     (no signal for this function)"]
+        # "The A/C was already on" and "this function has no state" are different facts and
+        # must not read the same. 打开空调 against an on A/C really did succeed.
+        return ["  executed     (no change — already at that value)"] if span.writes_signals \
+            else ["  executed     (this function holds no state)"]
     if span.outcome == "rejected":
         return [f"  rejected     validation · {span.detail} · never reached the car"]
     if span.outcome == "refused":

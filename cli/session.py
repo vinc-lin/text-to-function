@@ -41,6 +41,7 @@ class SpanOutcome:
     outcome: str                         # executed | refused | rejected | asked | unresolved
     detail: str = ""                     # the cause, when there is one
     deltas: list = field(default_factory=list)
+    writes_signals: bool = True          # False when the function addresses no signal at all
 
 
 @dataclass
@@ -144,7 +145,19 @@ class Session:
             band=clause_result.decision.band.value,
             escalated=clause_result.needs_llm,
             outcome=outcome, detail=detail,
-            deltas=self._own_deltas(clause_result, deltas) if outcome == "executed" else [])
+            deltas=self._own_deltas(clause_result, deltas) if outcome == "executed" else [],
+            writes_signals=self._writes_signals(clause_result))
+
+    def _writes_signals(self, clause_result) -> bool:
+        """Whether this call addresses any signal at all.
+
+        Distinguishes "the A/C was already on, so nothing moved" from "this function has no
+        state to move" — 打开空调 against an already-on A/C is a success with no delta, and
+        rendering that as "no signal for this function" would be a lie.
+        """
+        tc = clause_result.tool_call
+        card = {c.name: c for c in self.cards}.get(tc.name) if tc else None
+        return bool(card is not None and resolve_writes(card, tc))
 
     def _own_deltas(self, clause_result, deltas) -> list:
         """Only the signals THIS call wrote.
@@ -158,7 +171,9 @@ class Session:
         if card is None:
             return deltas
         mine = {(e, a) for e, a, _ in resolve_writes(card, tc)}
-        return [d for d in deltas if (d.entity, d.attribute) in mine] or deltas
+        # No `or deltas` fallback: a span that changed nothing must not claim another span's
+        # change. "Nothing moved" and "moved something" are different facts.
+        return [d for d in deltas if (d.entity, d.attribute) in mine]
 
     def _snapshot(self) -> dict:
         """Values are JSON-encoded in the column; decode them, or a boolean reads as
