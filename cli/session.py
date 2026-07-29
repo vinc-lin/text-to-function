@@ -143,7 +143,9 @@ class Session:
             function=tc.name if tc else clause_result.decision.chosen,
             parameters=dict(tc.parameters) if tc else {},
             band=clause_result.decision.band.value,
-            escalated=clause_result.needs_llm,
+            # needs_llm is set by NullMediumResolver too, which has no model to hand the span
+            # to — so "escalated" must mean a model actually saw it, not that one was wanted.
+            escalated=clause_result.needs_llm and self.llm,
             outcome=outcome, detail=detail,
             deltas=self._own_deltas(clause_result, deltas) if outcome == "executed" else [],
             writes_signals=self._writes_signals(clause_result))

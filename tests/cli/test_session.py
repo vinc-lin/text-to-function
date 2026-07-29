@@ -84,3 +84,12 @@ def test_switching_a_mode_keeps_the_car():
 def test_mode_label_states_every_switch():
     s = Session.build(fake=True, llm=False, gate="shipped", catalog=FIX)
     assert "shipped" in s.mode_label() and "FAKE" in s.mode_label() and "C_llm" not in s.mode_label()
+
+
+def test_escalated_means_a_model_actually_saw_it():
+    """NullMediumResolver sets needs_llm=True with no model attached, so the raw flag means
+    "wanted a model", not "got one". Rendering the difference wrongly told the driver
+    "resolved by LLM" on a session with /llm off."""
+    session = Session.build(fake=True, llm=False, gate="shipped", catalog=FIX)
+    turn = session.handle("温度调高一点")
+    assert all(not span.escalated for span in turn.spans)

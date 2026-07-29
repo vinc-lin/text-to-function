@@ -40,9 +40,11 @@ def render(turn: Turn) -> str:
     lines = []
     for span in turn.spans:
         band = f"band={(span.band or '?').upper()}"
-        # `escalated` means "the medium band handed this over", which the null resolver also
-        # sets when there is no model to hand it to. Claiming the model resolved a span that
-        # ended `unresolved` would contradict that span's own next line.
+        # Two independent guards against the same lie. Session makes `escalated` honest (it
+        # means a model actually saw the span, not that one was wanted — NullMediumResolver
+        # sets needs_llm with no model attached), and this refuses to claim resolution for a
+        # span that resolved nothing. Neither a wrong flag nor a hand-built Turn can print
+        # "resolved by LLM" above "unresolved".
         if span.escalated and span.band == "medium" and span.outcome != "unresolved":
             band += "  → resolved by LLM"
         lines.append(f"  recognised   {span.function or '—'}{_params(span.parameters)}    {band}")
