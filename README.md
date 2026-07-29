@@ -12,6 +12,17 @@ Qwen3-0.6B).
 > so closing a gap makes the suite say so rather than waiting to be asked. No performance number has been measured on the 87 platform. Start with
 > **[the Central Model system design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**.
 
+## Try it yourself
+
+```bash
+python3 -m cli
+```
+
+Type Chinese, watch the workflow run against a simulated car — what it recognised, the row that
+moved in the vehicle database, and what the driver would hear. Switch the LLM and the confidence
+gate mid-session to compare the two candidate builds against the same car.
+**[Guide →](docs/TRYING_IT.md)**
+
 ## The business workflow
 
 1. The user **speaks** a command in the car.

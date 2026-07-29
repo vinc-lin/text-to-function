@@ -3,11 +3,11 @@ from t2f.pipeline import Pipeline, LLMResolver
 from t2f.score import Scorer, EmbeddingOnlyScorer
 from t2f.gate import ConfidenceGate
 from research.classify.source import ClassifierCandidateSource
+from t2f.build import build_pipeline
 
 
 def build_arm_c(cards, embedder, config) -> Pipeline:
-    return Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
-                    ConfidenceGate(config.thresholds), config)
+    return build_pipeline(cards, embedder, config)
 
 
 def build_arm_c_baseline(cards, embedder, config) -> Pipeline:
@@ -16,13 +16,7 @@ def build_arm_c_baseline(cards, embedder, config) -> Pipeline:
 
 
 def build_arm_c_llm(cards, embedder, config, llm_client, ood_texts=None) -> Pipeline:
-    medium = LLMResolver(llm_client, max_candidates=config.llm.get("max_candidates", 3),
-                         max_retries=config.llm.get("max_retries", 1))
-    pipe = Pipeline(cards, embedder, Scorer(config.weights, config.domain_keywords),
-                    ConfidenceGate(config.thresholds), config, medium_resolver=medium,
-                    ood_texts=ood_texts)
-    pipe.llm_client = llm_client
-    return pipe
+    return build_pipeline(cards, embedder, config, llm_client=llm_client, ood_texts=ood_texts)
 
 
 def build_arm_d(cards, embedder, config, llm_client, classifier, ood_texts=None) -> Pipeline:
