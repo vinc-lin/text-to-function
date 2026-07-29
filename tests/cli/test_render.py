@@ -72,13 +72,34 @@ def test_an_error_turn_renders_the_error_and_nothing_else():
 
 # --- the outcomes the plan's tests did not reach ----------------------------------------
 
-def test_an_asked_span_shows_the_question_it_wants_answered():
+def test_an_asked_span_shows_a_question_the_driver_will_not_hear():
     """`missing_required` classifies as `asked`, not `rejected` — the question is the whole
-    point of the line, so it must survive into the output."""
-    turn = _turn(reply="您想把温度调到多少度？", spans=[_span(
-        function="set_temperature", outcome="asked", detail="您想把温度调到多少度？")])
+    point of the line. compose_reply speaks at most ONE question per utterance, so a second
+    span's question exists nowhere else and must survive into the output."""
+    turn = _turn(reply="您想把温度调到多少度？", spans=[
+        _span(function="set_temperature", outcome="asked", detail="您想把温度调到多少度？"),
+        _span(function="set_fan_speed", outcome="asked", detail="您想把风速调到几档？")])
     out = render(turn)
-    assert "asked" in out and "您想把温度调到多少度？" in out
+    assert "asked        您想把风速调到几档？" in out
+
+
+def test_a_question_that_is_the_reply_is_not_printed_twice():
+    """The out-of-scope case: 帮我讲个笑话 recognises nothing, the span asks the driver to
+    rephrase, and that question IS the whole reply. Printing it on both lines read as two
+    separate questions — the outcome is on the reply line directly below."""
+    out = render(_turn(reply="抱歉，我不太确定您的意思，可以换个说法吗？", spans=[_span(
+        function=None, band="low", outcome="asked",
+        detail="抱歉，我不太确定您的意思，可以换个说法吗？")]))
+    assert out.count("抱歉，我不太确定您的意思，可以换个说法吗？") == 1
+    assert "band=LOW" in out
+
+
+def test_the_terminator_compose_reply_appends_does_not_defeat_the_check():
+    """t2f/reply.py::_sentence appends 。 to a question authored without one, so byte
+    equality would miss the duplicate it was written to catch."""
+    out = render(_turn(reply="请补充更多信息。", spans=[_span(
+        outcome="asked", detail="请补充更多信息")]))
+    assert out.count("请补充更多信息") == 1
 
 
 def test_an_unresolved_span_says_why_nothing_happened():

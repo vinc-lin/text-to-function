@@ -50,6 +50,10 @@ The prompt always states which system you are talking to, so you never have to r
 and the vehicle never hears about it; a refusal means the car was asked and declined, and it is
 recorded in `/log`.
 
+A span with **no outcome line at all** is `asked` where the question is the whole reply — the line
+below says it, and printing the same sentence twice reads as two separate questions. An utterance
+that produces several questions shows each one, because only the first is ever spoken.
+
 ---
 
 ## The car is real and it remembers
