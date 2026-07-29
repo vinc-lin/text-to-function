@@ -6,10 +6,12 @@ function calls (name + validated parameters), dispatches them, and returns **one
 router. Targets on-device deployment (Qualcomm SA8797 / "87 platform", Qwen3-Embedding-0.6B +
 Qwen3-0.6B).
 
-> **Status:** Specs 1–7 complete (305 automated tests + 3 model-backed), **plus 9 red cases** that
-> encode what the business workflow still does not meet. Step 3's actuation half is now covered by a
-> SQLite-simulated vehicle, which took the red count from 11 to 9 — the cases are `xfail(strict=True)`,
-> so closing a gap makes the suite say so rather than waiting to be asked. No performance number has been measured on the 87 platform. Start with
+> **Status:** Specs 1–8 complete (498 automated tests + 3 model-backed), **plus 1 red case** that
+> encodes what the business workflow still does not meet. The red count went 11 → 9 → 1 as the
+> simulated vehicle, the validation-cause table and the parameter extractors landed; the cases are
+> `xfail(strict=True)`, so closing a gap makes the suite say so rather than waiting to be asked. The
+> one still red: opening and closing a window produce byte-identical confirmations. No performance
+> number has been measured on the 87 platform. Start with
 > **[the Central Model system design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**.
 
 ## Try it yourself
@@ -36,8 +38,8 @@ gate mid-session to compare the two candidate builds against the same car.
 | 1 — user speaks | **upstream** | no audio/ASR here; the Central Model consumes an ASR transcript |
 | 2 — segmented intent recognition | **covered** | multi-intent set-recall 0.819; OOD & context false-action 0.000 |
 | 3 — execute | **covered in simulation** | validation + plan barrier + a SQLite-simulated car whose state each operation actually changes; a refusal writes nothing and is never spoken as success |
-| 4a — report success | **covered** | one composed reply on every path, metric-enforced; 43/92 cards omit the value set (1 red case) |
-| 4b — explain failure cause | **partial** | the car's own refusals are explained (`空调尚未开启。`); the ten *validation* causes are still computed and dropped — `reply_exact_match` **0.081** over 37 annotations (7 red cases) |
+| 4a — report success | **covered** | one composed reply on every path, metric-enforced; 43/92 cards omit the value set (**the 1 red case**) |
+| 4b — explain failure cause | **covered** | all three categories are spoken with their cause — didn't understand, value unusable (`目标温度只能设置在16到32度之间。`), the car refused (`空调尚未开启。`); `reply_cause_coverage` **1.000** over 15 annotations |
 | 87-platform performance | **not benchmarked** | all figures are dev-machine (x86 + discrete GPU) |
 
 ### Scope boundary
@@ -48,7 +50,8 @@ gate mid-session to compare the two candidate builds against the same car.
  └───────┘           └───────────────────────┬──────────────────────────┘          └───────┘
   not here                                   │ execute(ToolCall) -> dict            not here
                                              ▼
-                                    vehicle bus adapter — not here (MockExecutor only)
+                       vehicle bus adapter — not here. Behind the seam: `sim/` (a SQLite
+                       car that really changes state and can refuse) or `MockExecutor`
 ```
 
 ## Why
@@ -95,12 +98,17 @@ false-execution and context false-action at 0.000, and it is also the cheapest o
 
 | arm | LLM | OOD false-exec | context false-action | incorrect-exec | P95 |
 |---|---|---|---|---|---|
-| **C** (recommended) | none | **0.000** | **0.000** | 0.031 | 73 ms |
+| **C** (recommended) | none | **0.000** | **0.000** | **0.000** | 73 ms |
 | C_llm | Qwen3-0.6B on medium band | 0.321 | 0.857 | 0.285 | ~1085 ms |
 
-Arm C_llm buys parameter accuracy (param exact-match 0.72 vs 0.27, e2e 0.62 vs 0.11) at a safety cost
+Arm C_llm buys parameter accuracy (param exact-match 0.72 vs 0.41, e2e 0.62 vs 0.13) at a safety cost
 that is not acceptable for a vehicle without further work. Arm D adds a supervised classifier for no
 measured recall gain and a 184 MB artifact; it should not enter a vehicle image.
+
+Arm C's figures were re-measured on 2026-07-29 after the extractor and negation fixes, which took
+param exact-match 0.27 → **0.41**, e2e 0.11 → **0.13** and incorrect-execution 0.031 → **0.000**
+([report](docs/TEST_REPORT.md)). **Arm C_llm's have not been re-measured since** — its row predates
+those fixes, so read the gap as a ceiling on the difference, not a current reading.
 
 ## The specs
 
@@ -113,12 +121,22 @@ measured recall gain and a 184 MB artifact; it should not enter a vehicle image.
 | **5 — Utterance-level reply** | one spoken `RouteResult.reply` composed from what the router already produced; four contract metrics enforce it every eval run | coverage / single-question / non-empty all **1.000** on both arms; zero routing change (arm C byte-identical to baseline) |
 | **7 — SQLite vehicle simulator** | the DB *is* the car: signal-keyed state, physical limits, preconditions, transactional writes, an operation log — and the ability to **refuse** | operations demonstrably change state (24.0 → 25.0); a refusal changes nothing and is spoken with its cause; red count **11 → 9** |
 | **6 — End-to-end test cases** | 36 e2e cases asserting *both* what was dispatched and the exact reply, 11 of them red (`xfail(strict=True)`); 54 new eval rows carrying the failure taxonomy gold never had | `invalid_no_execution_rate` **1.000** (22 rows) — nothing unusable reaches the vehicle; `reply_exact_match` **0.081** (37 rows) — the measured distance to the workflow; gold metrics byte-identical |
+| **8 — Interactive session** | `python3 -m cli` — type Chinese, watch the four workflow steps run against a session-persistent simulated car; LLM and confidence gate switchable mid-session without resetting the car | no metric: a hand-testing tool, not a shipped path. 37 tests, most over the pure `Turn → text` renderer |
+
+Each row records what that spec measured **when it shipped**, and two have since moved. The e2e suite
+grew 36 → **131** cases while the red count went 11 → **1**. And `reply_exact_match` was joined by
+`reply_cause_coverage` — **1.000** over 15 rows — because the 37 reply annotations are free-form
+Chinese written before any implementation existed: exact-match measures *wording*, cause-coverage
+measures whether the driver is told the *fact* ([TEST_REPORT §6](docs/TEST_REPORT.md)).
 
 Note: the Spec-3 *learned* gate is measured in `RESULTS.md` but is **not wired into any eval arm** —
 all four arms construct the plain threshold `ConfidenceGate`. Treat its frontier as a research result,
 not as shipped behaviour.
 
 Full analysis and the safety/coverage frontier are in **[`docs/superpowers/RESULTS.md`](docs/superpowers/RESULTS.md)**; each spec's design and TDD plan live under `docs/superpowers/specs/` and `docs/superpowers/plans/`.
+`RESULTS.md` records Specs 1–7 as they shipped and stops there — for everything after (the validation
+causes, the extractor and negation fixes, the re-measured arm C) read
+**[`docs/TEST_REPORT.md`](docs/TEST_REPORT.md)**, which also states what the suite does *not* cover.
 
 ## Layout
 
@@ -129,8 +147,13 @@ t2f/          # the shipped runtime. Everything here is reachable from Pipeline.
   actionability · state · plan   # context filter, mock vehicle state, plan barrier (Spec 4)
   reply.py    # utterance-level reply composition (Spec 5)
   execute.py  # MockExecutor — the vehicle-adapter seam, stub only
+  build.py    # the ONE place a Pipeline is assembled — the session and eval arms C/C_llm share it,
+              # so what you try by hand and what the metrics describe cannot drift apart
 sim/          # the simulated vehicle — the thing on the FAR side of the executor seam
   schema.sql · vehicle.py · mapping.py · seed.py · executor.py
+cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/TRYING_IT.md
+  __main__.py · session.py · render.py    # loop · utterance→Turn · pure Turn→text
+              # a dev tool: run from the repo, NOT packaged (pyproject ships t2f/ eval/ sim/)
 research/     # measured, NOT shipped and NOT packaged — see research/README.md
   safety/     # Spec-3 learned confidence gate (no arm constructs it; the plain gate measures better)
   classify/   # Spec-2 char-ngram + embedding classifiers (Arm D only; no measured recall gain)
@@ -141,16 +164,18 @@ data/
               # + generated silver.jsonl + followups.jsonl
   ood/        # 100 out-of-domain / chitchat negative prototypes
 eval/         # all PRD metrics, pluggable arms (C, baseline, C+LLM, D), runner
-              # NOTE: also the only place a Pipeline is constructed — see gap 6 in the system design
-docs/superpowers/  # specs, plans, RESULTS.md
+              # arms C and C_llm now call t2f/build.py; baseline and D stay here — this package
+              # builds experiments, t2f/build.py builds the product (closes gap 6)
+docs/
+  TRYING_IT.md   # the hands-on guide to the interactive session
+  TEST_REPORT.md # the 131 end-to-end cases, what a driver actually hears, and what is NOT covered
+  superpowers/   # specs, plans, RESULTS.md
 ```
 
 ## Setup & test
 
 Core deps: `numpy pyyaml pytest`. Real models add `transformers torch` (embedder + LLM),
 `scikit-learn joblib` (classifier + confidence model), `xgrammar` (constrained decoding).
-(`psutil` is declared in `pyproject.toml` but currently unused — it was intended for the memory
-benchmarking that is still outstanding.)
 
 ```bash
 python3 -m pytest -q            # core suite (no network / no model)
