@@ -1,8 +1,10 @@
 """A Turn becomes the text a person reads. Pure — no pipeline, no car, no I/O.
 
-Every branch here has to produce a line. A span that renders as nothing reads as a bug in
-the car, and an exception raised while rendering would kill the session — which costs a
-60-second model reload — after the work of the turn is already done.
+Every branch here has to produce a line, with one stated exception: a question that IS the
+reply is left to the reply line rather than printed twice (see `_outcome_lines`). Otherwise
+a span that renders as nothing reads as a bug in the car, and an exception raised while
+rendering would kill the session — which costs a 60-second model reload — after the work of
+the turn is already done.
 """
 from __future__ import annotations
 
@@ -16,7 +18,17 @@ def _params(parameters: dict) -> str:
     return "{" + inner + "}"
 
 
-def _outcome_lines(span) -> list[str]:
+def _is_the_reply(question: str, reply: str) -> bool:
+    """Whether this span's question is exactly what the driver hears.
+
+    Terminators are stripped because compose_reply appends one (t2f/reply.py::_sentence), so
+    a question authored without 。 arrives in the reply wearing one and byte equality would
+    miss the duplicate.
+    """
+    return bool(question) and question.rstrip("。！？") == reply.rstrip("。！？")
+
+
+def _outcome_lines(span, reply: str) -> list[str]:
     if span.outcome == "executed":
         if span.deltas:
             return [f"  executed     {d.entity}/{d.attribute}   {d.before} → {d.after}"
@@ -30,7 +42,14 @@ def _outcome_lines(span) -> list[str]:
     if span.outcome == "refused":
         return [f"  refused      vehicle · {span.detail} · nothing changed"]
     if span.outcome == "asked":
-        return [f"  asked        {span.detail}"]
+        # The only branch that can say nothing the reply does not. An out-of-scope utterance
+        # asks the driver to rephrase and that question is the whole reply, so printing it
+        # here too put the same sentence on two lines and read as two separate questions.
+        # compose_reply speaks at most ONE question per utterance, so a second span's
+        # question exists nowhere else and still needs this line.
+        if _is_the_reply(span.detail, reply):
+            return []
+        return [f"  asked        {span.detail}".rstrip()]
     return ["  unresolved   medium band, no model attached"]
 
 
@@ -48,6 +67,6 @@ def render(turn: Turn) -> str:
         if span.escalated and span.band == "medium" and span.outcome != "unresolved":
             band += "  → resolved by LLM"
         lines.append(f"  recognised   {span.function or '—'}{_params(span.parameters)}    {band}")
-        lines.extend(_outcome_lines(span))
+        lines.extend(_outcome_lines(span, turn.reply))
     lines.append(f"  reply        {turn.reply}")
     return "\n".join(lines) + "\n"
