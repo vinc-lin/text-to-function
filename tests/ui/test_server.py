@@ -49,3 +49,43 @@ def test_an_action_that_raises_returns_400_and_keeps_the_session(session):
     status, _, _ = handle_request(session, "POST", "/action/observe", body)
     assert status == 400
     assert handle_request(session, "GET", "/state", b"")[0] == 200
+
+
+def test_the_server_is_not_threaded():
+    """Locked in by a test because the failure is SILENT, not loud.
+
+    sim/vehicle.py opens SQLite with default thread affinity, so a handler on another
+    thread cannot read the car. But ui/state.py wraps each pane defensively, so the
+    exception is swallowed per pane: a threaded server would serve a snapshot showing an
+    empty car and an empty log while perception and rules rendered fine. It would lie
+    rather than break, and nobody would think to look at the server class.
+    """
+    from http.server import HTTPServer, ThreadingHTTPServer
+
+    from ui.server import make_server
+
+    server = make_server(None, port=0)
+    try:
+        assert isinstance(server, HTTPServer)
+        assert not isinstance(server, ThreadingHTTPServer), \
+            "a threaded server silently reports a car that never moved"
+    finally:
+        server.server_close()
+
+
+def test_a_snapshot_from_another_thread_loses_the_car(session):
+    """The evidence for the test above. This is what a threaded server would serve."""
+    import threading
+
+    from ui.state import snapshot
+
+    session.observe("rear_occupant", "child", 0.9)
+    session.handle("好")
+    assert snapshot(session)["car"], "the signal moved on this thread"
+
+    seen = {}
+    t = threading.Thread(target=lambda: seen.update(snapshot(session)))
+    t.start()
+    t.join()
+    assert seen["car"] == [] and seen["log"] == [], "sqlite refused the other thread"
+    assert seen["rules"], "pure-Python panes still render, which is what makes it a lie"

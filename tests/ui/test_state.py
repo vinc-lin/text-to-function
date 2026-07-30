@@ -81,3 +81,31 @@ def test_the_snapshot_never_raises_on_a_half_built_session(session):
     session.scene = None
     s = snapshot(session)
     assert s["perception"] == [] and s["rules"] == []
+
+
+def test_a_rule_carries_the_bands_the_page_draws(session):
+    """The page shows a near-miss as a position between the floor and the threshold. The
+    alternative was regexing `reason`, which scene/rules.py documents as diagnostics for a
+    developer at a terminal and is therefore free to change wording without warning."""
+    session.observe("rear_occupant", "child", 0.6)
+    rule = snapshot(session)["rules"][0]
+    assert rule["floor"] == 0.5 and rule["threshold"] == 0.8
+    assert rule["observed_keys"] == ["inside.rear_occupant"]
+
+
+def test_a_report_with_no_matching_rule_invents_no_bands(session):
+    """observe() records a '—' row when the engine itself raised. It has no bands to draw."""
+    session.scene.facts = None            # make evaluate() blow up inside observe()
+    session.observe("rear_occupant", "child", 0.9)
+    rule = snapshot(session)["rules"][0]
+    assert rule["verdict"] == "error"
+    assert rule["threshold"] is None and rule["observed_keys"] == []
+
+
+def test_the_scene_fallback_flag_is_structured_not_parsed(session):
+    """`mode` joins its parts with ' · ', so a page testing it for 'S_llm' also matches 'S'
+    — the toggle would read as on at exactly the moment the fallback is off."""
+    from scene.llm import FakeSceneLLM
+    assert snapshot(session)["scene_llm"] is False
+    session.attach_scene_llm(FakeSceneLLM([]))
+    assert snapshot(session)["scene_llm"] is True

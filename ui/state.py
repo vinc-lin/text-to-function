@@ -44,6 +44,11 @@ def _mode(session) -> str:
     return session.mode_label()
 
 
+@_pane(lambda: False)
+def _scene_llm(session) -> bool:
+    return session.scene.llm is not None
+
+
 @_pane(lambda: 0.0)
 def _clock_offset(session) -> float:
     return float(session.clock_offset)
@@ -81,10 +86,29 @@ def _car(session) -> list:
 
 @_pane(list)
 def _rules(session) -> list:
-    """What the LAST observation decided, per rule. `explain()` never re-evaluates."""
-    return [{"rule_id": r.rule_id, "verdict": r.verdict, "reason": r.reason,
-             "suppressed_by": r.suppressed_by}
-            for r in session.scene.explain()]
+    """What the LAST observation decided, per rule. `explain()` never re-evaluates.
+
+    `threshold`, `floor` and `observed_keys` come from the rule itself rather than from the
+    reason string. The page draws a near-miss as a POSITION between the floor and the
+    threshold, and the alternative was regexing `reason` — which scene/rules.py documents as
+    diagnostics for a developer at a terminal, and which is therefore free to change wording
+    without warning. Three fields off an object already in hand is cheaper than a parser that
+    breaks silently.
+    """
+    by_id = {r.id: r for r in session.scene.rules}
+    out = []
+    for report in session.scene.explain():
+        rule = by_id.get(report.rule_id)
+        out.append({
+            "rule_id": report.rule_id, "verdict": report.verdict, "reason": report.reason,
+            "suppressed_by": report.suppressed_by,
+            # A report with no matching rule is the "—" row observe() records when the engine
+            # itself raised; it has no bands to draw and must not invent any.
+            "threshold": rule.threshold if rule else None,
+            "floor": rule.floor if rule else None,
+            "observed_keys": list(rule.observed_keys) if rule else [],
+        })
+    return out
 
 
 @_pane(str)
@@ -134,6 +158,10 @@ def _log(session) -> list:
 def snapshot(session) -> dict:
     return {
         "mode": _mode(session),
+        # Structured, not parsed back out of `mode`. The label joins its parts with " · " and
+        # a page testing it for "S_llm" would also match "S" — the toggle would read as on the
+        # moment the scene fallback was off.
+        "scene_llm": _scene_llm(session),
         "clock_offset": _clock_offset(session),
         "perception": _perception(session),
         "car": _car(session),
