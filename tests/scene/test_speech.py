@@ -9,11 +9,16 @@ def test_every_intent_resolves_to_a_sentence():
     assert SPEECH and all(v.strip() for v in SPEECH.values())
 
 
-def test_no_template_speaks_ascii_to_the_driver():
+def test_no_template_speaks_developer_text_to_the_driver():
     """This repo has twice shipped developer text into the cabin (e433e32, 70bfeb5).
-    A table makes the check trivial, so there is no excuse for a third time."""
+    A table makes the check trivial, so there is no excuse for a third time.
+
+    Brackets are in the class alongside letters because an unrendered `{state}` placeholder
+    is the most likely way developer text reaches a driver now that render_response injects
+    one — it would be spoken verbatim, braces and all. Digits are allowed: 三档 and 3档 are
+    both things a car legitimately says."""
     for intent, text in SPEECH.items():
-        assert not re.search(r"[A-Za-z_]", text), f"{intent}: {text}"
+        assert not re.search(r"[A-Za-z_{}\[\]<>]", text), f"{intent}: {text}"
 
 
 def test_every_template_ends_in_a_terminator():

@@ -13,7 +13,6 @@ loses an oblique yes like 开吧 — a cost accepted deliberately, and measured 
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional
 
 from t2f.normalize import normalize
 from t2f.types import ToolCall
@@ -22,8 +21,10 @@ _AFFIRM = frozenset({"好", "好的", "好吧", "可以", "行", "嗯", "嗯嗯"
                      "是", "是的", "对", "没问题", "麻烦你了"})
 _DECLINE = frozenset({"不用", "不要", "不必", "算了", "不了", "没事", "不需要"})
 
-# normalize() folds 。 to . and ！ to !, so terminators are stripped in their ASCII form.
-_STRIP = " .,!?;:、"
+# normalize() folds 。 to . and ！ to ! before we see the text, so only the ASCII forms can
+# reach this strip — including 、, which normalize maps to a comma. Listing the full-width
+# forms here would be dead weight that reads as protection.
+_STRIP = " .,!?;:"
 
 
 class Answer(str, Enum):

@@ -11,7 +11,11 @@ from typing import Any, Optional
 
 class VehicleFacts:
     def __init__(self, car):
-        self.car = car
+        # Bind the reader, not the car. Holding the whole SqliteVehicle would leave
+        # `set_signal` one attribute access away from any rule, which is the write path the
+        # docstring above says must not exist — and a docstring is not an enforcement
+        # mechanism. There is nothing here to write through.
+        self._read = car.get_signal
 
     def signal(self, entity: str, attribute: str) -> Optional[Any]:
-        return self.car.get_signal(entity, attribute)
+        return self._read(entity, attribute)
