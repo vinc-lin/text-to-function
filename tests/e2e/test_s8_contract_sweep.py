@@ -56,7 +56,7 @@ FAILURE = "抱歉，这个操作没能完成。"        # t2f/reply.py::_FAILURE
 ACK = "好的。"                              # t2f/reply.py::_ACK
 TERMINATORS = "。！？"
 
-WINDOW = "已为您调整当前区域车窗状态。"
+WINDOW = "已为您打开当前区域车窗。"
 TEMP25_DRIVER = "已将主驾温度设置为25°C。"
 FAN3 = "已将当前区域风速设置为3档。"
 AC_OFF = "空调尚未开启"                      # sim/seed.py::_PRECONDITIONS
@@ -415,7 +415,7 @@ def test_a_refused_action_in_a_multi_intent_utterance_is_never_confirmed():
     res = pipe.route("开车窗，主驾温度调到25度")
 
     assert WINDOW not in res.reply
-    assert "已为您调整" not in res.reply                 # no confirmation of any window kind
+    assert "已为您" not in res.reply                     # no confirmation of any window kind
     assert all(cl.response is None for cl in res.clauses if cl.exec_error is not None)
 
 

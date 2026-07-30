@@ -37,14 +37,14 @@ def test_golden_canonical_three_actions():
         _executed("set_window_child_lock", {"enabled": True}),
         _executed("set_window_position", {"percent": 40, "position": "driver"}),
         _executed("set_sunroof_position", {"percent": 50}),
-    ) == "已为您调整车窗儿童锁状态。已将主驾车窗开度调整到40%。已将天窗开度调整到50%。"
+    ) == "已为您打开车窗儿童锁。已将主驾车窗开度调整到40%。已将天窗开度调整到50%。"
 
 
 def test_golden_partial_failure():
     assert _reply(
         _executed("set_window_child_lock", {"enabled": True}),
         _asked("关于「温度调高」我还需要确认一下，请补充信息。"),
-    ) == "已为您调整车窗儿童锁状态。关于「温度调高」我还需要确认一下，请补充信息。"
+    ) == "已为您打开车窗儿童锁。关于「温度调高」我还需要确认一下，请补充信息。"
 
 
 def test_golden_single_temperature_no_position():

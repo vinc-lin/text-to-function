@@ -6,12 +6,14 @@ function calls (name + validated parameters), dispatches them, and returns **one
 router. Targets on-device deployment (Qualcomm SA8797 / "87 platform", Qwen3-Embedding-0.6B +
 Qwen3-0.6B).
 
-> **Status:** Specs 1–8 complete (498 automated tests + 3 model-backed), **plus 1 red case** that
-> encodes what the business workflow still does not meet. The red count went 11 → 9 → 1 as the
-> simulated vehicle, the validation-cause table and the parameter extractors landed; the cases are
-> `xfail(strict=True)`, so closing a gap makes the suite say so rather than waiting to be asked. The
-> one still red: opening and closing a window produce byte-identical confirmations. No performance
-> number has been measured on the 87 platform. Start with
+> **Status:** Specs 1–9 complete (624 automated tests + 3 model-backed), and **no red cases left**.
+> The red count went 11 → 9 → 1 → 0 as the simulated vehicle, the validation-cause table, the
+> parameter extractors and finally the boolean confirmations landed; the cases were
+> `xfail(strict=True)`, so closing a gap made the suite say so rather than waiting to be asked. The
+> last one closed on 2026-07-30 — opening and closing a window produced byte-identical
+> confirmations, and 38 of the 39 boolean cards now state their direction (`已为您打开当前区域车窗。`;
+> the exception, `spray_washer`, is a momentary trigger rather than a state). No
+> performance number has been measured on the 87 platform. Start with
 > **[the Central Model system design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**.
 
 ## Try it yourself
@@ -38,7 +40,7 @@ gate mid-session to compare the two candidate builds against the same car.
 | 1 — user speaks | **upstream** | no audio/ASR here; the Central Model consumes an ASR transcript |
 | 2 — segmented intent recognition | **covered** | multi-intent set-recall 0.819; OOD & context false-action 0.000 |
 | 3 — execute | **covered in simulation** | validation + plan barrier + a SQLite-simulated car whose state each operation actually changes; a refusal writes nothing and is never spoken as success |
-| 4a — report success | **covered** | one composed reply on every path, metric-enforced; 43/92 cards omit the value set (**the 1 red case**) |
+| 4a — report success | **covered** | one composed reply on every path, metric-enforced; a boolean confirmation states which way it went (`已为您打开车窗儿童锁。` / `已为您关闭车窗儿童锁。`) — that was the last red case, closed 2026-07-30. 10 of 92 cards still confirm without naming the value chosen: nine enum switches (`已切换空调模式。`) and `spray_washer`, a momentary trigger rather than a state |
 | 4b — explain failure cause | **covered** | all three categories are spoken with their cause — didn't understand, value unusable (`目标温度只能设置在16到32度之间。`), the car refused (`空调尚未开启。`); `reply_cause_coverage` **1.000** over 15 annotations |
 | 87-platform performance | **not benchmarked** | all figures are dev-machine (x86 + discrete GPU) |
 
@@ -110,6 +112,12 @@ param exact-match 0.27 → **0.41**, e2e 0.11 → **0.13** and incorrect-executi
 ([report](docs/TEST_REPORT.md)). **Arm C_llm's have not been re-measured since** — its row predates
 those fixes, so read the gap as a ceiling on the difference, not a current reading.
 
+**Arms S and S_llm are not a third and fourth candidate here.** They score the Scene Engine (Spec 9),
+a second top-level entry point that never routes an utterance — a build picks one row from the table
+above *and*, separately, whether the proactive layer ships with its fallback attached. `scene/` has
+no path into `Pipeline.route()`, so attaching or detaching the scene fallback cannot move any number
+in that table.
+
 ## The specs
 
 | Spec | What | Key result (gold test split) |
@@ -122,9 +130,10 @@ those fixes, so read the gap as a ceiling on the difference, not a current readi
 | **7 — SQLite vehicle simulator** | the DB *is* the car: signal-keyed state, physical limits, preconditions, transactional writes, an operation log — and the ability to **refuse** | operations demonstrably change state (24.0 → 25.0); a refusal changes nothing and is spoken with its cause; red count **11 → 9** |
 | **6 — End-to-end test cases** | 36 e2e cases asserting *both* what was dispatched and the exact reply, 11 of them red (`xfail(strict=True)`); 54 new eval rows carrying the failure taxonomy gold never had | `invalid_no_execution_rate` **1.000** (22 rows) — nothing unusable reaches the vehicle; `reply_exact_match` **0.081** (37 rows) — the measured distance to the workflow; gold metrics byte-identical |
 | **8 — Interactive session** | `python3 -m cli` — type Chinese, watch the four workflow steps run against a session-persistent simulated car; LLM and confidence gate switchable mid-session without resetting the car | no metric: a hand-testing tool, not a shipped path. 37 tests, most over the pure `Turn → text` renderer |
+| **9 — Scene Engine** | a **proactive subsystem beside the router, not a router change**: perception → declarative rules → arbitration → at most a spoken question, with the driver's consent the only path to the car; constrained LLM fallback for near-misses; its own arms **S** / **S_llm** | arm S (rules only): `scene_false_speech_rate` **0.000** (9 silent rows), `scene_recall` **1.000** (4 speaking rows), `scene_false_consent_rate` **0.000** (4 rows), `avg_llm_calls_per_event` **0.000** (13 rows). Arm S_llm: the same three, `avg_llm_calls_per_event` **0.1538** (2 decodes over 13 rows). Gold is hand-authored — it encodes our beliefs about perception, not measured perception |
 
 Each row records what that spec measured **when it shipped**, and two have since moved. The e2e suite
-grew 36 → **131** cases while the red count went 11 → **1**. And `reply_exact_match` was joined by
+grew 36 → **131** cases while the red count went 11 → **0**. And `reply_exact_match` was joined by
 `reply_cause_coverage` — **1.000** over 15 rows — because the 37 reply annotations are free-form
 Chinese written before any implementation existed: exact-match measures *wording*, cause-coverage
 measures whether the driver is told the *fact* ([TEST_REPORT §6](docs/TEST_REPORT.md)).
@@ -151,9 +160,13 @@ t2f/          # the shipped runtime. Everything here is reachable from Pipeline.
               # so what you try by hand and what the metrics describe cannot drift apart
 sim/          # the simulated vehicle — the thing on the FAR side of the executor seam
   schema.sql · vehicle.py · mapping.py · seed.py · executor.py
+scene/        # the proactive Scene Engine (Spec 9) — a SECOND top-level entry, packaged like t2f/
+  context.py · facts.py · rules.py · engine.py · consent.py · llm.py · speech.py
+              # perception in, at most a question out; consent is the only path to the car, and
+              # the two subsystems meet only at execute(ToolCall). It cannot reach Pipeline.route()
 cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/TRYING_IT.md
   __main__.py · session.py · render.py    # loop · utterance→Turn · pure Turn→text
-              # a dev tool: run from the repo, NOT packaged (pyproject ships t2f/ eval/ sim/)
+              # a dev tool: run from the repo, NOT packaged (pyproject ships t2f/ eval/ sim/ scene/)
 research/     # measured, NOT shipped and NOT packaged — see research/README.md
   safety/     # Spec-3 learned confidence gate (no arm constructs it; the plain gate measures better)
   classify/   # Spec-2 char-ngram + embedding classifiers (Arm D only; no measured recall gain)
@@ -162,8 +175,10 @@ data/
   catalog/    # 92 function cards across 10 domains (YAML)
   eval/       # hand-verified gold.jsonl (328) + context_negatives.jsonl (14)
               # + generated silver.jsonl + followups.jsonl
+              # + scenes.jsonl (13) — hand-authored scene events, beliefs about perception
   ood/        # 100 out-of-domain / chitchat negative prototypes
 eval/         # all PRD metrics, pluggable arms (C, baseline, C+LLM, D), runner
+              # run_scene_eval.py + scene_metrics.py — the S / S_llm arms, a separate runner
               # arms C and C_llm now call t2f/build.py; baseline and D stay here — this package
               # builds experiments, t2f/build.py builds the product (closes gap 6)
 docs/
@@ -193,6 +208,10 @@ python3 -m eval.run_eval --arm C        --dataset data/eval/gold.jsonl --calibra
 python3 -m research.classify.train --embedding                                            # Spec 2: train classifiers
 python3 -m eval.run_eval --arm C_llm    --dataset data/eval/gold.jsonl --calibrate   # Spec 2: + LLM fallback
 python3 -m eval.run_eval --arm D        --dataset data/eval/gold.jsonl --calibrate   # Spec 2: classifier + LLM
+
+# The Scene Engine has its own runner and its own gold file; no embedder on this path:
+python3 -m eval.run_scene_eval --arm S        # Spec 9: rules only
+python3 -m eval.run_scene_eval --arm S_llm    # Spec 9: + the constrained fallback
 ```
 
 The real embedder/LLM run via `transformers` (GPU if available). Note: on some boxes a mismatched

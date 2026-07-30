@@ -36,6 +36,9 @@ Type a command a driver might say. Every turn shows all four steps of the workfl
 
 The prompt always states which system you are talking to, so you never have to remember.
 
+A turn the car starts by itself looks different — a `scene` line instead of `recognised`, because
+nobody said anything. That is `/scene`, and it has [its own section](#the-fifth-thing-let-the-car-start-the-conversation).
+
 ### The five things a turn can do
 
 | | meaning |
@@ -79,6 +82,7 @@ The second command has nothing to resolve against unless the first one really ch
 | `/gate shipped\|permissive` | switch the confidence thresholds |
 | `/car` | every signal that differs from the seeded car |
 | `/log` | recent operations, and what the car said about each |
+| `/scene <key>=<value> [conf=]` | one perception event, as if the cabin camera saw it — see below |
 | `/reset` | fresh car |
 | `/help`, `/quit` | |
 
@@ -121,7 +125,7 @@ Try the same sentence four ways. The differences are the whole point of the tool
   executed     window.all/window_position   50 → 100
   recognised   set_fan_speed{level: 3}    band=HIGH
   executed     climate.all/fan_speed   4 → 3
-  reply        已为您调整当前区域车窗状态。已将当前区域风速设置为3档。
+  reply        已为您打开当前区域车窗。已将当前区域风速设置为3档。
 ```
 
 Two actions, two signals, and exactly one thing said to the driver.
@@ -157,17 +161,97 @@ Now the same words with the LLM on:
 
 This is not a bug in the session; it is the system, and the session is how you find it. The
 fallback model decodes under a JSON schema that only permits values in range, so it *cannot* emit
-99 and it *cannot* say "impossible". It emits something legal. Two more, measured in the same run:
+99 and it *cannot* say "impossible". It emits something legal. Two more of the same shape, measured:
 
 | you say | LLM emits | what actually happens |
 |---|---|---|
-| `风速调到20档` | `level: 2` | fan set to 2, announced as success. Arm C rejects: `风速档位只能设置在1到7档之间` |
+| `屏幕亮度调到200%` | `percent: 20` | brightness set to 20%, announced as success. Arm C rejects: `屏幕亮度只能设置在0到100%之间` |
 | `主驾温度再调高一点` | `temperature: 32` | jumps 25 → 32 rather than one step |
+
+`风速调到20档` used to belong in that table and no longer does: it now matches at HIGH confidence, so
+the deterministic extractor fills it and validation rejects the 20 before any model is consulted.
+Both arms answer `风速档位只能设置在1到7档之间。`. The substitution only happens in the MEDIUM band —
+which is exactly the band the LLM exists to resolve.
 
 Arm C is silent-substitution-free by construction: it either acts on what you said or tells you why
 it cannot. Arm C_llm does far more (`e2e` 0.62 against 0.13) and sometimes does something you did
 not ask for. **That trade is the open question in this project, and four minutes here will tell you
 more about it than the metrics will.**
+
+---
+
+## The fifth thing: let the car start the conversation
+
+Everything above begins with you typing a command. `/scene` starts from the other end — it hands the
+system one **perception event**, the kind a cabin camera would produce, and lets it decide whether
+that is worth saying anything about. Nothing else in this session is proactive.
+
+Type it in three beats. This is a real transcript, models loaded, fresh car:
+
+```
+[C_llm · shipped] > /scene rear_occupant=child conf=0.9
+  scene        rear_child_window_lock
+  reply        后排有小孩，要打开儿童锁吗？
+
+[C_llm · shipped] > 好
+
+  scene        consent
+  executed     window.all/window_child_lock   False → True
+  reply        已为您打开车窗儿童锁。
+
+[C_llm · shipped] > 开车窗
+
+  recognised   open_window{is_open: True}    band=MEDIUM  → resolved by LLM
+  refused      vehicle · 车窗儿童锁已开启 · nothing changed
+  reply        车窗儿童锁已开启。
+```
+
+**Read the third beat again.** You asked to open a window and the car refused — because of something
+*it* did, two turns earlier, after asking your permission. A proactive action changed what a later
+driver command is allowed to do, and the refusal came back with its reason rather than a shrug. Both
+entry points, one car:
+
+```
+[C_llm · shipped] > /car
+  window.all/window_child_lock = True
+[C_llm · shipped] > /log
+  set_window_child_lock    executed
+  open_window              refused · precondition_failed · 车窗儿童锁已开启
+```
+
+The scene-initiated write is in the same operation log as the one you typed, because it went through
+the same executor.
+
+Four things worth knowing while you play with it:
+
+- **The engine never moves the car on its own.** The most a scene can do is ask. `好` is what
+  executes; without it nothing happens, and the question expires by itself after 30 seconds.
+- **`好` has to be the whole utterance.** Consent is exact membership in a closed list, never a
+  substring test. Type `好像有点热` after the question and it is routed as an ordinary command — the
+  pending question is dropped and the lock stays where it was:
+
+  ```
+  [C_llm · shipped] > 好像有点热
+
+    recognised   set_temperature    band=MEDIUM  → resolved by LLM
+    reply        抱歉，我不太确定您的意思，可以换个说法吗？
+
+  [C_llm · shipped] > /car
+    (the car is as it was seeded)
+  ```
+
+  A command must never be mistakable for consent, and `好` is inside `好像` — a substring test would
+  have opened the lock here.
+- **`conf=` is the perception confidence**, and this rule fires at 0.80. `/scene rear_occupant=child
+  conf=0.6` prints `scene —` and `reply —  (nothing spoken)`: below the threshold but above the
+  floor, it is a *near-miss*, which is the fallback model's business and never the car's.
+- **Silence is the normal answer.** The session attaches no scene fallback model, so a near-miss or
+  an observation no rule anticipated — `/scene driver_state=drowsy conf=0.9` — is silence here too.
+  It prints as a decision rather than a blank line so you can tell it apart from a bug.
+
+Only one scene exists so far — a child in the rear with the window child lock off — so
+`rear_occupant=child` is the single event with anything to say. That is the whole shipped rule set,
+not a sample of it.
 
 ---
 
@@ -185,6 +269,10 @@ LOW, so out-of-scope input gets a parameter question instead of a refusal.
 
 **The car is a simulation.** `sim/` is a SQLite stand-in behind the same seam a real vehicle bus
 adapter would use. Preconditions and physical limits are modelled; a real car is not.
+
+**And so is the perception.** `/scene` is you typing what a cabin camera would have reported. There
+is no camera and no vision model here; the scene gold file is hand-authored the same way, so
+`scene_recall 1.000` measures agreement with our own beliefs about what perception would say.
 
 **There is no speech.** Input is typed and output is text. ASR and TTS belong to the surrounding
 voice stack, not to this repo.

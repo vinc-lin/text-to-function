@@ -2,7 +2,7 @@
 from .conftest import build_pipeline
 from .doubles import FailingExecutor
 
-WINDOW = "已为您调整当前区域车窗状态。"
+WINDOW = "已为您打开当前区域车窗。"
 TEMP25 = "已将当前区域温度设置为25°C。"
 
 

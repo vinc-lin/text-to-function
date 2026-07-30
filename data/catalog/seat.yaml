@@ -218,7 +218,7 @@ functions:
     hard_negatives:
       - 靠背往后放倒
       - 打开后备箱
-    response_template: "已为您调整{position}后排座椅折叠状态。"
+    response_template: "已为您{state}{position}后排座椅。"
 
   - name: set_easy_entry
     description: 打开或关闭上下车便捷进出功能，上车时座椅自动后移
@@ -237,4 +237,4 @@ functions:
     hard_negatives:
       - 座椅往前移
       - 恢复我的座椅记忆
-    response_template: "已为您调整座椅便捷进出功能状态。"
+    response_template: "已为您{state}座椅便捷进出功能。"

@@ -18,7 +18,7 @@ functions:
     hard_negatives:
       - 打开天窗
       - 打开后备箱
-    response_template: "已为您调整{position}车窗状态。"
+    response_template: "已为您{state}{position}车窗。"
 
   - name: set_window_position
     description: 将车窗调整到指定开度百分比，可指定车窗位置
@@ -59,7 +59,7 @@ functions:
     hard_negatives:
       - 打开车窗
       - 打开天窗遮阳帘
-    response_template: "已为您调整天窗状态。"
+    response_template: "已为您{state}天窗。"
 
   - name: set_sunroof_position
     description: 将天窗调整到指定开度百分比
@@ -97,7 +97,7 @@ functions:
     hard_negatives:
       - 打开天窗
       - 打开内循环
-    response_template: "已为您调整天窗通风状态。"
+    response_template: "已为您{state}天窗通风。"
 
   - name: open_sunshade
     description: 打开或关闭天窗遮阳帘
@@ -116,7 +116,7 @@ functions:
     hard_negatives:
       - 打开天窗
       - 打开车窗
-    response_template: "已为您调整天窗遮阳帘状态。"
+    response_template: "已为您{state}天窗遮阳帘。"
 
   - name: set_window_child_lock
     description: 打开或关闭车窗儿童锁
@@ -137,7 +137,7 @@ functions:
     hard_negatives:
       - 打开车门儿童锁
       - 打开后排车窗
-    response_template: "已为您调整车窗儿童锁状态。"
+    response_template: "已为您{state}车窗儿童锁。"
 
   - name: set_rain_close_window
     description: 打开或关闭雨天自动关窗功能
@@ -156,4 +156,4 @@ functions:
     hard_negatives:
       - 关闭车窗
       - 打开内循环
-    response_template: "已为您调整雨天自动关窗状态。"
+    response_template: "已为您{state}雨天自动关窗功能。"

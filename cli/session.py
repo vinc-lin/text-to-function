@@ -8,12 +8,16 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import json
+import time as _time
 
 from t2f.build import build_pipeline
 from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
 from t2f.gate import Thresholds
 from t2f.types import LLMResult, ToolCall
+from scene.context import Observation
+from scene.engine import SceneEngine
+from scene.facts import VehicleFacts
 from sim.executor import SqliteExecutor
 from sim.mapping import resolve_writes
 from sim.seed import seed_from_catalog
@@ -50,6 +54,10 @@ class Turn:
     spans: list = field(default_factory=list)
     reply: str = ""
     error: Optional[str] = None
+    # Last and defaulted: every existing construction of a Turn, in code and in tests, must
+    # keep meaning what it meant. A scene turn has no spans — nobody said anything.
+    scene: str = ""
+    deltas: list = field(default_factory=list)
 
 
 class Session:
@@ -61,7 +69,7 @@ class Session:
     # --- construction ------------------------------------------------------------------
     @classmethod
     def build(cls, *, fake=False, llm=True, gate="shipped", db=":memory:",
-              catalog="data/catalog", config_path="config.yaml"):
+              catalog="data/catalog", config_path="config.yaml", scene_llm=None):
         cards = load_catalog(catalog)
         config = Config.default() if fake else Config.load(config_path)
         embedder = cls._embedder(config, fake)
@@ -75,6 +83,12 @@ class Session:
                               ood_texts=ood,
                               thresholds=PERMISSIVE if gate == "permissive" else None)
         session = cls(pipe, car, executor, cards, config, fake=fake, llm=llm, gate=gate)
+        # The car and the executor are shared, not copied. A scene reasoning about its own
+        # vehicle could not see what the driver's own commands did, and would ask to open a
+        # lock that is already open — and its consent would write to a car nobody is driving.
+        session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
+                                    facts=VehicleFacts(car), executor=executor,
+                                    llm=scene_llm)
         session._seeded = session._snapshot()      # baseline for /car
         return session
 
@@ -106,19 +120,43 @@ class Session:
             self.cards, self.pipeline.embedder, self.config, llm_client=client,
             executor=self.executor, ood_texts=ood,
             thresholds=PERMISSIVE if self.gate == "permissive" else None)
+        # `self.scene` is deliberately untouched. A mode switch replaces the router, and the
+        # point of the switch is to type the same words twice against the same car; a pending
+        # question belongs to the conversation, not to the router configuration, so /llm off
+        # between the question and the 好 must not swallow the answer.
 
     # --- one turn ----------------------------------------------------------------------
+    OBSERVATION_TTL = 300.0
+
+    def observe(self, key: str, value, confidence: float = 0.9,
+                source: str = "cabin_cam") -> Turn:
+        """One perception event in, one Turn out — the scene analogue of handle()."""
+        now = _time.monotonic()
+        obs = Observation(f"inside.{key}", value, confidence, source, now, self.OBSERVATION_TTL)
+        before = self._snapshot()
+        outcome = self.scene.observe(obs, now, question_open=False)
+        return Turn(utterance=f"[scene] {key}={value}", reply=outcome.speech,
+                    scene=outcome.scene or "—", deltas=self._deltas_since(before))
+
     def handle(self, utterance: str) -> Turn:
         before = self._snapshot()
         try:
+            consent = self.scene.resolve(utterance, _time.monotonic())
+            if consent.answered:
+                # The driver was answering the car, not commanding it. Routing these words
+                # would treat 好 as an utterance to match against 92 functions.
+                return Turn(utterance=utterance, reply=consent.speech, scene="consent",
+                            deltas=self._deltas_since(before))
             result = self.pipeline.route(utterance)
         except Exception as exc:                      # a crash costs a 60s reload; survive it
             return Turn(utterance=utterance, error=f"{type(exc).__name__}: {exc}")
-        after = self._snapshot()
-        deltas = [Delta(e, a, before.get((e, a)), v) for (e, a), v in after.items()
-                  if before.get((e, a)) != v]
+        deltas = self._deltas_since(before)
         return Turn(utterance=utterance, reply=result.reply,
                     spans=[self._span(cl, deltas) for cl in result.clauses])
+
+    def _deltas_since(self, before: dict) -> list:
+        return [Delta(e, a, before.get((e, a)), v) for (e, a), v in self._snapshot().items()
+                if before.get((e, a)) != v]
 
     def _span(self, clause_result, deltas) -> SpanOutcome:
         tc = clause_result.tool_call
@@ -202,6 +240,11 @@ class Session:
         self.car.conn.commit()
         seed_from_catalog(self.car, self.cards)
         self._seeded = self._snapshot()
+        # The scene engine has to forget too. A pending consent asked about the old car would
+        # otherwise be answerable against the new one — 好 after a reset would re-open a lock
+        # nobody was asked about — and a cooldown carried across would silence a rule for a
+        # vehicle it never spoke to.
+        self.scene.reset()
 
     def mode_label(self) -> str:
         parts = ["C_llm" if self.llm else "C", self.gate]

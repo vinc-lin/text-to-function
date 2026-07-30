@@ -36,7 +36,7 @@ functions:
     hard_negatives:
       - 音量调到最小
       - 暂停播放
-    response_template: "已为您调整静音状态。"
+    response_template: "已为您{state}静音模式。"
 
   - name: play_music
     description: 播放音乐，可指定歌曲、歌手或歌单
@@ -223,4 +223,4 @@ functions:
     hard_negatives:
       - 下一首
       - 继续播放
-    response_template: "已为您调整随机播放状态。"
+    response_template: "已为您{state}随机播放。"

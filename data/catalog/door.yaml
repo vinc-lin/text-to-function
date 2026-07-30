@@ -55,7 +55,7 @@ functions:
     hard_negatives:
       - 打开天窗
       - 打开充电口
-    response_template: "已为您调整后备箱状态。"
+    response_template: "已为您{state}后备箱。"
 
   - name: open_charge_port
     description: 打开或关闭充电口盖
@@ -74,7 +74,7 @@ functions:
     hard_negatives:
       - 打开油箱盖
       - 打开后备箱
-    response_template: "已为您调整充电口盖状态。"
+    response_template: "已为您{state}充电口盖。"
 
   - name: open_fuel_cap
     description: 打开油箱盖
@@ -93,7 +93,7 @@ functions:
     hard_negatives:
       - 打开充电口
       - 打开后备箱
-    response_template: "已为您调整油箱盖状态。"
+    response_template: "已为您{state}油箱盖。"
 
   - name: set_door_child_lock
     description: 打开或关闭车门儿童安全锁
@@ -112,7 +112,7 @@ functions:
     hard_negatives:
       - 打开车窗儿童锁
       - 锁车门
-    response_template: "已为您调整车门儿童锁状态。"
+    response_template: "已为您{state}车门儿童锁。"
 
   - name: open_door
     description: 打开或关闭电动车门，可指定位置
@@ -132,7 +132,7 @@ functions:
     hard_negatives:
       - 打开后备箱
       - 解锁车门
-    response_template: "已为您调整{position}车门状态。"
+    response_template: "已为您{state}{position}车门。"
 
   - name: set_auto_lock
     description: 打开或关闭行车自动落锁功能
@@ -151,4 +151,4 @@ functions:
     hard_negatives:
       - 锁车门
       - 打开车门儿童锁
-    response_template: "已为您调整行车自动落锁状态。"
+    response_template: "已为您{state}行车自动落锁。"
