@@ -14,6 +14,7 @@ HELP = """
   /gate shipped|permissive   switch the confidence thresholds
   /car                       signals that differ from the seeded car
   /log                       recent operations, and what the car said
+  /scene <key>=<value> [conf=]   one perception event, as if the cabin camera saw it
   /reset                     fresh car
   /help, /quit
 """
@@ -31,6 +32,28 @@ def _print_log(session):
     for row in reversed(session.car.recent_operations(15)):
         cause = f" · {row['error']} · {row['detail']}" if row["error"] else ""
         print(f"  {row['function']:24s} {row['outcome']}{cause}")
+
+
+_SCENE_USAGE = "  usage: /scene <key>=<value> [conf=0.9]"
+
+
+def _scene(session, parts) -> None:
+    """One perception event, typed by hand as if the cabin camera had produced it."""
+    if not parts or "=" not in parts[0]:
+        print(_SCENE_USAGE)
+        return
+    conf = 0.9
+    for extra in parts[1:]:
+        if extra.startswith("conf="):
+            try:
+                conf = float(extra.split("=", 1)[1])
+            except ValueError:
+                # A mistyped confidence must not raise out of the loop: the session holds the
+                # car and the models, and losing it to a typo costs a 60-second reload.
+                print(_SCENE_USAGE)
+                return
+    key, _, value = parts[0].partition("=")
+    print(render(session.observe(key, value, confidence=conf)))
 
 
 def _command(session, line: str) -> bool:
@@ -51,6 +74,8 @@ def _command(session, line: str) -> bool:
         _print_car(session)
     elif name == "/log":
         _print_log(session)
+    elif name == "/scene":
+        _scene(session, parts[1:])
     elif name == "/reset":
         session.reset()
         print("  → fresh car")

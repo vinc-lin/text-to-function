@@ -5,6 +5,10 @@ reply is left to the reply line rather than printed twice (see `_outcome_lines`)
 a span that renders as nothing reads as a bug in the car, and an exception raised while
 rendering would kill the session — which costs a 60-second model reload — after the work of
 the turn is already done.
+
+A scene turn is the third shape, alongside an error and a routed utterance: it names the
+scene and shows what moved, and it has no spans because nothing was recognised — nobody
+said anything.
 """
 from __future__ import annotations
 
@@ -56,6 +60,11 @@ def _outcome_lines(span, reply: str) -> list[str]:
 def render(turn: Turn) -> str:
     if turn.error:
         return f"  error        {turn.error}\n"
+    if turn.scene:
+        lines = [f"  scene        {turn.scene}"]
+        lines += [f"  executed     {d.entity}/{d.attribute}   {d.before} → {d.after}"
+                  for d in turn.deltas]
+        return "\n".join(lines + [f"  reply        {turn.reply}"]) + "\n"
     lines = []
     for span in turn.spans:
         band = f"band={(span.band or '?').upper()}"
