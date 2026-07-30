@@ -173,7 +173,24 @@ class Session:
 
     def observe(self, key: str, value, confidence: float = 0.9,
                 source: str = "cabin_cam", ttl: Optional[float] = None) -> Turn:
-        """One perception event in, one Turn out — the scene analogue of handle()."""
+        """One perception event in, one Turn out — the scene analogue of handle().
+
+        Validated here rather than in each caller, because the terminal and the browser are
+        two doors onto one session and a rule that held at only one of them is not a rule.
+
+        The confidence range is the load-bearing check. Every rule's `floor` and `threshold`
+        live in [0, 1], so an observation at 7.0 clears any band trivially — the instrument
+        would report a confident MATCH built on a number the design has no meaning for, which
+        is worse than refusing the input.
+        """
+        if not str(key).strip():
+            raise ValueError("an observation needs a key")
+        if str(value).strip() == "":
+            raise ValueError("an observation needs a value")
+        if not 0.0 <= float(confidence) <= 1.0:
+            raise ValueError(f"confidence must be between 0 and 1, got {confidence}")
+        if ttl is not None and float(ttl) <= 0:
+            raise ValueError(f"ttl must be positive, got {ttl}")
         now = self._now()
         # The design namespaces keys inside. / outside. / vehicle., and prefixing every key
         # unconditionally made two of those three unreachable — there was no way to state an
