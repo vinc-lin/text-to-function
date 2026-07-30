@@ -2,7 +2,7 @@
 import pytest
 
 from scene.context import Observation, SceneContext
-from scene.rules import Observed, Rule, Signal, Verdict, evaluate, RULES
+from scene.rules import Observed, Rule, Signal, Verdict, evaluate, evaluate_explained, RULES
 from t2f.types import ToolCall
 
 RULE = Rule(
@@ -82,3 +82,42 @@ def test_the_shipped_rule_set_is_not_empty_and_every_rule_is_well_formed():
 
 def test_observed_keys_lists_only_perception_conditions():
     assert RULE.observed_keys == ("inside.rear_occupant",)
+
+
+# --- the verdict carries its reason -------------------------------------------------------
+
+def test_a_rejection_names_the_signal_that_already_holds():
+    """REJECT with no detail renders as 'nothing happened', which is what the display
+    exists to stop saying."""
+    verdict, why = evaluate_explained(RULE, _ctx(0.9), _facts(True), now=100.0)
+    assert verdict is Verdict.REJECT
+    assert "window.all/window_child_lock" in why and "True" in why
+
+
+def test_a_near_miss_names_the_confidence_and_the_band():
+    verdict, why = evaluate_explained(RULE, _ctx(0.62), _facts(False), now=100.0)
+    assert verdict is Verdict.NEAR_MISS
+    assert "0.62" in why and "0.80" in why
+
+
+def test_a_below_floor_observation_says_it_was_below_the_floor():
+    verdict, why = evaluate_explained(RULE, _ctx(0.40), _facts(False), now=100.0)
+    assert verdict is Verdict.NOT_APPLICABLE
+    assert "0.40" in why and "0.50" in why
+
+
+def test_a_missing_observation_says_which_key_is_missing():
+    verdict, why = evaluate_explained(RULE, SceneContext(), _facts(False), now=100.0)
+    assert verdict is Verdict.NOT_APPLICABLE
+    assert "inside.rear_occupant" in why
+
+
+def test_a_match_explains_itself_too():
+    verdict, why = evaluate_explained(RULE, _ctx(0.9), _facts(False), now=100.0)
+    assert verdict is Verdict.MATCH and why
+
+
+def test_evaluate_still_returns_a_bare_verdict():
+    """The engine's hot path does not need the string, and every existing caller passes
+    through it."""
+    assert evaluate(RULE, _ctx(0.9), _facts(False), now=100.0) is Verdict.MATCH
