@@ -8,7 +8,7 @@ Everything degrades to silence: an exception, a missing model, a proposal that f
 validation. A system nobody asked to speak has silence as its safe default.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from t2f.respond import render_response
@@ -150,8 +150,30 @@ class SceneEngine:
             # Highest priority wins; ties break by declaration order, so the outcome does not
             # depend on dict ordering or on a clock.
             best = sorted(matched, key=lambda r: (-r.priority, self.rules.index(r)))[0]
-            return self._fire(best, now, question_open=question_open)
+            for loser in matched:
+                if loser is not best:
+                    self._amend(loser.id, f"outranked by {best.id}")
+            outcome = self._fire(best, now, question_open=question_open)
+            if outcome is NO_ACTION:
+                # _fire declined after the reports were written. question_open was already
+                # recorded by _suppressor, so the only cause left is a proposal that failed
+                # validation — and "match" printed next to silence with no reason beside it
+                # is precisely the display defect this recording exists to remove.
+                self._amend(best.id, "proposal failed validation")
+            return outcome
         return self._fallback(verdicts, now, question_open=question_open)
+
+    def _amend(self, rule_id: str, suppressed_by: str) -> None:
+        """Fill in a suppressor discovered after the reports were written.
+
+        Fills an EMPTY one only. A reason already recorded by `_suppressor` is the earlier
+        and more specific cause; overwriting it would report the second thing that would have
+        stopped the rule rather than the first thing that did.
+        """
+        self._last_reports = [
+            replace(r, suppressed_by=suppressed_by)
+            if r.rule_id == rule_id and not r.suppressed_by else r
+            for r in self._last_reports]
 
     def _suppressor(self, rule, now: float, *, question_open: bool) -> str:
         """Why a matched rule would not speak — "" when nothing stops it.

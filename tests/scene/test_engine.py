@@ -406,3 +406,48 @@ def test_the_fallback_note_says_when_the_budget_blocked_it(cards):
     eng.observe(_child(confidence=0.62, at=100.0), now=100.0)
     eng.observe(_child(confidence=0.62, at=101.0), now=101.0)
     assert "budget" in eng.fallback_note()
+
+
+def test_a_rule_that_lost_arbitration_says_who_beat_it(cards):
+    """A MATCH sitting next to silence with no reason beside it reads as a bug in the car.
+    Losing to a higher-priority rule is a perfectly good reason and must be said."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    loud = dataclasses.replace(REAR_CHILD_WINDOW_LOCK, id="loud", priority=99)
+    quiet = dataclasses.replace(REAR_CHILD_WINDOW_LOCK, id="quiet", priority=1)
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(quiet, loud))
+    eng.observe(_child(), now=100.0)
+    by_id = {r.rule_id: r for r in eng.explain()}
+    assert by_id["loud"].suppressed_by == ""
+    assert by_id["quiet"].suppressed_by == "outranked by loud"
+
+
+def test_a_rule_whose_proposal_will_not_validate_says_so(cards):
+    """The contract sweep keeps every shipped rule's proposal valid, so this is unreachable
+    today — but it is the one remaining path where a MATCH produces silence, and someone
+    editing a rule by hand is exactly who needs to be told."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    broken = dataclasses.replace(
+        REAR_CHILD_WINDOW_LOCK,
+        proposes=ToolCall("set_window_child_lock", {"enabled": "yes"}))
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(broken,))
+    assert eng.observe(_child(), now=100.0) == NO_ACTION
+    assert eng.explain()[0].suppressed_by == "proposal failed validation"
+
+
+def test_an_earlier_suppressor_is_not_overwritten_by_a_later_one(cards):
+    """question_open is recorded first and is the reason the rule was silent. Reporting the
+    validation problem instead would name the second thing that would have stopped it rather
+    than the first thing that did."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    broken = dataclasses.replace(
+        REAR_CHILD_WINDOW_LOCK,
+        proposes=ToolCall("set_window_child_lock", {"enabled": "yes"}))
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(broken,))
+    eng.observe(_child(), now=100.0, question_open=True)
+    assert "router" in eng.explain()[0].suppressed_by
