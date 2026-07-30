@@ -127,3 +127,52 @@ def test_an_engine_exception_degrades_to_silence(cards):
             raise RuntimeError("camera bus fell over")
     out = _engine(cards, facts=Exploding()).observe(_child(), now=100.0)
     assert out == NO_ACTION
+
+
+# --- fixes from the adversarial pass on this module ---------------------------------------
+
+def test_resolve_survives_an_executor_that_raises(cards):
+    """The consent path is the one that touches the car. SqliteExecutor turns every modelled
+    refusal into ExecResult(ok=False), so an exception here is an infrastructure fault — a
+    locked database, a disk error — and that is the worst possible moment to kill a session
+    with a traceback."""
+    class Exploding:
+        def execute(self, tool_call):
+            raise RuntimeError("CAN bus fell over")
+    eng = _engine(cards, executor=Exploding())
+    eng.observe(_child(), now=100.0)
+    res = eng.resolve("好", now=105.0)
+    assert res.answered and not res.executed
+    assert res.speech == "抱歉，这个操作没能完成。"
+    assert eng.pending(now=106.0) is None
+
+
+def test_a_blank_refusal_detail_falls_back_to_the_generic_line(cards):
+    """A whitespace-only detail is truthy once a terminator is appended, so without a strip
+    the driver hears a spoken full stop and no cause at all."""
+    ex = RecordingExecutor(ExecResult(ok=False, error="exec_failed", detail="   "))
+    eng = _engine(cards, executor=ex)
+    eng.observe(_child(), now=100.0)
+    assert eng.resolve("好", now=105.0).speech == "抱歉，这个操作没能完成。"
+
+
+def test_no_action_cannot_be_mutated_by_a_caller(cards):
+    """It is one shared instance. A single assignment on a returned no-action would poison
+    every `== NO_ACTION` comparison in the process, including the ones above."""
+    import dataclasses
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        NO_ACTION.speech = "毁了"
+
+
+def test_a_notification_also_yields_to_an_open_router_question(cards):
+    """A notify creates no pending consent, so it cannot make 好 ambiguous — but talking over
+    a question the driver is being asked is still the scene subsystem interrupting."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    notify_only = dataclasses.replace(REAR_CHILD_WINDOW_LOCK, proposes=None,
+                                      intent="notify_driver_fatigue")
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(notify_only,))
+    assert eng.observe(_child(), now=100.0, question_open=True) == NO_ACTION
+    # and it did not burn its cooldown while being silenced by someone else's question
+    assert eng.observe(_child(at=101.0), now=101.0).kind == "notify"

@@ -24,7 +24,10 @@ CONSENT_TTL = 30.0
 _FAILURE = "抱歉，这个操作没能完成。"
 
 
-@dataclass
+# Frozen because NO_ACTION below is a single shared instance: one `out.speech = ...` on a
+# returned no-action would poison every `== NO_ACTION` comparison in the process, including
+# the ones the tests rely on.
+@dataclass(frozen=True)
 class SceneOutcome:
     kind: str                        # "notify" | "ask" | "no_action"
     scene: str
@@ -90,6 +93,12 @@ class SceneEngine:
         return not (pending is not None and pending.scene == rule.id)
 
     def _fire(self, rule, now: float, *, question_open: bool) -> SceneOutcome:
+        if question_open:
+            # Checked before anything is recorded, so a rule the router silenced does not
+            # also burn its own cooldown. Notifications are covered too: a notify creates no
+            # pending consent and so cannot make 好 ambiguous, but talking over a question
+            # the driver is being asked is still the scene subsystem interrupting.
+            return NO_ACTION
         if rule.proposes is None:
             self._last_spoken[rule.id] = now
             return SceneOutcome("notify", rule.id, _sentence(speech_for(rule.intent)),
@@ -99,9 +108,6 @@ class SceneEngine:
         tc, _ = validate_tool_call(rule.proposes.name, dict(rule.proposes.parameters),
                                    self.cards, [rule.proposes.name])
         if tc is None:
-            return NO_ACTION
-        if question_open:
-            # At most one open question across both systems, or 好 becomes ambiguous.
             return NO_ACTION
         self._last_spoken[rule.id] = now
         self._pending = PendingConsent(rule.id, tc, asked_at=now, expires_after=self.consent_ttl)
@@ -115,6 +121,20 @@ class SceneEngine:
         return self._pending
 
     def resolve(self, utterance: str, now: float) -> ConsentResult:
+        """Never raises, for the same reason observe() does not — and more urgently.
+
+        This is the path that actually touches the car. SqliteExecutor turns every *modelled*
+        refusal into ExecResult(ok=False), so anything that escapes as an exception is an
+        infrastructure fault — a locked database, a disk error — and those are exactly the
+        moments when a traceback would kill the session mid-actuation.
+        """
+        try:
+            return self._resolve(utterance, now)
+        except Exception:
+            self._pending = None
+            return ConsentResult(answered=True, speech=_FAILURE)
+
+    def _resolve(self, utterance: str, now: float) -> ConsentResult:
         pending = self.pending(now)
         if pending is None:
             return ConsentResult(answered=False)
@@ -141,7 +161,11 @@ class SceneEngine:
             return ConsentResult(answered=True, speech=_FAILURE)
         res = self.executor.execute(tc)
         if not res.ok:
-            return ConsentResult(answered=True, speech=_sentence(res.detail or "") or _FAILURE,
+            # Stripped before the emptiness test, the way t2f/reply.py::_exec_failures already
+            # does it. Without the strip a whitespace-only detail is truthy after _sentence
+            # appends a terminator, and the driver hears a spoken full stop with no cause.
+            detail = (res.detail or "").strip()
+            return ConsentResult(answered=True, speech=_sentence(detail) or _FAILURE,
                                  tool_call=tc)
         return ConsentResult(answered=True, executed=True, tool_call=tc,
                              speech=_sentence(render_response(self.cards[tc.name], tc)))
