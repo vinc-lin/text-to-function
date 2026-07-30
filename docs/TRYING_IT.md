@@ -85,7 +85,7 @@ The second command has nothing to resolve against unless the first one really ch
 | `/gate shipped\|permissive` | switch the confidence thresholds |
 | `/car` | every signal that differs from the seeded car |
 | `/log` | recent operations, and what the car said about each |
-| `/scene <key>=<value> [conf=]` | one perception event, as if the cabin camera saw it — see below |
+| `/scene <key>=<value> [conf=] [ttl=]` | one perception event, as if the cabin camera saw it — see below |
 | `/context` | every live observation: value, confidence, source, age, time to expiry |
 | `/clock +30 \| -5` | move the session clock, to elapse a cooldown or expire an observation |
 | `/scene-llm on\|off` | attach or detach the scene fallback — a second model |

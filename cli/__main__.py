@@ -14,7 +14,7 @@ HELP = """
   /gate shipped|permissive   switch the confidence thresholds
   /car                       signals that differ from the seeded car
   /log                       recent operations, and what the car said
-  /scene <key>=<value> [conf=]   one perception event, as if the cabin camera saw it
+  /scene <key>=<value> [conf=] [ttl=]   one perception event, as if the cabin camera saw it
   /context                   what perception currently believes, and for how long
   /clock +30 | -5            move the session clock, to elapse a ttl or a cooldown
   /scene-llm on|off          attach or detach the scene fallback (a second model)
@@ -37,7 +37,8 @@ def _print_log(session):
         print(f"  {row['function']:24s} {row['outcome']}{cause}")
 
 
-_SCENE_USAGE = "  usage: /scene <key>=<value> [conf=0.9]"
+_SCENE_USAGE = "  usage: /scene <key>=<value> [conf=0.9] [ttl=300]"
+_SCENE_OPTIONS = {"conf": "confidence", "ttl": "ttl"}
 
 
 def _scene(session, parts) -> None:
@@ -45,18 +46,26 @@ def _scene(session, parts) -> None:
     if not parts or "=" not in parts[0]:
         print(_SCENE_USAGE)
         return
-    conf = 0.9
+    options = {}
     for extra in parts[1:]:
-        if extra.startswith("conf="):
-            try:
-                conf = float(extra.split("=", 1)[1])
-            except ValueError:
-                # A mistyped confidence must not raise out of the loop: the session holds the
-                # car and the models, and losing it to a typo costs a 60-second reload.
-                print(_SCENE_USAGE)
-                return
+        name, _, raw = extra.partition("=")
+        # An unrecognised token is refused rather than dropped. `ttl=30` used to be accepted
+        # in silence and ignored, so the guide documented an expiry demonstration that never
+        # expired — a command that quietly discards what you typed is worse than one that
+        # cannot do the thing.
+        if name not in _SCENE_OPTIONS:
+            print(f"  unknown option {extra!r}")
+            print(_SCENE_USAGE)
+            return
+        try:
+            options[_SCENE_OPTIONS[name]] = float(raw)
+        except ValueError:
+            # A mistyped number must not raise out of the loop: the session holds the car and
+            # the models, and losing it to a typo costs a 60-second reload.
+            print(_SCENE_USAGE)
+            return
     key, _, value = parts[0].partition("=")
-    print(render(session.observe(key, value, confidence=conf)))
+    print(render(session.observe(key, value, **options)))
 
 
 def _print_context(session):

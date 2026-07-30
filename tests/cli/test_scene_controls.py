@@ -86,3 +86,34 @@ def test_a_turn_carries_the_rule_reports(session):
     turn = session.observe("rear_occupant", "child", 0.6)
     assert turn.rules and turn.rules[0].verdict == "near_miss"
     assert "0.60" in turn.rules[0].reason
+
+
+# --- the /scene command's own argument handling -------------------------------------------
+
+def _run(session, line):
+    """Drive the command dispatcher the way a typed line reaches it."""
+    from cli.__main__ import _scene
+    _scene(session, line.split()[1:])
+
+
+def test_ttl_typed_at_the_prompt_reaches_the_observation(session, capsys):
+    """It used to be accepted in silence and ignored, so the guide documented an expiry
+    demonstration that never expired."""
+    _run(session, "/scene rear_occupant=child conf=0.9 ttl=30")
+    capsys.readouterr()
+    assert next(r for r in session.context_rows()).expires_in <= 30.0
+
+
+def test_an_unknown_option_is_refused_not_dropped(session, capsys):
+    """A command that quietly discards what you typed is worse than one that cannot do the
+    thing — you cannot tell the difference between ignored and unsupported."""
+    _run(session, "/scene rear_occupant=child confidence=0.9")
+    out = capsys.readouterr().out
+    assert "unknown option" in out and "usage:" in out
+    assert session.context_rows() == [], "nothing should have been observed"
+
+
+def test_a_mistyped_number_prints_usage_and_survives(session, capsys):
+    _run(session, "/scene rear_occupant=child conf=abc")
+    assert "usage:" in capsys.readouterr().out
+    assert session.context_rows() == []
