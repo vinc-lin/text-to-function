@@ -1,8 +1,7 @@
 """S4a — on success, inform the user of the completed action."""
-import pytest
 from .conftest import build_pipeline
 
-WINDOW = "已为您调整当前区域车窗状态。"
+WINDOW = "已为您打开当前区域车窗。"
 TEMP25 = "已将当前区域温度设置为25°C。"
 FAN3 = "已将当前区域风速设置为3档。"
 
@@ -40,10 +39,6 @@ def test_s4a_04_every_dispatched_call_is_mentioned():
         assert confirmation in result.reply
 
 
-@pytest.mark.xfail(strict=True,
-                   reason="gap 4: render_response humanizes only `position`, so 43 of 92 catalog "
-                          "cards confirm an action without stating the value. Opening and closing "
-                          "the window produce byte-identical replies.")
 def test_s4a_07_boolean_action_states_on_or_off():
     pipe, _ = build_pipeline()
     opened = pipe.route("开车窗").reply

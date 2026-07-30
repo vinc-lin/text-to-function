@@ -55,7 +55,7 @@ functions:
     hard_negatives:
       - 屏幕亮度调低
       - 截个屏
-    response_template: "已为您调整屏幕显示状态。"
+    response_template: "已为您{state}屏幕显示。"
 
   - name: set_dashboard_brightness
     description: 设置仪表盘亮度
@@ -93,7 +93,7 @@ functions:
     hard_negatives:
       - 屏幕亮度调到50%
       - 打开实时路况
-    response_template: "已为您调整抬头显示状态。"
+    response_template: "已为您{state}抬头显示。"
 
   - name: take_screenshot
     description: 对当前屏幕进行截图
@@ -149,4 +149,4 @@ functions:
     hard_negatives:
       - 静音
       - 切换到夜间模式
-    response_template: "已为您调整勿扰模式状态。"
+    response_template: "已为您{state}勿扰模式。"

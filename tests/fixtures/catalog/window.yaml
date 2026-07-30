@@ -12,4 +12,4 @@ functions:
       - 关闭车窗
     hard_negatives:
       - 打开天窗
-    response_template: "已为您调整{position}车窗状态。"
+    response_template: "已为您{state}{position}车窗。"

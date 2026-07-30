@@ -147,4 +147,4 @@ functions:
     hard_negatives:
       - 走最快的路线
       - 导航回家
-    response_template: "已为您调整实时路况显示状态。"
+    response_template: "已为您{state}实时路况显示。"

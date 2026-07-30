@@ -5,7 +5,8 @@ Expected replies and dispatches are MEASURED against the fixture catalog, not as
 import pytest
 from .conftest import build_pipeline
 
-WINDOW = "已为您调整当前区域车窗状态。"
+WINDOW = "已为您打开当前区域车窗。"
+WINDOW_CLOSED = "已为您关闭当前区域车窗。"   # the confirmation now states the direction
 TEMP25 = "已将当前区域温度设置为25°C。"
 TEMP22 = "已将当前区域温度设置为22°C。"
 FAN3 = "已将当前区域风速设置为3档。"
@@ -17,7 +18,7 @@ GREEN = [
     ("S2-02", "温度设成22度", TEMP22, [("set_temperature", {"temperature": 22.0})]),
     ("S2-03", "风速调到三档", FAN3, [("set_fan_speed", {"level": 3})]),
     ("S2-04", "开车窗", WINDOW, [("open_window", {"is_open": True})]),
-    ("S2-05", "关闭车窗", WINDOW, [("open_window", {"is_open": False})]),
+    ("S2-05", "关闭车窗", WINDOW_CLOSED, [("open_window", {"is_open": False})]),
     ("S2-06", "开车窗,温度调到25度", WINDOW + TEMP25,
      [("open_window", {"is_open": True}), ("set_temperature", {"temperature": 25.0})]),
     ("S2-08", "开车窗,风速调到三档,温度调到25度", WINDOW + FAN3 + TEMP25,

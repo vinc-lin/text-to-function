@@ -20,6 +20,26 @@ def _fmt_num(v):
     return v
 
 
+# state words, chosen by the function's own verb. fold_mirror is not "opened".
+_STATE_WORDS = {"fold": ("折叠", "展开")}
+_STATE_DEFAULT = ("打开", "关闭")
+# is_off=True means the thing is OFF: reading the raw boolean would announce the opposite.
+_INVERTED = {"is_off"}
+
+
+def _state_word(card: FunctionCard, tool_call: ToolCall) -> str:
+    """打开/关闭 (or 折叠/展开) for a card whose primary parameter is boolean, else ''."""
+    spec = next((p for p in card.params if p.type == "boolean"), None)
+    if spec is None or spec.name not in tool_call.parameters:
+        return ""
+    value = bool(tool_call.parameters[spec.name])
+    if spec.name in _INVERTED:
+        value = not value
+    verb = card.name.split("_")[0]
+    on, off = _STATE_WORDS.get(verb, _STATE_DEFAULT)
+    return on if value else off
+
+
 def render_response(card: FunctionCard, tool_call: ToolCall) -> str:
     if not card.response_template:
         return f"已执行{card.name}。"
@@ -28,6 +48,9 @@ def render_response(card: FunctionCard, tool_call: ToolCall) -> str:
         params["position"] = _POSITION_CN.get(params["position"], params["position"])
     elif card.param("position"):
         params.setdefault("position", "当前区域")
+    # `state` is injected for every card; _SafeDict means a template that does not use it is
+    # unaffected, so only the boolean templates had to change.
+    params["state"] = _state_word(card, tool_call)
     return card.response_template.format_map(_SafeDict(params))
 
 

@@ -17,7 +17,7 @@ functions:
     hard_negatives:
       - 打开雾灯
       - 打开双闪
-    response_template: "已为您调整大灯状态。"
+    response_template: "已为您{state}大灯。"
 
   - name: set_headlight_mode
     description: 切换大灯模式，如自动、近光、远光
@@ -55,7 +55,7 @@ functions:
     hard_negatives:
       - 切换到近光灯
       - 打开雾灯
-    response_template: "已为您调整远光灯状态。"
+    response_template: "已为您{state}远光灯。"
 
   - name: set_front_fog_light
     description: 打开或关闭前雾灯
@@ -74,7 +74,7 @@ functions:
     hard_negatives:
       - 打开后雾灯
       - 打开大灯
-    response_template: "已为您调整前雾灯状态。"
+    response_template: "已为您{state}前雾灯。"
 
   - name: set_rear_fog_light
     description: 打开或关闭后雾灯
@@ -93,7 +93,7 @@ functions:
     hard_negatives:
       - 打开前雾灯
       - 打开双闪
-    response_template: "已为您调整后雾灯状态。"
+    response_template: "已为您{state}后雾灯。"
 
   - name: set_hazard_light
     description: 打开或关闭危险报警闪光灯，即双闪
@@ -112,7 +112,7 @@ functions:
     hard_negatives:
       - 打开后雾灯
       - 打开转向灯
-    response_template: "已为您调整危险报警灯状态。"
+    response_template: "已为您{state}危险报警灯。"
 
   - name: set_reading_light
     description: 打开或关闭车内阅读灯，可指定位置
@@ -132,7 +132,7 @@ functions:
     hard_negatives:
       - 打开氛围灯
       - 打开大灯
-    response_template: "已为您调整{position}阅读灯状态。"
+    response_template: "已为您{state}{position}阅读灯。"
 
   - name: set_ambient_light
     description: 打开或关闭车内氛围灯
@@ -151,7 +151,7 @@ functions:
     hard_negatives:
       - 氛围灯调成蓝色
       - 打开阅读灯
-    response_template: "已为您调整氛围灯状态。"
+    response_template: "已为您{state}氛围灯。"
 
   - name: set_ambient_light_color
     description: 设置车内氛围灯颜色

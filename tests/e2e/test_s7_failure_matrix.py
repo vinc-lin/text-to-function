@@ -381,7 +381,7 @@ def test_in_a_mixed_utterance_the_success_is_confirmed_and_the_refusal_explained
 
     result = pipe.route("开车窗,把主驾温度调到25度")
 
-    assert result.reply == "已为您调整当前区域车窗状态。空调尚未开启。"
+    assert result.reply == "已为您打开当前区域车窗。空调尚未开启。"
     assert ex.car.get_signal("window.all", "window_position") == 100     # the half that worked
     assert ex.car.get_signal("climate.driver", "temperature") == temp_before   # the half that did not
     assert [(r["function"], r["outcome"]) for r in ex.car.recent_operations()] == \
@@ -407,7 +407,7 @@ def test_in_a_mixed_utterance_a_bad_value_keeps_its_cause():
 
     result = pipe.route("开车窗,风速调到20档")
 
-    assert result.reply == "已为您调整当前区域车窗状态。风速档位只能设置在1到7档之间。"
+    assert result.reply == "已为您打开当前区域车窗。风速档位只能设置在1到7档之间。"
     assert "1到7档" in result.reply                            # the same cause the single-intent path speaks
     assert any(cr.validation_errors for cr in result.clauses)  # the channel carries it
     assert ex.car.get_signal("climate.all", "fan_speed") == fan_before

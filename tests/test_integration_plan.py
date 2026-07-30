@@ -31,7 +31,7 @@ def test_canonical_multi_intent():
     assert by_fn["set_sunroof_position"].parameters.get("percent") == 50
     assert by_fn["set_window_position"].parameters.get("percent") == 40
     # the spoken reply: three confirmations, sentence-joined, narration absent
-    assert rr.reply == ("已为您调整车窗儿童锁状态。"
+    assert rr.reply == ("已为您打开车窗儿童锁。"
                         "已将主驾车窗开度调整到40%。"
                         "已将天窗开度调整到50%。")
     assert "后排小孩" not in rr.reply

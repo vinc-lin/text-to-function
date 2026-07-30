@@ -92,7 +92,7 @@ CASES = [
     # the one case that turns something OFF: the seeded car has the A/C on, so True->False.
     ("climate-ac-off", "把空调关掉",
      "set_ac_power", {"enabled": False},
-     "climate.all", "ac_power", False, "已为您调整空调开关状态。"),
+     "climate.all", "ac_power", False, "已为您关闭空调。"),
 
     # --- window ----------------------------------------------------------------------------
     ("window-driver-30-percent", "主驾车窗开到百分之三十",
@@ -102,10 +102,10 @@ CASES = [
     # boolean card writes the same percentage row, closed == 0.
     ("window-close-all", "关闭车窗",
      "open_window", {"is_open": False},
-     "window.all", "window_position", 0, "已为您调整当前区域车窗状态。"),
+     "window.all", "window_position", 0, "已为您关闭当前区域车窗。"),
     ("window-sunroof-open", "打开天窗",
      "open_sunroof", {"is_open": True},
-     "window.all", "sunroof_position", 100, "已为您调整天窗状态。"),
+     "window.all", "sunroof_position", 100, "已为您打开天窗。"),
 
     # --- seat ------------------------------------------------------------------------------
     ("seat-heating-driver", "主驾座椅加热开到三档",
@@ -124,20 +124,20 @@ CASES = [
      "media.all", "volume", 3, "已将音量调整到3。"),
     ("media-mute", "打开静音",
      "set_mute", {"enabled": True},
-     "media.all", "mute", True, "已为您调整静音状态。"),
+     "media.all", "mute", True, "已为您打开静音模式。"),
     ("media-shuffle", "开启随机播放模式",
      "set_shuffle", {"enabled": True},
-     "media.all", "shuffle", True, "已为您调整随机播放状态。"),
+     "media.all", "shuffle", True, "已为您打开随机播放。"),
 
     # --- light -----------------------------------------------------------------------------
     ("light-headlight", "打开大灯",
      "set_headlight", {"enabled": True},
-     "light.all", "headlight", True, "已为您调整大灯状态。"),
+     "light.all", "headlight", True, "已为您打开大灯。"),
     # a positioned light: sim/mapping.py keys on the FUNCTION, so this must land on the
     # driver's reading light and not on the one row every `enabled` param would share.
     ("light-reading-driver", "打开主驾阅读灯",
      "set_reading_light", {"enabled": True, "position": "driver"},
-     "light.driver", "reading_light", True, "已为您调整主驾阅读灯状态。"),
+     "light.driver", "reading_light", True, "已为您打开主驾阅读灯。"),
     ("light-ambient-brightness", "氛围灯亮度调到80%",
      "set_ambient_light_brightness", {"percent": 80},
      "light.all", "ambient_light_brightness", 80, "已将氛围灯亮度调整到80%。"),
@@ -145,16 +145,16 @@ CASES = [
     # --- door ------------------------------------------------------------------------------
     ("door-trunk", "打开后备箱",
      "open_trunk", {"is_open": True},
-     "door.all", "trunk", True, "已为您调整后备箱状态。"),
+     "door.all", "trunk", True, "已为您打开后备箱。"),
     ("door-driver-door", "打开主驾车门",
      "open_door", {"is_open": True, "position": "driver"},
-     "door.driver", "door", True, "已为您调整主驾车门状态。"),
+     "door.driver", "door", True, "已为您打开主驾车门。"),
 
     # --- navigation ------------------------------------------------------------------------
     # the domain's only state-changing case; see the module docstring for why.
     ("navigation-traffic-display", "打开路况显示",
      "set_traffic_display", {"enabled": True},
-     "navigation.all", "traffic_display", True, "已为您调整实时路况显示状态。"),
+     "navigation.all", "traffic_display", True, "已为您打开实时路况显示。"),
 
     # --- misc ------------------------------------------------------------------------------
     ("misc-wiper-speed", "雨刷调到三档",
@@ -172,7 +172,7 @@ CASES = [
      "display.all", "screen_brightness", 80, "已将屏幕亮度调整到80%。"),
     ("display-hud", "打开抬头显示",
      "set_hud", {"enabled": True},
-     "display.all", "hud", True, "已为您调整抬头显示状态。"),
+     "display.all", "hud", True, "已为您打开抬头显示。"),
 ]
 
 _PARAMS = [pytest.param(*c[1:], id=c[0]) for c in CASES]

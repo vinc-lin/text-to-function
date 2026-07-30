@@ -36,7 +36,7 @@ functions:
     hard_negatives:
       - 雨刮开到二挡
       - 喷点玻璃水
-    response_template: "已为您调整自动雨刮状态。"
+    response_template: "已为您{state}自动雨刮。"
 
   - name: spray_washer
     description: 喷洒玻璃水清洗挡风玻璃
@@ -75,7 +75,7 @@ functions:
     hard_negatives:
       - 后视镜往上调
       - 打开后视镜加热
-    response_template: "已为您调整{position}后视镜折叠状态。"
+    response_template: "已为您{state}{position}后视镜。"
 
   - name: adjust_mirror
     description: 调整后视镜角度，可指定位置
@@ -114,7 +114,7 @@ functions:
     hard_negatives:
       - 折叠后视镜
       - 打开后挡除霜
-    response_template: "已为您调整后视镜加热状态。"
+    response_template: "已为您{state}后视镜加热。"
 
   - name: set_auto_hold
     description: 打开或关闭自动驻车功能
@@ -133,7 +133,7 @@ functions:
     hard_negatives:
       - 打开倒车雷达
       - 打开电子手刹
-    response_template: "已为您调整自动驻车状态。"
+    response_template: "已为您{state}自动驻车。"
 
   - name: set_parking_sensor
     description: 打开或关闭倒车雷达
@@ -152,4 +152,4 @@ functions:
     hard_negatives:
       - 打开自动驻车
       - 打开行车记录仪
-    response_template: "已为您调整倒车雷达状态。"
+    response_template: "已为您{state}倒车雷达。"

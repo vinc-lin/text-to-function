@@ -57,7 +57,7 @@ functions:
     hard_negatives:
       - 打开自动空调
       - 温度调到25度
-    response_template: "已为您调整空调开关状态。"
+    response_template: "已为您{state}空调。"
 
   - name: set_ac_mode
     description: 切换空调工作模式，如制冷、制热、自动、除湿、送风
@@ -133,7 +133,7 @@ functions:
     hard_negatives:
       - 打开后挡除霜
       - 切到吹挡风玻璃
-    response_template: "已为您调整前挡除雾状态。"
+    response_template: "已为您{state}前挡除雾。"
 
   - name: set_rear_defrost
     description: 打开或关闭后挡风玻璃加热除霜
@@ -152,7 +152,7 @@ functions:
     hard_negatives:
       - 打开前挡除雾
       - 后排座椅加热打开
-    response_template: "已为您调整后挡除霜状态。"
+    response_template: "已为您{state}后挡除霜。"
 
   - name: set_auto_climate
     description: 打开或关闭自动空调，由系统自动调节温度与风量
@@ -171,7 +171,7 @@ functions:
     hard_negatives:
       - 空调调到自动模式
       - 风速调到三档
-    response_template: "已为您调整自动空调状态。"
+    response_template: "已为您{state}自动空调。"
 
   - name: set_temperature_sync
     description: 打开或关闭主副驾温度同步
@@ -190,7 +190,7 @@ functions:
     hard_negatives:
       - 副驾温度调到26度
       - 打开自动空调
-    response_template: "已为您调整温度同步状态。"
+    response_template: "已为您{state}温度同步。"
 
   - name: set_steering_wheel_heating
     description: 设置方向盘加热档位
@@ -228,4 +228,4 @@ functions:
     hard_negatives:
       - 打开内循环
       - 切换到外循环
-    response_template: "已为您调整空气净化状态。"
+    response_template: "已为您{state}空气净化。"

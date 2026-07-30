@@ -11,7 +11,7 @@ from t2f.config import Config
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
 
-WINDOW = "已为您调整当前区域车窗状态。"
+WINDOW = "已为您打开当前区域车窗。"
 TEMP25 = "已将当前区域温度设置为25°C。"
 REJECT = "抱歉，我不太确定您的意思，可以换个说法吗？"
 
@@ -105,7 +105,7 @@ def test_e2e_medium_band_never_falsely_confirms():                       # E9
 
 def test_e2e_medium_band_partial_execution_is_honest():                  # E10
     res = _medium_pipeline().route("开车窗，温度调到25度")
-    assert res.reply == "已为您调整当前区域车窗状态。抱歉，这个操作没能完成。"
+    assert res.reply == WINDOW + "抱歉，这个操作没能完成。"
 
 
 def test_compose_reply_called_exactly_once_per_route(monkeypatch):
