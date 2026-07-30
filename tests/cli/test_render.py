@@ -186,3 +186,47 @@ def test_no_change_and_no_state_are_different_sentences():
     assert "already at that value" in render(moved_nothing)
     assert "holds no state" in render(holds_nothing)
     assert render(moved_nothing) != render(holds_nothing)
+
+
+def test_a_scene_turn_shows_why_each_rule_did_not_fire():
+    """Silence that explains itself. Without this the block is identical whether the
+    confidence was low, the signal already held, or a cooldown was running."""
+    from scene.engine import RuleReport
+    turn = Turn(utterance="[scene] rear_occupant=child", reply="", scene="—",
+                rules=[RuleReport("rear_child_window_lock", "near_miss",
+                                  "inside.rear_occupant conf 0.62 in [0.50, 0.80)", "")])
+    out = render(turn)
+    assert "near_miss" in out and "0.62" in out
+    assert "nothing spoken" in out
+
+
+def test_a_suppressed_rule_says_what_suppressed_it():
+    from scene.engine import RuleReport
+    turn = Turn(utterance="u", reply="", scene="—",
+                rules=[RuleReport("r", "match", "all conditions met", "cooldown, 118s left")])
+    assert "cooldown, 118s left" in render(turn)
+
+
+def test_a_scene_turn_that_spoke_still_shows_its_rules():
+    from scene.engine import RuleReport
+    turn = Turn(utterance="u", reply="问？", scene="r",
+                rules=[RuleReport("r", "match", "all conditions met", "")])
+    out = render(turn)
+    assert "问？" in out and "match" in out
+
+
+def test_a_wide_verdict_does_not_run_into_its_reason():
+    """`not_applicable` is the longest verdict and overflowed the column it was padded to,
+    printing 'not_applicableno live observation for …' — the reason is the whole line."""
+    from scene.engine import RuleReport
+    out = render(Turn(utterance="u", reply="", scene="—",
+                      rules=[RuleReport("r", "not_applicable",
+                                        "no live observation for inside.rear_occupant", "")]))
+    assert "not_applicable  no live observation" in out
+
+
+def test_a_scene_turn_with_no_rules_still_renders():
+    """A defensive Turn built by hand must not crash the renderer — an exception here costs
+    a 60-second model reload."""
+    out = render(Turn(utterance="u", reply="", scene="—"))
+    assert out.endswith("\n") and out.strip()

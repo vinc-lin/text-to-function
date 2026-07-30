@@ -77,6 +77,7 @@ class Turn:
     # have to be kept in sync with a dataclass that already has exactly these four fields, and
     # the two would drift the first time the engine learned to explain something new.
     rules: list = field(default_factory=list)
+    fallback: str = ""      # what the constrained fallback did, or why it was skipped
 
 
 class Session:
@@ -185,7 +186,7 @@ class Session:
         outcome = self.scene.observe(obs, now, question_open=False)
         return Turn(utterance=f"[scene] {key}={value}", reply=outcome.speech,
                     scene=outcome.scene or "—", deltas=self._deltas_since(before),
-                    rules=list(self.scene.explain()))
+                    rules=list(self.scene.explain()), fallback=self.scene.fallback_note())
 
     def handle(self, utterance: str) -> Turn:
         before = self._snapshot()
@@ -320,7 +321,11 @@ class Session:
         self.scene.reset()
 
     def mode_label(self) -> str:
-        parts = ["C_llm" if self.llm else "C", self.gate]
+        # The scene fallback is named the way the eval arms name it, S / S_llm, and is stated
+        # in both directions rather than only when attached: half the scene subsystem is
+        # unreachable without it, so "why did nothing happen" needs the answer on the prompt.
+        parts = ["C_llm" if self.llm else "C", self.gate,
+                 "S_llm" if self.scene.llm is not None else "S"]
         if self.fake:
             parts.append("FAKE")
         return " · ".join(parts)

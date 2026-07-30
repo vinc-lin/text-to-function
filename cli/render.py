@@ -8,7 +8,10 @@ the turn is already done.
 
 A scene turn is the third shape, alongside an error and a routed utterance: it names the
 scene and shows what moved, and it has no spans because nothing was recognised — nobody
-said anything.
+said anything. Its commonest correct outcome is silence, so the same rule applies with more
+force: every rule the engine evaluated gets a line saying what it decided and, if it matched
+and still said nothing, what stopped it. Without those lines `scene —` is one blank string
+covering a weak detection, a settled signal, a running cooldown and an open question.
 """
 from __future__ import annotations
 
@@ -57,11 +60,33 @@ def _outcome_lines(span, reply: str) -> list[str]:
     return ["  unresolved   medium band, no model attached"]
 
 
+def _rule_line(report) -> str:
+    """One evaluated rule: what it decided, why, and what stopped it if anything did.
+
+    The verdict and the reason are always both printed. `match` alone next to a silent reply
+    reads as a bug in the car, and `near_miss` alone does not say which observation was weak —
+    which is the only fact that tells someone what to type next.
+    """
+    suppressed = f"  · suppressed: {report.suppressed_by}" if report.suppressed_by else ""
+    # Padding plus an explicit separator, not padding alone: `not_applicable` is wider than
+    # any column that would still align the common cases, and a value that fills its field
+    # exactly ran straight into the reason — "not_applicableno live observation for ...".
+    return (f"  rule         {report.rule_id:22s}  {report.verdict:10s}  "
+            f"{report.reason}{suppressed}")
+
+
 def render(turn: Turn) -> str:
     if turn.error:
         return f"  error        {turn.error}\n"
     if turn.scene:
         lines = [f"  scene        {turn.scene}"]
+        lines += [_rule_line(r) for r in turn.rules]
+        if turn.fallback:
+            # Printed verbatim. The engine merges "what the fallback did" and "why it was
+            # skipped" into one note on purpose, and the renderer cannot tell which it is
+            # holding — guessing a "not consulted" prefix would eventually label a decode
+            # that really was spent as one that never happened.
+            lines.append(f"  fallback     {turn.fallback}")
         lines += [f"  executed     {d.entity}/{d.attribute}   {d.before} → {d.after}"
                   for d in turn.deltas]
         # Staying quiet is the commonest correct outcome here, so it has to read as a decision
