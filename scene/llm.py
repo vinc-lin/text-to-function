@@ -111,8 +111,14 @@ class TransformersSceneLLM:
         # line; if one needs changing, so does the other.
         info = xgr.TokenizerInfo.from_huggingface(self.tok, vocab_size=self.model.config.vocab_size)
         self.compiler = xgr.GrammarCompiler(info)
+        # Same counter FakeSceneLLM carries, for the same reason and one more:
+        # `avg_llm_calls_per_event` reads it through getattr(llm, "calls", 0), so without it
+        # the ONE arm that has a model reports its decode budget as 0.00 — a cost that looks
+        # measured and is not.
+        self.calls = 0
 
     def decide(self, snapshot, rules, speech) -> Optional[dict]:
+        self.calls += 1
         torch = self._torch
         schema = scene_decision_schema(rules, speech)
         messages = build_scene_prompt(snapshot, rules, speech)

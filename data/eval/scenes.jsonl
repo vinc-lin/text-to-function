@@ -1,0 +1,13 @@
+{"id": "child_clear", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "expect": "后排有小孩，要打开儿童锁吗？"}
+{"id": "child_weak", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.55}], "expect": ""}
+{"id": "child_too_weak", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.30}], "expect": ""}
+{"id": "adult_rear", "events": [{"key": "rear_occupant", "value": "adult", "conf": 0.95}], "expect": ""}
+{"id": "empty_rear", "events": [{"key": "rear_occupant", "value": "none", "conf": 0.99}], "expect": ""}
+{"id": "unknown_key", "events": [{"key": "driver_attention", "value": "drowsy", "conf": 0.90}], "expect": ""}
+{"id": "repeat_suppressed", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}, {"key": "rear_occupant", "value": "child", "conf": 0.92}], "expect": "后排有小孩，要打开儿童锁吗？"}
+{"id": "consent_yes", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "好", "expect": "已为您打开车窗儿童锁。", "expect_consent": true}
+{"id": "consent_no", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "不用", "expect": "好的。", "expect_consent": true}
+{"id": "consent_lookalike", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "好像有点热", "expect_consent": false}
+{"id": "consent_command", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "把窗户关上", "expect_consent": false}
+{"id": "consent_unrelated", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "后排太热了", "expect_consent": false}
+{"id": "consent_oblique_yes", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "开吧", "expect_consent": false}
