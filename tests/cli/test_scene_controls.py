@@ -117,3 +117,33 @@ def test_a_mistyped_number_prints_usage_and_survives(session, capsys):
     _run(session, "/scene rear_occupant=child conf=abc")
     assert "usage:" in capsys.readouterr().out
     assert session.context_rows() == []
+
+
+# --- what an observation may not be -------------------------------------------------------
+
+@pytest.mark.parametrize("kwargs,why", [
+    ({"key": "", "value": "child", "confidence": 0.9}, "empty key"),
+    ({"key": "   ", "value": "child", "confidence": 0.9}, "whitespace key"),
+    ({"key": "k", "value": "", "confidence": 0.9}, "empty value"),
+    ({"key": "k", "value": "v", "confidence": 7.0}, "confidence above 1"),
+    ({"key": "k", "value": "v", "confidence": -0.5}, "negative confidence"),
+    ({"key": "k", "value": "v", "confidence": 0.9, "ttl": 0}, "zero ttl"),
+    ({"key": "k", "value": "v", "confidence": 0.9, "ttl": -5}, "negative ttl"),
+])
+def test_a_malformed_observation_is_refused(session, kwargs, why):
+    """Validated on Session so the terminal and the browser cannot disagree.
+
+    The confidence range carries the weight: every rule's floor and threshold live in
+    [0, 1], so an observation at 7.0 clears any band trivially and the instrument would
+    report a confident MATCH built on a number the design has no meaning for.
+    """
+    with pytest.raises(ValueError):
+        session.observe(**kwargs)
+    assert session.context_rows() == [], why
+
+
+def test_the_boundary_values_are_allowed(session):
+    """0.0 and 1.0 are legitimate confidences, and a rule floor of 0.0 depends on it."""
+    session.observe("a", "x", 0.0)
+    session.observe("b", "y", 1.0)
+    assert len(session.context_rows()) == 2

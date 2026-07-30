@@ -489,6 +489,45 @@ screen would be a decision this tool wrote, not one a model made.
 
 ---
 
+## The same session, in a browser
+
+```bash
+python3 -m ui
+```
+
+Then open `http://127.0.0.1:8770`. Same flags as the terminal — `--fake`, `--no-llm`, `--gate`,
+`--db`, plus `--port`.
+
+This is not a second system. It builds a session exactly the way `python3 -m cli` does and drives it
+through the same methods, so anything you can do here you can do there. It exists because **a text
+table cannot show perception decaying.** `/context` tells you an observation has 240 seconds left;
+the page shows the bar draining, and you watch the belief age out.
+
+Four panes:
+
+| | |
+|---|---|
+| **Perception** | one card per observation, with a TTL bar that drains continuously and a confidence bar marked with the rule's floor and threshold — a near-miss reads as a *position*, not a number to compare in your head |
+| **The car** | signals that differ from the seeded vehicle, flashing when they move |
+| **Rules** | every rule with its verdict, its reason, and what suppressed it — the same thing the terminal prints, but standing still instead of scrolling past |
+| **Conversation** | the transcript, plus the pending question with a live countdown and **Yes** / **No** buttons |
+
+Those two buttons submit the utterances `好` and `不用`. They are not a shortcut past the consent
+lexicon — there is exactly one route to the car and the page uses it, the same one you type into at
+the terminal. A button wired straight to the vehicle would be a second route with different rules,
+which is the thing this design spends most of its effort preventing.
+
+The header carries the clock control and the scene-fallback toggle, so the whole of `/clock` and
+`/scene-llm` is there too.
+
+**Two things worth knowing.** The server is single-threaded on purpose — the simulated car's SQLite
+connection belongs to one thread, and a threaded server would quietly serve a page showing a car
+that never moved rather than failing loudly. And an observation is validated before it is recorded:
+an empty key, an empty value, or a confidence outside 0–1 is refused, because every rule's bands
+live in 0–1 and an observation at 7.0 would clear any of them trivially.
+
+---
+
 ## What this does not tell you
 
 **Impressions are not measurements.** A dozen utterances that work say nothing about
