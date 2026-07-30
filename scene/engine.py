@@ -17,10 +17,12 @@ from t2f.validate import validate_tool_call
 
 from .consent import Answer, PendingConsent, classify
 from .context import SceneContext
+from .llm import UNMATCHED
 from .rules import RULES, Verdict, evaluate
-from .speech import speech_for
+from .speech import SPEECH, speech_for
 
 CONSENT_TTL = 30.0
+FALLBACK_COOLDOWN = 30.0
 _FAILURE = "抱歉，这个操作没能完成。"
 
 
@@ -64,6 +66,7 @@ class SceneEngine:
         self.context = SceneContext()
         self._pending: Optional[PendingConsent] = None
         self._last_spoken: dict[str, float] = {}
+        self._last_fallback: Optional[float] = None
 
     # --- perception -------------------------------------------------------------------
     def observe(self, obs, now: float, *, question_open: bool = False) -> SceneOutcome:
@@ -82,7 +85,7 @@ class SceneEngine:
             # depend on dict ordering or on a clock.
             best = sorted(matched, key=lambda r: (-r.priority, self.rules.index(r)))[0]
             return self._fire(best, now, question_open=question_open)
-        return NO_ACTION
+        return self._fallback(verdicts, now, question_open=question_open)
 
     def _speakable(self, rule, now: float) -> bool:
         last = self._last_spoken.get(rule.id)
@@ -113,6 +116,56 @@ class SceneEngine:
         self._pending = PendingConsent(rule.id, tc, asked_at=now, expires_after=self.consent_ttl)
         return SceneOutcome("ask", rule.id, _sentence(speech_for(rule.intent)),
                             tc, "rule", "rule matched")
+
+    # --- the constrained fallback -------------------------------------------------------
+    def _fallback(self, verdicts, now: float, *, question_open: bool) -> SceneOutcome:
+        """Reached only when no rule matched. Near-misses and observations no rule mentions.
+
+        A REJECT is deliberately not a near-miss: the car has already settled the question, so
+        spending a decode on it would be paying for an answer we have.
+        """
+        if self.llm is None:
+            return NO_ACTION
+        near = [r for r, v in verdicts if v is Verdict.NEAR_MISS]
+        mentioned = {k for r in self.rules for k in r.observed_keys}
+        live = self.context.live(now)
+        unconsumed = [k for k in live if k not in mentioned]
+        if not near and not unconsumed:
+            return NO_ACTION
+        if self._last_fallback is not None and now - self._last_fallback < FALLBACK_COOLDOWN:
+            return NO_ACTION
+        self._last_fallback = now
+        snapshot = {k: {"value": o.value, "confidence": o.confidence, "source": o.source}
+                    for k, o in live.items()}
+        try:
+            decision = self.llm.decide(snapshot, self.rules, SPEECH)
+        except Exception:
+            return NO_ACTION
+        return self._from_decision(decision, now, question_open=question_open)
+
+    def _from_decision(self, decision, now: float, *, question_open: bool) -> SceneOutcome:
+        if not isinstance(decision, dict):
+            return NO_ACTION
+        if question_open:
+            # Same rule as the deterministic path: the scene subsystem does not talk over a
+            # question the router is waiting on.
+            return NO_ACTION
+        kind = decision.get("decision")
+        scene = decision.get("scene", UNMATCHED)
+        speech = _sentence(speech_for(decision.get("reply_intent", "")))
+        reason = str(decision.get("reason", ""))[:200]
+        if kind == "notify" and speech:
+            return SceneOutcome("notify", scene, speech, None, "llm", reason)
+        if kind == "ask":
+            # An ask is legal ONLY when it names a real rule carrying a proposal: an unmatched
+            # scene has nothing for consent to authorise, so asking would open a question no
+            # answer could act on. The rule then owns what is said and what is proposed — the
+            # model only chose whether to ask, which is why the outcome's source is "rule".
+            rule = next((r for r in self.rules if r.id == scene and r.proposes), None)
+            if rule is None or not speech:
+                return NO_ACTION
+            return self._fire(rule, now, question_open=question_open)
+        return NO_ACTION
 
     # --- consent ----------------------------------------------------------------------
     def pending(self, now: float) -> Optional[PendingConsent]:

@@ -176,3 +176,125 @@ def test_a_notification_also_yields_to_an_open_router_question(cards):
     assert eng.observe(_child(), now=100.0, question_open=True) == NO_ACTION
     # and it did not burn its cooldown while being silenced by someone else's question
     assert eng.observe(_child(at=101.0), now=101.0).kind == "notify"
+
+
+# --- the LLM fallback ---------------------------------------------------------------------
+
+from scene.llm import FakeSceneLLM
+
+
+def _obs(key, value, confidence=0.9, at=100.0):
+    return Observation(key, value, confidence, "cabin_cam", at, ttl=300.0)
+
+
+def test_a_near_miss_reaches_the_fallback(cards):
+    llm = FakeSceneLLM([{"decision": "ask", "scene": "rear_child_window_lock",
+                         "reason": "低置信但语境明确", "reply_intent": "ask_rear_child_lock"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    out = eng.observe(_child(confidence=0.62), now=100.0)
+    assert out.kind == "ask" and out.source == "rule"
+    assert out.proposal == ToolCall("set_window_child_lock", {"enabled": True})
+    assert llm.calls == 1
+
+
+def test_an_unconsumed_observation_reaches_the_fallback(cards):
+    """Perception reported something no rule anticipated. Silence is the alternative."""
+    llm = FakeSceneLLM([{"decision": "notify", "scene": "unmatched",
+                         "reason": "驾驶员疲劳", "reply_intent": "notify_driver_fatigue"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    out = eng.observe(_obs("inside.driver_attention", "drowsy"), now=100.0)
+    assert out.kind == "notify" and out.source == "llm"
+    assert out.speech == "您看起来有些疲劳，请注意休息。"
+
+
+def test_an_unmatched_scene_may_not_ask(cards):
+    """An ask needs a proposal and an unmatched scene has none, so there would be nothing for
+    consent to authorise. It degrades to silence rather than asking an empty question."""
+    llm = FakeSceneLLM([{"decision": "ask", "scene": "unmatched",
+                         "reason": "x", "reply_intent": "ask_rear_child_lock"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    assert eng.observe(_obs("inside.driver_attention", "drowsy"), now=100.0) == NO_ACTION
+
+
+def test_the_fallback_still_cannot_reach_the_car(cards):
+    """The model decided to ask. The car is still only reachable through consent."""
+    ex = RecordingExecutor()
+    llm = FakeSceneLLM([{"decision": "ask", "scene": "rear_child_window_lock",
+                         "reason": "x", "reply_intent": "ask_rear_child_lock"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=ex, rules=RULES, llm=llm)
+    eng.observe(_child(confidence=0.62), now=100.0)
+    assert ex.calls == []
+
+
+def test_a_below_floor_observation_never_reaches_the_fallback(cards):
+    llm = FakeSceneLLM([{"decision": "ask", "scene": "rear_child_window_lock",
+                         "reason": "x", "reply_intent": "ask_rear_child_lock"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    assert eng.observe(_child(confidence=0.30), now=100.0) == NO_ACTION
+    assert llm.calls == 0
+
+
+def test_a_clear_rule_match_never_consults_the_model(cards):
+    """Arbitration order is what enforces 'the LLM never overrides the rules'."""
+    llm = FakeSceneLLM([{"decision": "no_action", "scene": "unmatched",
+                         "reason": "x", "reply_intent": "ack_declined"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    assert eng.observe(_child(confidence=0.95), now=100.0).source == "rule"
+    assert llm.calls == 0
+
+
+def test_a_rejected_rule_never_consults_the_model(cards):
+    """The lock is already on. A settled question must not cost a decode."""
+    llm = FakeSceneLLM([{"decision": "notify", "scene": "unmatched",
+                         "reason": "x", "reply_intent": "notify_driver_fatigue"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(lock=True),
+                      executor=RecordingExecutor(), rules=RULES, llm=llm)
+    assert eng.observe(_child(confidence=0.62), now=100.0) == NO_ACTION
+    assert llm.calls == 0
+
+
+def test_the_fallback_budget_holds(cards):
+    llm = FakeSceneLLM([{"decision": "notify", "scene": "unmatched", "reason": "x",
+                         "reply_intent": "notify_driver_fatigue"}] * 5)
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    eng.observe(_obs("inside.driver_attention", "drowsy", at=100.0), now=100.0)
+    eng.observe(_obs("inside.driver_attention", "drowsy", at=101.0), now=101.0)
+    assert llm.calls == 1, "one call per FALLBACK_COOLDOWN window"
+
+
+def test_the_fallback_yields_to_an_open_router_question(cards):
+    llm = FakeSceneLLM([{"decision": "notify", "scene": "unmatched", "reason": "x",
+                         "reply_intent": "notify_driver_fatigue"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    assert eng.observe(_obs("inside.driver_attention", "drowsy"), now=100.0,
+                       question_open=True) == NO_ACTION
+
+
+def test_a_model_that_raises_degrades_to_silence(cards):
+    class Exploding:
+        def decide(self, *a, **k):
+            raise RuntimeError("decode failed")
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=Exploding())
+    assert eng.observe(_child(confidence=0.62), now=100.0) == NO_ACTION
+
+
+def test_junk_from_the_model_degrades_to_silence(cards):
+    for junk in (None, "not a dict", {}, {"decision": "execute", "scene": "unmatched"}):
+        llm = FakeSceneLLM([junk])
+        eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                          rules=RULES, llm=llm)
+        assert eng.observe(_child(confidence=0.62), now=100.0) == NO_ACTION, junk
+
+
+def test_no_model_attached_is_simply_silence(cards):
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=None)
+    assert eng.observe(_child(confidence=0.62), now=100.0) == NO_ACTION
