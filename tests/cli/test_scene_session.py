@@ -50,3 +50,27 @@ def test_the_scene_engine_shares_the_session_car(session):
     session.handle("打开车窗儿童锁")
     assert session.observe("rear_occupant", "child", 0.9).reply == "", \
         "the lock is already on, so there is nothing to ask about"
+
+
+def test_a_reset_forgets_the_pending_question(session):
+    """/reset replaces the car. A consent asked about the old one must not be answerable
+    against the new one — otherwise 好 re-opens a lock nobody was asked about."""
+    session.observe("rear_occupant", "child", 0.9)
+    session.reset()
+    turn = session.handle("好")
+    assert turn.scene != "consent"
+    assert session.changed_signals() == []
+
+
+def test_a_reset_forgets_the_cooldown(session):
+    """A rule that spoke to the previous car has said nothing to this one."""
+    assert session.observe("rear_occupant", "child", 0.9).reply
+    session.reset()
+    assert session.observe("rear_occupant", "child", 0.9).reply == "后排有小孩，要打开儿童锁吗？"
+
+
+def test_a_silent_scene_turn_says_so_rather_than_rendering_blank(session):
+    from cli.render import render
+    session.handle("打开车窗儿童锁")
+    out = render(session.observe("rear_occupant", "child", 0.9))
+    assert "nothing spoken" in out

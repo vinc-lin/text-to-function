@@ -240,6 +240,11 @@ class Session:
         self.car.conn.commit()
         seed_from_catalog(self.car, self.cards)
         self._seeded = self._snapshot()
+        # The scene engine has to forget too. A pending consent asked about the old car would
+        # otherwise be answerable against the new one — 好 after a reset would re-open a lock
+        # nobody was asked about — and a cooldown carried across would silence a rule for a
+        # vehicle it never spoke to.
+        self.scene.reset()
 
     def mode_label(self) -> str:
         parts = ["C_llm" if self.llm else "C", self.gate]

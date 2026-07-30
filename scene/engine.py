@@ -68,6 +68,19 @@ class SceneEngine:
         self._last_spoken: dict[str, float] = {}
         self._last_fallback: Optional[float] = None
 
+    def reset(self) -> None:
+        """Forget the cabin. Called when the car underneath is replaced.
+
+        All four pieces of state are about a specific vehicle at a specific moment: what
+        perception believed, what question is outstanding, and which rules have spoken
+        recently. Keeping any of them across a reset lets the driver answer a question that
+        was asked about a car that no longer exists.
+        """
+        self.context = SceneContext()
+        self._pending = None
+        self._last_spoken.clear()
+        self._last_fallback = None
+
     # --- perception -------------------------------------------------------------------
     def observe(self, obs, now: float, *, question_open: bool = False) -> SceneOutcome:
         """Never raises. A traceback here would kill a session after the work is done."""
