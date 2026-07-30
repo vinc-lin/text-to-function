@@ -1,8 +1,13 @@
 > **Read this first:** these are per-spec *measured* results, recorded when each spec shipped. For
 > what the system covers against the Central Model business workflow — and what it does not — see
 > [`2026-07-25-central-model-system-design.md`](specs/2026-07-25-central-model-system-design.md).
-> Two things that page states and this one does not: **step 4b (explain the failure cause) is unmet**,
-> and **no number below was measured on the 87 platform**.
+> **No number anywhere below was measured on the 87 platform.**
+>
+> **Superseded, 2026-07-30:** this banner used to say step 4b (explain the failure cause) was unmet.
+> It is now covered — all three failure categories are spoken with their cause, `reply_cause_coverage`
+> **1.000** over 15 annotations. The sections below are left as they were written, so a per-spec
+> result records what was true when that spec shipped rather than what is true now. Where a later
+> spec moved an earlier number, the later section says so.
 
 # Spec 1 — Evaluation Results
 
@@ -553,3 +558,167 @@ The plan was written from reading the code, not running it. Building it found:
 branch. Arm C re-measured after the change: unchanged.
 
 **305 passed, 9 xfailed** (from 293/11 before this spec, 250/11 before Spec 6).
+
+---
+
+# Spec 8 — Interactive Session Results
+
+**Date:** 2026-07-29
+**What:** `cli/` — `python3 -m cli`, a terminal session where a person types Chinese and watches all
+four workflow steps run against the SQLite-simulated car. Plus `t2f/build.py`, one place that
+assembles a Pipeline.
+**Headline:** no metric, by design. This spec produces a *tool*, and its value is what the tool
+surfaces. 46 tests, almost all over the pure `Turn → text` renderer.
+
+## Why a hand-testing tool earns a spec
+
+The eval harness reports 20-odd numbers and none of them says what a driver would experience. Nine
+consecutive utterances in an early demo produced nine generic apologies — that is `e2e_deterministic
+0.1067` made visible, and no metric had ever made it visible before. A session that shows the
+recognition, the row that moved in the vehicle database, and the sentence spoken, all three at once,
+is the only artifact in this repo where the gap between "the numbers are fine" and "this is unusable"
+is legible.
+
+## The seam it closed
+
+`t2f/build.py` is now the single place a Pipeline is constructed, and both the session and eval arms
+C / C_llm call it. Before this, `eval/` was the only assembler — recorded as gap 6 in the system
+design — which meant the thing a person tried by hand and the thing the metrics described could drift
+apart with nothing to notice. They now cannot.
+
+## Three defects found while building the renderer
+
+All three are cases where the display would have lied, and all three are now regression-tested:
+
+1. **"Nothing moved" and "no state to move" rendered identically.** `打开空调` against an already-on
+   A/C is a success that changes no signal; `next_track` has no signal at all. Showing both as a bare
+   `executed` made a working command look broken.
+2. **`resolved by LLM` appeared above `unresolved`.** `NullMediumResolver` sets `needs_llm` even with
+   no model attached, so a span arrived flagged as escalated when nothing had seen it. The block
+   contradicted itself.
+3. **A question that WAS the reply printed twice.** An out-of-scope utterance asks the driver to
+   rephrase and that question is the whole reply, so the same sentence appeared on two adjacent lines
+   and read as two separate questions.
+
+## What it did not do
+
+- **No routing change of any kind.** `t2f/` gained `build.py` and nothing else; every eval number was
+  unchanged across this spec.
+- **`--fake` misroutes badly** and the guide says so. Its embedder has no semantics; the mode exists
+  to check plumbing after a code change, not to judge the system.
+
+**498 passed, 1 xfailed** at the close of this spec.
+
+---
+
+# Spec 9 — Scene Engine Results
+
+**Date:** 2026-07-30
+**What:** `scene/` — a proactive subsystem beside `t2f/` and `sim/`. Structured perception in, at
+most one spoken question out, and the vehicle moves only after the driver's explicit consent.
+**Headline:** `scene_false_speech_rate` **0.000** and `scene_false_consent_rate` **0.000** on arm S,
+over denominators of 9 and 4. 635 lines of `scene/`, 111 tests plus 2 model-backed.
+
+## The shape, and why it is this shape
+
+The router's own architecture pointed at perception: deterministic rules decide the clear cases, an
+xgrammar-constrained Qwen3-0.6B sees only near-misses and observations no rule anticipated, and
+everything else is silence. **Arbitration order is what enforces "the LLM never overrides the rules"**
+— control flow, not prompt wording. A rule at MATCH means the model is never constructed a prompt.
+
+`scene/` has no path into `Pipeline.route()`. The two subsystems meet at exactly one seam,
+`execute(ToolCall) -> ExecResult`, so a scene-generated call gets the same validation, preconditions,
+physical limits and operation-log entry as one the driver asked for — and no scene change can move a
+router metric.
+
+## Measured
+
+Arm **S** (rules only) and **S_llm** (fallback attached) differ in nothing but the client. The scene
+path uses no embedder at all, which is why these numbers do not carry the `--fake` caveat the
+router's do.
+
+| Metric | arm S | arm S_llm | denominator |
+|---|---|---|---|
+| `scene_false_speech_rate` | **0.0000** | **0.0000** | 9 silent rows |
+| `scene_recall` | **1.0000** | **1.0000** | 4 speaking rows |
+| `scene_false_consent_rate` | **0.0000** | **0.0000** | 4 must-not-consent rows |
+| `avg_llm_calls_per_event` | 0.0000 | 0.1538 | 13 rows |
+
+`scene_false_speech_rate` is the number this design optimises for — the proactive analogue of
+`ood_false_execution_rate`. A proactive system's worst failure is not being wrong; it is being
+uninvited. Arm S_llm consults the model on exactly two rows (a 0.62-confidence near-miss and an
+observation no rule mentions) and **declines to speak on both**: the fallback earning its place by
+staying quiet.
+
+## The interaction it demonstrates
+
+```
+/scene rear_occupant=child conf=0.9  →  后排有小孩，要打开儿童锁吗？
+好                                    →  window.all/window_child_lock  False → True
+                                         已为您打开车窗儿童锁。
+开车窗                                 →  refused · 车窗儿童锁已开启 · nothing changed
+```
+
+The third line is the point. `sim/seed.py:38` already declared `open_window` to require
+`window_child_lock == False`, so a proactive action changes what a later driver-initiated command is
+permitted to do, and the refusal is explained. Both entry points, all four workflow steps, one car.
+
+## Safety properties, asserted over every rule
+
+`tests/scene/test_contract_sweep.py` follows `test_s8_contract_sweep.py`: a property asserted over the
+whole rule set cannot be satisfied by a lucky special case. **Eight mutations were applied one at a
+time and every one was caught by its intended test** — the sweep is not vacuous.
+
+- no rule match ever produces a ToolCall — consent is the only path to the car
+- every `ask` carries a proposal that validates *before* the question is spoken
+- every `Signal` condition names a row the seeded car actually holds (a typo reads as `None`, which
+  is a REJECT, which is silence — a misspelled rule would be permanently and undetectably mute)
+- a rule never fires for what is already true, never bypasses its cooldown, and never talks over a
+  question the router is waiting on
+
+**Consent is exact membership in a closed lexicon, never substring.** A sweep of 6,882 driver-facing
+strings in this repo's own data found zero collisions — and found three real commands (`行李箱`,
+`打开行李箱`, `开行李箱`) that a substring test would have read as consent, because `行` is an
+affirmative. The driver asks for the trunk and the car locks the windows.
+
+## Five defects the happy-path tests would not have caught
+
+Each was found by an adversarial pass, and each now carries a regression test:
+
+1. **`VehicleFacts` held the write path its own docstring forbade** — it stored the whole
+   `SqliteVehicle`, leaving `set_signal` one attribute access away from any rule.
+2. **`resolve()` could raise.** The exception guard was on the perception path while the consent path
+   — the one that touches the car — could propagate a traceback mid-actuation.
+3. **A `notify` could carry a question.** `{"decision": "notify", "reply_intent": "ask_..."}` was
+   schema-valid: the car asks, no consent is pending, the driver answers into the void. Fixed by
+   keying the grammar on the decision, which moved three checks out of Python.
+4. **`/reset` did not reset the engine** — `好` after a reset re-opened a lock on a car nobody had
+   been asked about.
+5. **A docstring claimed a mechanism its assertion could not distinguish**, found by mutating the
+   sweep: the silence it attributed to one cause was over-determined by two.
+
+## It also closed the last red case
+
+`set_window_child_lock` confirmed identically whether the lock went on or off — worse in a proactive
+flow, where the driver never named a direction and hears a sentence that does not say what happened.
+`render_response` now humanises booleans and 38 of 39 boolean cards state their direction
+(`spray_washer` is a momentary trigger, not a state). **Red count across the project: 11 → 9 → 1 → 0.**
+Arm C was re-measured after the change and no routing metric moved; `reply_exact_match` stayed
+0.0811, because none of the 37 free-form annotations covers a boolean confirmation.
+
+## What this did not do
+
+- **The gold file is authored, not observed.** `scene_recall 1.000` measures agreement with our own
+  beliefs about what a camera would report. It is a contract test wearing a metric's clothes — the
+  same caveat this repo already applies to its `asr_noise` rows.
+- **`persist_for` ships with no end-to-end consumer.** The shipped rule sets it to 0.0, so the
+  mechanism is unit-tested and unused.
+- **The closed consent lexicon drops oblique agreement.** `开吧` is a yes a person would say; it is
+  routed as a command instead, and in the gold row it opens the defroster. That cost is recorded
+  rather than argued about.
+- **One rule exists.** Priority and tie-breaking are implemented and swept, but never contended.
+- **No vision.** `/scene` is a person typing what a camera would have reported. Parsing real captions
+  is deferred, and the natural next step is this project's own thesis applied to perception —
+  retrieval over scene prototypes, with its own calibration and gold.
+
+**624 passed, 5 deselected, 0 xfailed** (from 498/1 before Spec 8).
