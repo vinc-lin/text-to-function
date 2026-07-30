@@ -8,7 +8,7 @@ Everything degrades to silence: an exception, a missing model, a proposal that f
 validation. A system nobody asked to speak has silence as its safe default.
 """
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Optional
 
 from t2f.respond import render_response
@@ -18,7 +18,7 @@ from t2f.validate import validate_tool_call
 from .consent import Answer, PendingConsent, classify
 from .context import SceneContext
 from .llm import UNMATCHED
-from .rules import RULES, Verdict, evaluate
+from .rules import RULES, Verdict, evaluate_explained
 from .speech import SPEECH, speech_for
 
 CONSENT_TTL = 30.0
@@ -39,6 +39,17 @@ class SceneOutcome:
     reason: str                      # diagnostic, never spoken
 
 
+# Deliberately NOT a field on SceneOutcome: NO_ACTION is one shared frozen instance, so a
+# populated diagnostics field would stop `_evaluate` returning the singleton and break every
+# `== NO_ACTION` comparison for the sake of a display. The engine records these instead.
+@dataclass(frozen=True)
+class RuleReport:
+    rule_id: str
+    verdict: str                     # the Verdict's value, or "error"
+    reason: str
+    suppressed_by: str = ""          # "" when nothing suppressed it
+
+
 @dataclass
 class ConsentResult:
     answered: bool                   # False -> caller routes the utterance normally
@@ -54,6 +65,13 @@ def _sentence(text: str) -> str:
     return text if (not text or text[-1] in "。！？") else text + "。"
 
 
+def _decision_note(decision) -> str:
+    """A decode was spent, so what came back is recorded whether or not it was usable."""
+    if not isinstance(decision, dict):
+        return f"model returned {type(decision).__name__}, not a decision"
+    return f"{decision.get('decision')} · {str(decision.get('reason', ''))[:120]}"
+
+
 class SceneEngine:
     def __init__(self, cards_by_name, facts, executor, rules=RULES, llm=None,
                  consent_ttl: float = CONSENT_TTL):
@@ -67,46 +85,119 @@ class SceneEngine:
         self._pending: Optional[PendingConsent] = None
         self._last_spoken: dict[str, float] = {}
         self._last_fallback: Optional[float] = None
+        self._last_reports: list = []
+        self._last_fallback_note: str = ""
 
     def reset(self) -> None:
         """Forget the cabin. Called when the car underneath is replaced.
 
-        All four pieces of state are about a specific vehicle at a specific moment: what
-        perception believed, what question is outstanding, and which rules have spoken
-        recently. Keeping any of them across a reset lets the driver answer a question that
-        was asked about a car that no longer exists.
+        Every piece of state here is about a specific vehicle at a specific moment: what
+        perception believed, what question is outstanding, which rules have spoken recently,
+        and the explanation of the last decision. Keeping any of them across a reset lets the
+        driver answer a question that was asked about a car that no longer exists — and an
+        explanation about the previous vehicle is the same class of mistake.
         """
         self.context = SceneContext()
         self._pending = None
         self._last_spoken.clear()
         self._last_fallback = None
+        self._last_reports = []
+        self._last_fallback_note = ""
 
     # --- perception -------------------------------------------------------------------
     def observe(self, obs, now: float, *, question_open: bool = False) -> SceneOutcome:
         """Never raises. A traceback here would kill a session after the work is done."""
+        # Cleared first, so an explanation of the previous observation can never be read as
+        # an explanation of this one.
+        self._last_reports = []
+        self._last_fallback_note = ""
         try:
             self.context.update(obs)
             return self._evaluate(now, question_open=question_open)
-        except Exception:
+        except Exception as exc:
+            # An engine that fails silently and then explains nothing is the opacity this
+            # recording exists to remove.
+            self._last_reports = [RuleReport("—", "error", str(exc)[:120])]
             return NO_ACTION
 
+    def explain(self) -> list:
+        """What the LAST observation decided, per rule. Never re-evaluates.
+
+        By the time anything asks, `observe()` has already written `_last_spoken` and possibly
+        armed a pending consent, so a fresh run would describe a different world than the one
+        that produced the outcome — it would report its own cooldown as the reason it was
+        silent.
+        """
+        return self._last_reports
+
+    def fallback_note(self) -> str:
+        """What the constrained fallback did on the last observation, or why it was skipped."""
+        return self._last_fallback_note
+
     def _evaluate(self, now: float, *, question_open: bool) -> SceneOutcome:
-        verdicts = [(r, evaluate(r, self.context, self.facts, now)) for r in self.rules]
+        explained = [(r, *evaluate_explained(r, self.context, self.facts, now))
+                     for r in self.rules]
+        # Recorded BEFORE anything fires: afterwards the winner's own cooldown and pending
+        # consent are in place, and it would report itself as suppressed.
+        self._last_reports = [
+            RuleReport(r.id, v.value, why,
+                       self._suppressor(r, now, question_open=question_open)
+                       if v is Verdict.MATCH else "")
+            for r, v, why in explained]
+        verdicts = [(r, v) for r, v, _ in explained]
         matched = [r for r, v in verdicts if v is Verdict.MATCH and self._speakable(r, now)]
         if matched:
             # Highest priority wins; ties break by declaration order, so the outcome does not
             # depend on dict ordering or on a clock.
             best = sorted(matched, key=lambda r: (-r.priority, self.rules.index(r)))[0]
-            return self._fire(best, now, question_open=question_open)
+            for loser in matched:
+                if loser is not best:
+                    self._amend(loser.id, f"outranked by {best.id}")
+            outcome = self._fire(best, now, question_open=question_open)
+            if outcome is NO_ACTION:
+                # _fire declined after the reports were written. question_open was already
+                # recorded by _suppressor, so the only cause left is a proposal that failed
+                # validation — and "match" printed next to silence with no reason beside it
+                # is precisely the display defect this recording exists to remove.
+                self._amend(best.id, "proposal failed validation")
+            return outcome
         return self._fallback(verdicts, now, question_open=question_open)
 
-    def _speakable(self, rule, now: float) -> bool:
+    def _amend(self, rule_id: str, suppressed_by: str) -> None:
+        """Fill in a suppressor discovered after the reports were written.
+
+        Fills an EMPTY one only. A reason already recorded by `_suppressor` is the earlier
+        and more specific cause; overwriting it would report the second thing that would have
+        stopped the rule rather than the first thing that did.
+        """
+        self._last_reports = [
+            replace(r, suppressed_by=suppressed_by)
+            if r.rule_id == rule_id and not r.suppressed_by else r
+            for r in self._last_reports]
+
+    def _suppressor(self, rule, now: float, *, question_open: bool) -> str:
+        """Why a matched rule would not speak — "" when nothing stops it.
+
+        The single source of truth: `_speakable` is this same question asked as a boolean. A
+        second copy written for the display would drift from the one that decides, and the
+        display would then confidently explain a silence that had another cause.
+        """
+        reasons = []
         last = self._last_spoken.get(rule.id)
         if last is not None and now - last < rule.cooldown:
-            return False
+            reasons.append(f"cooldown, {rule.cooldown - (now - last):.0f}s left")
         pending = self.pending(now)
         # Do not re-ask a question we are already waiting on an answer to.
-        return not (pending is not None and pending.scene == rule.id)
+        if pending is not None and pending.scene == rule.id:
+            reasons.append("already asked, awaiting an answer")
+        if question_open:
+            reasons.append("router holds a question")
+        return "; ".join(reasons)
+
+    def _speakable(self, rule, now: float) -> bool:
+        # question_open is excluded deliberately: _fire checks it later so that a rule the
+        # router silenced does not also burn its own cooldown.
+        return not self._suppressor(rule, now, question_open=False)
 
     def _fire(self, rule, now: float, *, question_open: bool) -> SceneOutcome:
         if question_open:
@@ -138,28 +229,35 @@ class SceneEngine:
         spending a decode on it would be paying for an answer we have.
         """
         if self.llm is None:
+            self._last_fallback_note = "no model attached"
             return NO_ACTION
         if question_open:
             # Checked before the decode, not after, for the reason _fire states: a subsystem
             # silenced by someone else's question should not also pay for the answer or burn
             # its own window. Discovering this after the call spent a decode and consumed the
             # budget, then discarded the result.
+            self._last_fallback_note = "router holds a question"
             return NO_ACTION
         near = [r for r, v in verdicts if v is Verdict.NEAR_MISS]
         mentioned = {k for r in self.rules for k in r.observed_keys}
         live = self.context.live(now)
         unconsumed = [k for k in live if k not in mentioned]
         if not near and not unconsumed:
+            self._last_fallback_note = "no near-miss or unconsumed observation"
             return NO_ACTION
         if self._last_fallback is not None and now - self._last_fallback < FALLBACK_COOLDOWN:
+            remaining = FALLBACK_COOLDOWN - (now - self._last_fallback)
+            self._last_fallback_note = f"budget: {remaining:.0f}s remaining"
             return NO_ACTION
         self._last_fallback = now
         snapshot = {k: {"value": o.value, "confidence": o.confidence, "source": o.source}
                     for k, o in live.items()}
         try:
             decision = self.llm.decide(snapshot, self.rules, SPEECH)
-        except Exception:
+        except Exception as exc:
+            self._last_fallback_note = f"model raised: {str(exc)[:80]}"
             return NO_ACTION
+        self._last_fallback_note = _decision_note(decision)
         return self._from_decision(decision, now, question_open=question_open)
 
     def _from_decision(self, decision, now: float, *, question_open: bool) -> SceneOutcome:

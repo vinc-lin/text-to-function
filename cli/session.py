@@ -49,6 +49,21 @@ class SpanOutcome:
 
 
 @dataclass
+class ContextRow:
+    """One live observation, as a display needs it rather than as the engine stores it.
+
+    `age` and `expires_in` are derived against the session's clock at the moment of the
+    read, so a row is a photograph and never a live handle to an Observation.
+    """
+    key: str
+    value: Any
+    confidence: float
+    source: str
+    age: float
+    expires_in: float
+
+
+@dataclass
 class Turn:
     utterance: str
     spans: list = field(default_factory=list)
@@ -58,6 +73,11 @@ class Turn:
     # keep meaning what it meant. A scene turn has no spans — nobody said anything.
     scene: str = ""
     deltas: list = field(default_factory=list)
+    # The engine's own RuleReports, carried through unwrapped. A parallel CLI-side type would
+    # have to be kept in sync with a dataclass that already has exactly these four fields, and
+    # the two would drift the first time the engine learned to explain something new.
+    rules: list = field(default_factory=list)
+    fallback: str = ""      # what the constrained fallback did, or why it was skipped
 
 
 class Session:
@@ -65,6 +85,10 @@ class Session:
         self.pipeline, self.car, self.executor = pipeline, car, executor
         self.cards, self.config = cards, config
         self.fake, self.llm, self.gate = fake, llm, gate
+        # Everything the scene engine decides is a function of `now`: a TTL, a cooldown, a
+        # persistence window. At a terminal those are all measured in minutes, so without a
+        # lie to tell about the clock most of the engine is unreachable by hand.
+        self.clock_offset = 0.0
 
     # --- construction ------------------------------------------------------------------
     @classmethod
@@ -125,23 +149,49 @@ class Session:
         # question belongs to the conversation, not to the router configuration, so /llm off
         # between the question and the 好 must not swallow the answer.
 
+    # --- the clock -----------------------------------------------------------------------
+    def _now(self) -> float:
+        """The only clock the session reads. Every call site goes through here.
+
+        A missed `_time.monotonic()` elsewhere would make the offset apply to some decisions
+        and not others — an observation that expires while the cooldown that silenced it does
+        not — which is worse than having no offset at all.
+        """
+        return _time.monotonic() + self.clock_offset
+
+    def advance_clock(self, seconds: float) -> float:
+        """Move the session's clock forward (or back), returning the new total offset.
+
+        Nothing sleeps and nothing is re-evaluated: the offset is read the next time anything
+        asks what time it is, exactly as a real elapsed interval would be.
+        """
+        self.clock_offset += seconds
+        return self.clock_offset
+
     # --- one turn ----------------------------------------------------------------------
     OBSERVATION_TTL = 300.0
 
     def observe(self, key: str, value, confidence: float = 0.9,
-                source: str = "cabin_cam") -> Turn:
+                source: str = "cabin_cam", ttl: Optional[float] = None) -> Turn:
         """One perception event in, one Turn out — the scene analogue of handle()."""
-        now = _time.monotonic()
-        obs = Observation(f"inside.{key}", value, confidence, source, now, self.OBSERVATION_TTL)
+        now = self._now()
+        # The design namespaces keys inside. / outside. / vehicle., and prefixing every key
+        # unconditionally made two of those three unreachable — there was no way to state an
+        # outside.weather observation at all. A key that already names its namespace is taken
+        # as written; a bare one still gets the cabin, so /scene rear_occupant=child works.
+        full_key = key if "." in key else f"inside.{key}"
+        obs = Observation(full_key, value, confidence, source, now,
+                          self.OBSERVATION_TTL if ttl is None else ttl)
         before = self._snapshot()
         outcome = self.scene.observe(obs, now, question_open=False)
         return Turn(utterance=f"[scene] {key}={value}", reply=outcome.speech,
-                    scene=outcome.scene or "—", deltas=self._deltas_since(before))
+                    scene=outcome.scene or "—", deltas=self._deltas_since(before),
+                    rules=list(self.scene.explain()), fallback=self.scene.fallback_note())
 
     def handle(self, utterance: str) -> Turn:
         before = self._snapshot()
         try:
-            consent = self.scene.resolve(utterance, _time.monotonic())
+            consent = self.scene.resolve(utterance, self._now())
             if consent.answered:
                 # The driver was answering the car, not commanding it. Routing these words
                 # would treat 好 as an utterance to match against 92 functions.
@@ -231,6 +281,30 @@ class Session:
         return [(e, a, v) for (e, a), v in self._snapshot().items()
                 if self._seeded.get((e, a)) != v]
 
+    def context_rows(self) -> list[ContextRow]:
+        """What perception currently believes — the `/car` of the scene subsystem.
+
+        Only live observations: an expired one is not part of what the engine is reasoning
+        over, so showing it would explain a decision by a belief that was not held.
+        """
+        now = self._now()
+        return sorted(
+            (ContextRow(key=o.key, value=o.value, confidence=o.confidence, source=o.source,
+                        age=now - o.at, expires_in=o.at + o.ttl - now)
+             for o in self.scene.context.live(now).values()),
+            key=lambda r: r.key)
+
+    def attach_scene_llm(self, client) -> None:
+        """Attach or detach the constrained fallback, keeping everything else.
+
+        Deliberately one assignment and no rebuild — the same principle as /llm and /gate: the
+        car, the accumulated context and any pending consent all survive, because the point of
+        the switch is to replay the same perception against the same vehicle and see whether
+        the second half of the system says anything the rules did not. Rebuilding the engine
+        would reseed the context and swallow a question already asked.
+        """
+        self.scene.llm = client
+
     def reset(self):
         self.car.conn.execute("DELETE FROM signal")
         self.car.conn.execute("DELETE FROM operation_log")
@@ -247,7 +321,11 @@ class Session:
         self.scene.reset()
 
     def mode_label(self) -> str:
-        parts = ["C_llm" if self.llm else "C", self.gate]
+        # The scene fallback is named the way the eval arms name it, S / S_llm, and is stated
+        # in both directions rather than only when attached: half the scene subsystem is
+        # unreachable without it, so "why did nothing happen" needs the answer on the prompt.
+        parts = ["C_llm" if self.llm else "C", self.gate,
+                 "S_llm" if self.scene.llm is not None else "S"]
         if self.fake:
             parts.append("FAKE")
         return " · ".join(parts)

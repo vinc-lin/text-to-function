@@ -324,3 +324,130 @@ def test_an_open_router_question_costs_no_decode(cards):
     # the window is intact, so the next observation still gets its chance
     out = eng.observe(_obs("inside.driver_attention", "drowsy", at=101.0), now=101.0)
     assert out.kind == "notify" and llm.calls == 1
+
+
+# --- what the engine records about its own silence ----------------------------------------
+
+def test_explain_reports_the_verdict_of_every_rule(cards):
+    eng = _engine(cards)
+    eng.observe(_child(confidence=0.62), now=100.0)
+    rows = eng.explain()
+    assert [r.rule_id for r in rows] == ["rear_child_window_lock"]
+    assert rows[0].verdict == "near_miss" and "0.62" in rows[0].reason
+
+
+def test_explain_reports_a_cooldown_as_the_suppressor(cards):
+    """The rule MATCHED and still said nothing. Without this the display would show
+    'match' next to silence and read as a bug."""
+    eng = _engine(cards)
+    eng.observe(_child(at=100.0), now=100.0)
+    eng.resolve("不用", now=101.0)
+    eng.observe(_child(at=102.0), now=102.0)
+    rows = eng.explain()
+    assert rows[0].verdict == "match"
+    assert "cooldown" in rows[0].suppressed_by and "118" in rows[0].suppressed_by
+
+
+def test_explain_reports_a_pending_question_as_the_suppressor(cards):
+    eng = _engine(cards)
+    eng.observe(_child(at=100.0), now=100.0)
+    eng.observe(_child(at=101.0), now=101.0)
+    assert "already asked" in eng.explain()[0].suppressed_by
+
+
+def test_explain_reports_the_router_holding_a_question(cards):
+    eng = _engine(cards)
+    eng.observe(_child(), now=100.0, question_open=True)
+    assert "router" in eng.explain()[0].suppressed_by
+
+
+def test_explain_says_nothing_suppressed_a_rule_that_spoke(cards):
+    eng = _engine(cards)
+    eng.observe(_child(), now=100.0)
+    assert eng.explain()[0].suppressed_by == ""
+
+
+def test_explain_before_any_observation_is_empty_not_an_error(cards):
+    assert _engine(cards).explain() == []
+
+
+def test_explain_survives_an_engine_that_blew_up(cards):
+    """An engine that fails silently and then explains nothing is the exact opacity this
+    work exists to remove."""
+    class Exploding:
+        def signal(self, *a):
+            raise RuntimeError("camera bus fell over")
+    eng = _engine(cards, facts=Exploding())
+    assert eng.observe(_child(), now=100.0) == NO_ACTION
+    assert eng.explain() and eng.explain()[0].verdict == "error"
+    assert "camera bus" in eng.explain()[0].reason
+
+
+def test_explain_records_the_fallback_when_it_ran(cards):
+    llm = FakeSceneLLM([{"decision": "no_action", "scene": "unmatched",
+                         "reason": "不确定", "reply_intent": "ack_declined"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    eng.observe(_child(confidence=0.62), now=100.0)
+    assert "no_action" in eng.fallback_note() and "不确定" in eng.fallback_note()
+
+
+def test_the_fallback_note_says_why_it_was_not_consulted(cards):
+    eng = _engine(cards)
+    eng.observe(_child(confidence=0.62), now=100.0)
+    assert "no model attached" in eng.fallback_note()
+
+
+def test_the_fallback_note_says_when_the_budget_blocked_it(cards):
+    llm = FakeSceneLLM([{"decision": "no_action", "scene": "unmatched", "reason": "x",
+                         "reply_intent": "ack_declined"}] * 3)
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    eng.observe(_child(confidence=0.62, at=100.0), now=100.0)
+    eng.observe(_child(confidence=0.62, at=101.0), now=101.0)
+    assert "budget" in eng.fallback_note()
+
+
+def test_a_rule_that_lost_arbitration_says_who_beat_it(cards):
+    """A MATCH sitting next to silence with no reason beside it reads as a bug in the car.
+    Losing to a higher-priority rule is a perfectly good reason and must be said."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    loud = dataclasses.replace(REAR_CHILD_WINDOW_LOCK, id="loud", priority=99)
+    quiet = dataclasses.replace(REAR_CHILD_WINDOW_LOCK, id="quiet", priority=1)
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(quiet, loud))
+    eng.observe(_child(), now=100.0)
+    by_id = {r.rule_id: r for r in eng.explain()}
+    assert by_id["loud"].suppressed_by == ""
+    assert by_id["quiet"].suppressed_by == "outranked by loud"
+
+
+def test_a_rule_whose_proposal_will_not_validate_says_so(cards):
+    """The contract sweep keeps every shipped rule's proposal valid, so this is unreachable
+    today — but it is the one remaining path where a MATCH produces silence, and someone
+    editing a rule by hand is exactly who needs to be told."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    broken = dataclasses.replace(
+        REAR_CHILD_WINDOW_LOCK,
+        proposes=ToolCall("set_window_child_lock", {"enabled": "yes"}))
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(broken,))
+    assert eng.observe(_child(), now=100.0) == NO_ACTION
+    assert eng.explain()[0].suppressed_by == "proposal failed validation"
+
+
+def test_an_earlier_suppressor_is_not_overwritten_by_a_later_one(cards):
+    """question_open is recorded first and is the reason the rule was silent. Reporting the
+    validation problem instead would name the second thing that would have stopped it rather
+    than the first thing that did."""
+    import dataclasses
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    broken = dataclasses.replace(
+        REAR_CHILD_WINDOW_LOCK,
+        proposes=ToolCall("set_window_child_lock", {"enabled": "yes"}))
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=(broken,))
+    eng.observe(_child(), now=100.0, question_open=True)
+    assert "router" in eng.explain()[0].suppressed_by

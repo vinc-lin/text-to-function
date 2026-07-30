@@ -351,7 +351,10 @@ lexicon cannot quietly break it, not because the measurement discovered anything
 - **`persist_for` ships with no end-to-end case.** The shipped rule sets it to 0.0, so the mechanism
   is covered by unit tests and by nothing else.
 - **The fallback has no on-device figure**, consistent with everything else here.
-- **The interactive session attaches no scene fallback**, so `python3 -m cli` exercises arm S only.
+- **The interactive session attached no scene fallback** when this was written, so `python3 -m cli`
+  exercised arm S only. Superseded on 2026-07-30: `/scene-llm on` and `--scene-llm` attach it, and
+  both arms are now reachable by hand. Under `--fake` it refuses rather than attaching a scripted
+  stand-in, because a fake would fabricate the behaviour someone is trying to observe.
 
 The scene contract sweep is the part worth the same trust as §4: eight properties, each asserted over
 **every** rule in the set — no rule match ever produces a ToolCall on its own, every `ask` carries a
