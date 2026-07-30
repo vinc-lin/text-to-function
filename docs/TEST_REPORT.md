@@ -2,8 +2,9 @@
 
 **Date:** 2026-07-28
 **Scope:** the 131 end-to-end cases covering the Central Model's business workflow
-**Suite:** 456 passed · 1 xfailed · 3 deselected
+**Suite:** 456 passed · 1 xfailed · 3 deselected  *(2026-07-30: 624 passed · 0 xfailed · 3 deselected)*
 **Updated 2026-07-29** after the extractor and negation fixes — see §8.
+**Updated 2026-07-30** with the Scene Engine and the last red case — see §10.
 **Evaluation:** arm C (deterministic, zero LLM), real embedder, gold test split n=192
 
 ---
@@ -68,7 +69,7 @@ Every string below is measured from a passing test, not composed for this docume
 |---|---|---|
 | 副驾温度调到26度 | 已将副驾温度设置为26°C。 | `climate.passenger/temperature` 24.0 → 26.0 |
 | 主驾座椅按摩开到五档 | 已将主驾座椅按摩设置为5档。 | `seat.driver/seat_massage` 2 → 5 |
-| 打开车窗，风速调到3档 | 已为您调整当前区域车窗状态。已将当前区域风速设置为3档。 | both signals move |
+| 打开车窗，风速调到3档 | 已为您打开当前区域车窗。已将当前区域风速设置为3档。 | both signals move |
 
 **Failure — the driver is told which of three things went wrong**
 
@@ -91,8 +92,8 @@ errors, and the **car** refuses it.
 
 | Utterance | Reply |
 |---|---|
-| 开车窗,把主驾温度调到25度 *(A/C off)* | 已为您调整当前区域车窗状态。空调尚未开启。 |
-| 开车窗，风速调到20档，屏幕亮度调到200% | 已为您调整当前区域车窗状态。风速档位只能设置在1到7档之间。屏幕亮度只能设置在0到100%之间。 |
+| 开车窗,把主驾温度调到25度 *(A/C off)* | 已为您打开当前区域车窗。空调尚未开启。 |
+| 开车窗，风速调到20档，屏幕亮度调到200% | 已为您打开当前区域车窗。风速档位只能设置在1到7档之间。屏幕亮度只能设置在0到100%之间。 |
 
 Confirmation first, then each cause. The second row is a case that until today produced one vague
 question covering both bad values.
@@ -195,16 +196,20 @@ happening. No routing metric moved.
 - **No ASR, no TTS, no real vehicle bus.** Out of scope by design.
 - **`asr_noise` rows encode our belief** about ASR errors, not measured misrecognitions.
 
-### The two remaining red cases
+### The two red cases — both now closed
 
-Both are `xfail(strict=True)`, so closing either makes the suite say so:
+Both were `xfail(strict=True)`, so closing either made the suite say so. Both have since said so,
+and the repo has **no red case left**:
 
-| Case | Defect |
-|---|---|
-| `test_s2_11_negation_must_not_invert_the_action` | `别关车窗` ("don't close the window") dispatches `is_open=False` and closes it |
-| `test_s4a_07_boolean_action_states_on_or_off` | opening and closing produce byte-identical confirmations |
+| Case | Defect | Closed |
+|---|---|---|
+| `test_s2_11_negation_must_not_invert_the_action` | `别关车窗` ("don't close the window") dispatched `is_open=False` and closed it | **2026-07-29** — polarity is positional now, and a negated cue yields *unknown* and asks, because "don't close it" is not "open it" (§8 finding 3) |
+| `test_s4a_07_boolean_action_states_on_or_off` | opening and closing produced byte-identical confirmations | **2026-07-30** — `render_response` humanises the boolean, so 38 of the 39 boolean cards state their direction (§10) |
 
-The first is the more serious: the system executes the **inverse** of the instruction.
+The first was the more serious: the system executed the **inverse** of the instruction.
+
+A red count of zero is not a claim of accuracy. What §9 says still holds — these cases encoded gaps
+in the *business workflow*, and closing them says nothing about `param_exact_match 0.4133`.
 
 ---
 
@@ -265,3 +270,92 @@ What would be misleading to conclude from "393 passed":
 What it does support: for every utterance the suite has tried, the system either does the right thing
 or says something true about why it did not, and never claims to have done something it did not do.
 That property is mutation-tested rather than asserted, which is the part I would stand behind.
+
+---
+
+## 10. Update — 2026-07-30: the Scene Engine, and the last red case
+
+Everything above is the report as it stood on 2026-07-28, amended on 2026-07-29. Two things have
+landed since, and this section is the only place that reflects them.
+
+**Suite: 624 passed · 0 xfailed · 3 deselected** (`python3 -m pytest -q`, re-run 2026-07-30). The 131
+end-to-end cases of §2 are unchanged in number and composition. 111 of the total are new tests under
+`tests/scene/`, of which 5 are end-to-end chains and 8 are a contract sweep in the style of §4.
+
+### Boolean confirmations state their direction
+
+`test_s4a_07_boolean_action_states_on_or_off` is closed, and with it the last red case in the repo
+(§7). `render_response` now derives a state word from the card's own verb — 打开/关闭, or 折叠/展开
+for `fold_mirror` and `fold_rear_seat` — and 38 of the 39 boolean cards interpolate it:
+
+```
+已为您打开车窗儿童锁。     enabled=true
+已为您关闭车窗儿童锁。     enabled=false
+```
+
+**Three literals in §3 were updated to match**: the two-signal success row and both mixed rows now
+read `已为您打开当前区域车窗。` where they read `已为您调整当前区域车窗状态。`. They are presented as
+measured output, so they had to be re-measured; all three were, against the same `FakeEmbedder`
+pipeline the e2e suite uses.
+
+10 of the 92 cards still confirm without naming the value they set — `set_ac_mode` says
+`已切换空调模式。` without saying which mode. Nine are enum switches. The tenth is `spray_washer`,
+left alone deliberately: its `enabled` is a momentary trigger rather than a state, and
+`已为您关闭玻璃水。` is not a sentence anyone would say. The enum nine are a smaller version of the
+same defect, and no red case covers them.
+
+**Arm C was re-measured after the change and nothing moved.** Same command as §5
+(`--arm C --dataset data/eval/gold.jsonl --calibrate`, real embedder, n=192): `recall@1` 0.8644,
+`multi_intent_set_recall` 0.8194, `param_exact_match` 0.4133, `e2e_deterministic` 0.1333,
+`schema_valid_rate` 0.6212, OOD / context / incorrect execution all 0.0000 — every figure in §5
+identical, **including `reply_exact_match` 0.0811 (37)**. The design predicted that one would move;
+it did not, because none of the 37 free-form annotations covers a boolean confirmation. A reply-text
+change with no routing consequence was the assertion to check, and it checks out.
+
+### The Scene Engine — a second subsystem, measured separately
+
+`scene/` is a **proactive** layer: it takes a structured perception event and turns it into *at most*
+a spoken question. It is not a router change and not a new arm of the router. It cannot reach
+`Pipeline.route()`; the two subsystems meet only at `execute(ToolCall)`, so a scene-initiated call
+gets the same validation, preconditions, physical limits and operation-log entry as a driver's.
+**Consent is the only path from a scene to the car** — `execute` is not an outcome the engine can
+produce, and `好` must be the whole normalised utterance, matched by exact set membership rather than
+substring, so a command can never be read as a yes.
+([design](superpowers/specs/2026-07-30-scene-engine-design.md))
+
+Two arms, mirroring C and C_llm, differing only in whether the constrained fallback client is
+attached. Measured 2026-07-30 over all 13 rows of `data/eval/scenes.jsonl`:
+
+| Metric | Arm S (rules only) | Arm S_llm (+ fallback) | n |
+|---|---|---|---|
+| `scene_false_speech_rate` | **0.0000** | **0.0000** | 9 silent rows |
+| `scene_recall` | **1.0000** | **1.0000** | 4 speaking rows |
+| `scene_false_consent_rate` | **0.0000** | **0.0000** | 4 must-not-consent rows |
+| `avg_llm_calls_per_event` | **0.0000** | 0.1538 | 13 rows |
+
+`avg_llm_calls_per_event` 0.1538 is 2 decodes over 13 rows: the fallback is reached only when no rule
+matched, and only for near-misses and unconsumed observations, under a 30-second budget.
+`scene_false_consent_rate` is 0.000 **by construction** — it is measured so that a later change to the
+lexicon cannot quietly break it, not because the measurement discovered anything.
+
+### What these four numbers do NOT establish
+
+- **`data/eval/scenes.jsonl` is hand-authored, so it encodes our beliefs about perception rather
+  than measured perception** — the same caveat §7 already applies to the `asr_noise` rows. There is
+  no camera, no vision model and no recorded cabin data anywhere in this repo. `scene_recall 1.000`
+  is agreement with what we decided a cabin camera would report; it is a contract test wearing a
+  metric's clothes, and the design says so in §13.
+- **Denominators of 4 and 9.** Thirteen rows is a vertical slice, not a distribution. One rule ships
+  (a child in the rear with the window child lock off), so `scene_recall` has exactly one scene to
+  recall.
+- **`persist_for` ships with no end-to-end case.** The shipped rule sets it to 0.0, so the mechanism
+  is covered by unit tests and by nothing else.
+- **The fallback has no on-device figure**, consistent with everything else here.
+- **The interactive session attaches no scene fallback**, so `python3 -m cli` exercises arm S only.
+
+The scene contract sweep is the part worth the same trust as §4: eight properties, each asserted over
+**every** rule in the set — no rule match ever produces a ToolCall on its own, every `ask` carries a
+proposal that validates, no outcome speaks an ASCII identifier or an internal signal name, a rule
+never fires when its `Signal` condition already holds, cooldown is never bypassed, and every rule
+yields to a router question already open. With one rule in the set those are cheap to satisfy; they
+are written to stay true of the tenth.
