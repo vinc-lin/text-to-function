@@ -298,3 +298,29 @@ def test_no_model_attached_is_simply_silence(cards):
     eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
                       rules=RULES, llm=None)
     assert eng.observe(_child(confidence=0.62), now=100.0) == NO_ACTION
+
+
+def test_a_notify_carrying_a_question_is_refused(cards):
+    """Ungrammatical under scene_decision_schema, but a scripted fake or a drifted schema
+    version can still produce it — and it would put a question in the cabin that no consent
+    is waiting behind."""
+    llm = FakeSceneLLM([{"decision": "notify", "scene": "unmatched",
+                         "reason": "x", "reply_intent": "ask_rear_child_lock"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    assert eng.observe(_obs("inside.driver_attention", "drowsy"), now=100.0) == NO_ACTION
+
+
+def test_an_open_router_question_costs_no_decode(cards):
+    """Silenced by someone else's question, so it should not pay for the answer either — nor
+    burn the fallback window, which would swallow the next real observation."""
+    llm = FakeSceneLLM([{"decision": "notify", "scene": "unmatched", "reason": "x",
+                         "reply_intent": "notify_driver_fatigue"}])
+    eng = SceneEngine(cards_by_name=cards, facts=FakeFacts(), executor=RecordingExecutor(),
+                      rules=RULES, llm=llm)
+    assert eng.observe(_obs("inside.driver_attention", "drowsy", at=100.0), now=100.0,
+                       question_open=True) == NO_ACTION
+    assert llm.calls == 0
+    # the window is intact, so the next observation still gets its chance
+    out = eng.observe(_obs("inside.driver_attention", "drowsy", at=101.0), now=101.0)
+    assert out.kind == "notify" and llm.calls == 1

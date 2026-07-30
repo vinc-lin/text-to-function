@@ -126,6 +126,12 @@ class SceneEngine:
         """
         if self.llm is None:
             return NO_ACTION
+        if question_open:
+            # Checked before the decode, not after, for the reason _fire states: a subsystem
+            # silenced by someone else's question should not also pay for the answer or burn
+            # its own window. Discovering this after the call spent a decode and consumed the
+            # budget, then discarded the result.
+            return NO_ACTION
         near = [r for r, v in verdicts if v is Verdict.NEAR_MISS]
         mentioned = {k for r in self.rules for k in r.observed_keys}
         live = self.context.live(now)
@@ -152,9 +158,17 @@ class SceneEngine:
             return NO_ACTION
         kind = decision.get("decision")
         scene = decision.get("scene", UNMATCHED)
-        speech = _sentence(speech_for(decision.get("reply_intent", "")))
+        intent = decision.get("reply_intent", "")
+        speech = _sentence(speech_for(intent))
         reason = str(decision.get("reason", ""))[:200]
         if kind == "notify" and speech:
+            # A notify carrying an ask_* intent would put a question in the cabin with no
+            # pending consent behind it, and the driver's 好 would answer into the void.
+            # scene_decision_schema makes this ungrammatical; the check stays because a
+            # scripted fake, a drifted schema version, or a future intent added to the wrong
+            # prefix can all still produce it.
+            if intent.startswith("ask_"):
+                return NO_ACTION
             return SceneOutcome("notify", scene, speech, None, "llm", reason)
         if kind == "ask":
             # An ask is legal ONLY when it names a real rule carrying a proposal: an unmatched

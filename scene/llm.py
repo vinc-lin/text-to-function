@@ -14,18 +14,50 @@ from typing import Optional
 UNMATCHED = "unmatched"
 
 
-def scene_decision_schema(rules, speech: dict) -> dict:
-    return {
-        "type": "object",
-        "properties": {
-            "decision": {"enum": ["notify", "ask", "no_action"]},
-            "scene": {"enum": [r.id for r in rules] + [UNMATCHED]},
-            "reason": {"type": "string"},
-            "reply_intent": {"enum": sorted(speech)},
-        },
-        "required": ["decision", "scene", "reason", "reply_intent"],
-        "additionalProperties": False,
+def _branch(decision: str, scenes: list, intents: list) -> dict:
+    props = {
+        "decision": {"const": decision},
+        "scene": {"enum": scenes},
+        # Bounded in the grammar rather than truncated afterwards: `reason` shares a token
+        # budget with the fields that decide the outcome, and a string cut off mid-generation
+        # makes the whole object unparseable — so an over-long reason discards the decision.
+        "reason": {"type": "string", "maxLength": 80},
     }
+    required = ["decision", "scene", "reason"]
+    if intents:
+        props["reply_intent"] = {"enum": intents}
+        required.append("reply_intent")
+    return {"type": "object", "properties": props, "required": required,
+            "additionalProperties": False}
+
+
+def scene_decision_schema(rules, speech: dict) -> dict:
+    """One branch per decision, each carrying only the scenes and intents that fit it.
+
+    A flat schema let the model return `decision: notify` with an `ask_*` intent — a question
+    spoken into the cabin with no pending consent behind it, which the driver can answer into
+    the void. That is the same defect the ask branch guards against, arriving through the
+    notify door. Keyed branches make it UNGRAMMATICAL rather than merely checked, which is how
+    t2f/llm/schema.py already constrains tool calls.
+
+    The branches also encode two things that were previously code: only a rule carrying a
+    `proposes` may be asked about, and `no_action` needs no intent because it says nothing.
+    """
+    askable = sorted(r.id for r in rules if r.proposes is not None)
+    notifiable = sorted([r.id for r in rules if r.proposes is None] + [UNMATCHED])
+    ask_intents = sorted(k for k in speech if k.startswith("ask_"))
+    notify_intents = sorted(k for k in speech if k.startswith("notify_"))
+    every_scene = sorted([r.id for r in rules] + [UNMATCHED])
+
+    branches = []
+    # An empty enum is not valid JSON schema, so a rule set with nothing askable drops the
+    # branch entirely rather than emitting one the decoder cannot satisfy.
+    if askable and ask_intents:
+        branches.append(_branch("ask", askable, ask_intents))
+    if notify_intents:
+        branches.append(_branch("notify", notifiable, notify_intents))
+    branches.append(_branch("no_action", every_scene, []))
+    return {"oneOf": branches}
 
 
 def build_scene_prompt(snapshot: dict, rules, speech: dict) -> list[dict]:
@@ -74,6 +106,9 @@ class TransformersSceneLLM:
             torch_dtype=torch.float16 if self.device == "cuda" else torch.float32
         ).to(self.device).eval()
         self.max_new_tokens = max_new_tokens
+        # ADJUST if API differs — same caveat as t2f/llm/client.py:62. xgrammar's HF
+        # integration has shifted names across versions, and there are now two copies of this
+        # line; if one needs changing, so does the other.
         info = xgr.TokenizerInfo.from_huggingface(self.tok, vocab_size=self.model.config.vocab_size)
         self.compiler = xgr.GrammarCompiler(info)
 

@@ -6,28 +6,65 @@ from scene.rules import RULES
 from scene.speech import SPEECH
 
 
+def _branches(rules=RULES, speech=SPEECH):
+    return {b["properties"]["decision"]["const"]: b
+            for b in scene_decision_schema(rules, speech)["oneOf"]}
+
+
 def test_the_schema_offers_no_execute_decision():
     """The model cannot ask for the car to move. The most it can do is propose a question,
     and that still needs consent."""
-    schema = scene_decision_schema(RULES, SPEECH)
-    assert set(schema["properties"]["decision"]["enum"]) == {"notify", "ask", "no_action"}
+    assert set(_branches()) == {"notify", "ask", "no_action"}
 
 
-def test_the_scene_enum_is_the_rule_ids_plus_unmatched():
-    schema = scene_decision_schema(RULES, SPEECH)
-    assert set(schema["properties"]["scene"]["enum"]) == {r.id for r in RULES} | {"unmatched"}
+def test_a_notify_cannot_carry_a_question():
+    """The hole a flat schema left open: decision=notify with an ask_* intent puts a question
+    in the cabin with no pending consent behind it, and the driver answers into the void.
+    Branching on the decision makes it ungrammatical rather than merely checked."""
+    notify = _branches()["notify"]["properties"]["reply_intent"]["enum"]
+    assert notify and all(not i.startswith("ask_") for i in notify)
 
 
-def test_the_intent_enum_is_exactly_the_speech_table():
-    """If these drift apart the model can pick an intent that resolves to silence."""
-    schema = scene_decision_schema(RULES, SPEECH)
-    assert set(schema["properties"]["reply_intent"]["enum"]) == set(SPEECH)
+def test_only_a_rule_that_can_be_acted_on_may_be_asked_about():
+    """An ask names a rule whose consent has something to authorise. A rule with no proposal
+    is not askable, and that is now a property of the grammar rather than an if-statement."""
+    askable = set(_branches()["ask"]["properties"]["scene"]["enum"])
+    assert askable == {r.id for r in RULES if r.proposes is not None}
+    assert "unmatched" not in askable
 
 
-def test_every_field_is_required_and_nothing_else_is_allowed():
-    schema = scene_decision_schema(RULES, SPEECH)
-    assert set(schema["required"]) == {"decision", "scene", "reason", "reply_intent"}
-    assert schema["additionalProperties"] is False
+def test_no_action_needs_no_intent_because_it_says_nothing():
+    branch = _branches()["no_action"]
+    assert "reply_intent" not in branch["properties"]
+    assert set(branch["required"]) == {"decision", "scene", "reason"}
+
+
+def test_every_intent_in_the_table_is_reachable_from_some_branch():
+    """If an intent exists that no branch can select, it is dead speech — and if a branch can
+    select one that is not in the table, it resolves to silence. Both are drift."""
+    reachable = {i for b in _branches().values()
+                 for i in b["properties"].get("reply_intent", {}).get("enum", [])}
+    assert reachable == {k for k in SPEECH if not k.startswith("ack_")}
+
+
+def test_no_branch_allows_a_field_it_did_not_name():
+    for kind, branch in _branches().items():
+        assert branch["additionalProperties"] is False, kind
+        assert set(branch["required"]) <= set(branch["properties"]), kind
+
+
+def test_the_reason_is_bounded_by_the_grammar():
+    """reason shares a token budget with the fields that decide the outcome; a string cut off
+    mid-generation makes the whole object unparseable and discards the decision."""
+    assert all(b["properties"]["reason"]["maxLength"] == 80 for b in _branches().values())
+
+
+def test_a_rule_set_with_nothing_askable_drops_the_ask_branch():
+    """An empty enum is not valid JSON schema, so the branch must disappear rather than be
+    emitted in a form no decoder can satisfy."""
+    import dataclasses
+    notify_only = dataclasses.replace(RULES[0], proposes=None)
+    assert "ask" not in _branches(rules=(notify_only,))
 
 
 def test_the_fake_returns_its_script():
