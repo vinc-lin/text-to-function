@@ -88,6 +88,7 @@ The second command has nothing to resolve against unless the first one really ch
 | `/scene <key>=<value> [conf=] [ttl=]` | one perception event, as if the cabin camera saw it — see below |
 | `/context` | every live observation: value, confidence, source, age, time to expiry |
 | `/clock +30 \| -5` | move the session clock, to elapse a cooldown or expire an observation |
+| `/signal <entity>/<attr>=<v>` | set a signal the car *senses* — today that is only the speed |
 | `/scene-llm on\|off` | attach or detach the scene fallback — a second model |
 | `/reset` | fresh car |
 | `/help`, `/quit` | |
@@ -486,6 +487,73 @@ Under `--fake` the command refuses rather than attaching a scripted stand-in:
 
 A fake here would fabricate the one thing someone attaching the model wants to observe: the line on
 screen would be a decision this tool wrote, not one a model made.
+
+---
+
+## An animal in the road, and the one signal nothing commands
+
+The second scene needs something the first did not: it has to know the car is **moving**. And nothing
+in the 92-function catalog sets speed — the simulated car had only signals that some function can
+change, because until now that was all anything needed to read.
+
+So the car gained a category of signal it **knows** and nothing **commands**. `/signal` sets one:
+
+```
+> /signal vehicle.all/speed_kph=45
+  → vehicle.all/speed_kph = 45.0
+
+> /scene outside.front_object=animal conf=0.9
+  scene        animal_ahead
+  rule         animal_ahead            match       all conditions met
+  rule         rear_child_window_lock  not_applicable  no live observation for inside.rear_occupant
+  reply        前方有动物，请注意。
+
+> /signal vehicle.all/speed_kph=0
+> /clock +31
+> /scene outside.front_object=animal conf=0.9
+  scene        —
+  rule         animal_ahead            reject      vehicle.all/speed_kph is 0.0, not above 5.0
+  reply        —  (nothing spoken)
+```
+
+Standing still, the same animal is not worth a warning — and the rule says which condition stopped it
+rather than just falling quiet.
+
+**This warning asks for nothing.** No vehicle function makes an animal in the road safe, so there is
+nothing for consent to authorise: it speaks and arms no question.
+
+It is also the first rule that can *outrank* another. Seeing that takes a little staging, because
+each `/scene` evaluates immediately — type the two observations one after the other and whichever
+comes first simply fires and then suppresses itself. To make both rules contend you have to block
+them on a *signal*, then unblock them together:
+
+```
+> 打开车窗儿童锁                     the lock is on, so the child rule will reject
+> /scene outside.front_object=animal conf=0.9      silent: not moving
+> /scene rear_occupant=child conf=0.9              silent: lock already on
+> 关闭车窗儿童锁
+> /signal vehicle.all/speed_kph=45
+> /scene vehicle.tick=1 conf=1.0     now both rules match at once
+  rule         animal_ahead            match   all conditions met
+  rule         rear_child_window_lock  match   all conditions met  · suppressed: outranked by animal_ahead
+  reply        前方有动物，请注意。
+```
+
+The warning wins, and the question says who beat it rather than falling silent for no stated reason.
+It also keeps its cooldown intact — being outranked is not the same as having spoken.
+
+**`/signal` is not a way to drive the car.** Try an actuated signal and it refuses:
+
+```
+> /signal window.all/window_child_lock=true
+  window.all/window_child_lock is not a sensed signal — the car senses vehicle.all/speed_kph,
+  and everything else it holds is written by a function, not set by hand
+```
+
+That distinction is the whole reason the command exists. Telling the simulator the car is doing 45 is
+**the world changing** — the same kind of thing as the camera seeing a child. Commanding the vehicle
+goes through validation, preconditions and physical limits, and there is exactly one route for it.
+A `/signal` that could poke any row would be a second route that skipped all of them.
 
 ---
 

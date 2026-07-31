@@ -131,10 +131,38 @@ def test_numeric_signals_all_carry_limits(car):
 
 # --- the seeded car and the mapping agree on what exists ---------------------------------
 
-def test_the_car_holds_exactly_the_signals_the_catalog_can_write(car):
-    """Positions come from the card. A fixed driver/passenger/rear/all list invents rows for
-    cards that accept neither (seat.rear/lumbar_support) and misses seat.left/right."""
-    seeded = {(r["entity"], r["attribute"]) for r in _signal_rows(car)}
+# The old guard, `test_the_car_holds_exactly_the_signals_the_catalog_can_write`, lived here.
+# `test_the_car_holds_exactly_what_it_can_write_plus_what_it_senses` below replaces it: same
+# two directions, a definition of "legitimate" widened by the declared sensed signals. Keeping
+# both would mean one of them must fail — the sensed row is either legitimate or it is not.
+#
+# Positions still come from the card, which is what the old docstring was guarding: a fixed
+# driver/passenger/rear/all list invents rows for cards that accept neither
+# (seat.rear/lumbar_support) and misses seat.left/right. The replacement catches that too.
+
+def test_speed_is_seeded_and_stationary(car):
+    """A car nobody has driven is not moving. 0.0 is a meaningful value, not a missing one."""
+    assert car.get_signal("vehicle.all", "speed_kph") == 0.0
+
+
+def test_a_sensed_signal_carries_limits(car):
+    lo, hi = car.limits_of("vehicle.all", "speed_kph")
+    assert lo == 0.0 and hi == 240.0
+
+
+def test_no_function_writes_a_sensed_signal():
+    """That is what makes it sensed. If a card ever gains one, this is the wrong category
+    for it and the seeder should be deriving it like everything else."""
+    from sim.seed import sensed_signals
     writable = set(_every_signal())
-    assert seeded - writable == set(), "seeded rows no function can write"
-    assert writable - seeded == set(), "writable signals the car does not have"
+    assert {(e, a) for e, a, *_ in sensed_signals()} & writable == set()
+
+
+def test_the_car_holds_exactly_what_it_can_write_plus_what_it_senses(car):
+    """The original guard, widened rather than weakened — both directions still enforced,
+    and a sensed signal nobody declared is still a failure."""
+    from sim.seed import sensed_signals
+    seeded = {(r["entity"], r["attribute"]) for r in _signal_rows(car)}
+    legitimate = set(_every_signal()) | {(e, a) for e, a, *_ in sensed_signals()}
+    assert seeded - legitimate == set(), "seeded rows nothing can write or sense"
+    assert legitimate - seeded == set(), "legitimate signals the car does not have"

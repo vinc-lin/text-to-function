@@ -1,13 +1,15 @@
-"""The five actions, each one call the CLI already makes.
+"""The five actions and the one control, each one call the CLI already makes.
 
-`ACTIONS` is the whole surface reachable from the page. Every entry is a one-liner onto a
-`Session` method the terminal also calls — the Yes button submits 好 through `handle()`
-exactly as typing it does, and nothing here touches the executor or the engine directly. A
-button wired past the session would be a second route to the car with its own rules, and
-the point of the consent design is that there is only one.
+`ACTIONS` and `CONTROLS` together are the whole surface reachable from the page, and they are
+two tables rather than one because they are two different things — see the comment above
+`CONTROLS`. Every entry in either is a one-liner onto a `Session` method the terminal also
+calls: the Yes button submits 好 through `handle()` exactly as typing it does, and nothing
+here touches the executor or the engine directly. A button wired past the session would be a
+second route to the car with its own rules, and the point of the consent design is that there
+is only one.
 
-An action that could not be written as an existing session call is a signal to stop and
-ask, not to add a shortcut here.
+An entry that could not be written as an existing session call is a signal to stop and ask,
+not to add a shortcut here.
 """
 from __future__ import annotations
 
@@ -100,3 +102,36 @@ def perform(session, name: str, payload: dict) -> dict:
     all, so a new button cannot reach the vehicle without appearing in this file.
     """
     return ACTIONS[name](session, payload)
+
+
+# --- simulator controls, which are not actions --------------------------------------------
+
+def _set_signal(session, payload) -> dict:
+    """Tell the simulator what the car is doing, as /signal types it.
+
+    `Session.set_signal` does the refusing — of an actuated signal, and of a value outside the
+    declared limits — so the page cannot be a laxer door onto the car than the terminal is.
+    """
+    value = session.set_signal(payload["entity"], payload["attribute"], payload["value"])
+    return {"reply": f"{payload['entity']}/{payload['attribute']} = {value}"}
+
+
+# A SEPARATE table from ACTIONS, on purpose, and the two must stay disjoint.
+#
+# An action is something the Central Model performs: the driver says it, the pipeline routes
+# it, the executor applies it under every check the executor exists to apply. Setting a sensed
+# signal is none of that — it is the WORLD changing, the same category as the camera seeing a
+# child or /reset re-seeding the vehicle, and nothing in the catalog can produce it.
+#
+# A sixth entry in ACTIONS would have made the page's route to the car look uniform when it is
+# not. Two tables with different names and different justifications means anyone later asking
+# "how does the page reach the car" finds the distinction before they find a shortcut.
+CONTROLS = {
+    "set_signal": _set_signal,
+}
+
+
+def perform_control(session, name: str, payload: dict) -> dict:
+    """Run one named control. Mirrors `perform`, over the other table, for the same reason:
+    a name absent from it has no route to the simulator at all."""
+    return CONTROLS[name](session, payload)

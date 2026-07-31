@@ -15,6 +15,7 @@ HELP = """
   /car                       signals that differ from the seeded car
   /log                       recent operations, and what the car said
   /scene <key>=<value> [conf=] [ttl=]   one perception event, as if the cabin camera saw it
+  /signal <entity>/<attr>=<value>       what the car is doing: a signal it senses, not a command
   /context                   what perception currently believes, and for how long
   /clock +30 | -5            move the session clock, to elapse a ttl or a cooldown
   /scene-llm on|off          attach or detach the scene fallback (a second model)
@@ -66,6 +67,32 @@ def _scene(session, parts) -> None:
             return
     key, _, value = parts[0].partition("=")
     print(render(session.observe(key, value, **options)))
+
+
+_SIGNAL_USAGE = "  usage: /signal vehicle.all/speed_kph=45"
+
+
+def _signal(session, parts) -> None:
+    """Set a signal the car senses — the world moving, not an instruction to the car.
+
+    The address is passed on whole, and the value with it, rather than being parsed into a
+    number first: `/signal window.all/window_child_lock=true` must come back as "that is not a
+    sensed signal", which is the true reason, and a float() up here would answer the unasked
+    question about `true` instead.
+    """
+    address, sep, raw = (parts[0] if parts else "").partition("=")
+    entity, dot, attribute = address.partition("/")
+    if not (sep and dot and entity and attribute and raw):
+        print(_SIGNAL_USAGE)
+        return
+    try:
+        value = session.set_signal(entity, attribute, raw)
+    except ValueError as exc:
+        # Every refusal the session makes prints here and nothing raises out of the loop: the
+        # session holds the car and the models, and losing it to a typo costs a 60s reload.
+        print(f"  {exc}")
+        return
+    print(f"  → {entity}/{attribute} = {value}")
 
 
 def _print_context(session):
@@ -151,6 +178,8 @@ def _command(session, line: str) -> bool:
         _print_log(session)
     elif name == "/scene":
         _scene(session, parts[1:])
+    elif name == "/signal":
+        _signal(session, parts[1:])
     elif name == "/context":
         _print_context(session)
     elif name == "/clock":

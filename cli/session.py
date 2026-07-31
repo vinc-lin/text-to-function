@@ -20,7 +20,7 @@ from scene.engine import SceneEngine
 from scene.facts import VehicleFacts
 from sim.executor import SqliteExecutor
 from sim.mapping import resolve_writes
-from sim.seed import seed_from_catalog
+from sim.seed import seed_from_catalog, sensed_signals
 from sim.vehicle import SqliteVehicle
 
 PERMISSIVE = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
@@ -310,6 +310,58 @@ class Session:
                         age=now - o.at, expires_in=o.at + o.ttl - now)
              for o in self.scene.context.live(now).values()),
             key=lambda r: r.key)
+
+    # --- the world, not the car ----------------------------------------------------------
+    def set_signal(self, entity: str, attribute: str, value):
+        """Tell the simulator what the car is DOING. Returns the number written.
+
+        A simulator control, not a Central Model action, which is why it is here and not
+        behind the executor: the camera seeing a child, /reset re-seeding the vehicle and the
+        car now doing 45 are the same category of event — the world changing around a system
+        that did not cause it. `executor.execute` is the seam for what the model performs and
+        stays the only one.
+
+        Anything not declared sensed is REFUSED, and that refusal is the whole point. A signal
+        some function writes, poked directly here, would land in the car without the
+        availability check, the precondition and the physical limit that `SqliteExecutor`
+        exists to apply — so /signal would be a way to command the car that answers to none of
+        the rules commanding it answers to. Checked before the value is even read, so an
+        actuated signal is refused whatever you were trying to set it to.
+        """
+        declared = {(e, a): (lo, hi) for e, a, _rest, _unit, lo, hi in sensed_signals()}
+        if (entity, attribute) not in declared:
+            known = ", ".join(f"{e}/{a}" for e, a in sorted(declared))
+            raise ValueError(
+                f"{entity}/{attribute} is not a sensed signal — the car senses {known}, and "
+                f"everything else it holds is written by a function, not set by hand")
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            # Raised as a ValueError with the address in it, never a bare float() complaint:
+            # both doors print this at a human, and "could not convert string to float" does
+            # not say which signal was being set.
+            raise ValueError(f"{entity}/{attribute} takes a number, got {value!r}") from None
+        lo, hi = declared[(entity, attribute)]
+        if lo is not None and hi is not None and not lo <= number <= hi:
+            raise ValueError(f"{entity}/{attribute} is {lo}–{hi}, got {number}")
+        # Limits are not repeated on the write: `SqliteVehicle.set_signal` keeps the row's
+        # existing min/max on conflict, and they were seeded from this same declaration.
+        self.car.set_signal(entity, attribute, number)
+        return number
+
+    def sensed_rows(self) -> list[dict]:
+        """Every declared sensed signal, with its live value — the `/car` of the world.
+
+        Always all of them, never only what moved: a speed resting at 0.0 is the answer to
+        "why did the animal rule say nothing", and a pane that hides it cannot give it.
+
+        The value comes from the car; the unit and the limits come from the declaration,
+        because those limits are the ones `set_signal` above enforces — a control bounded by
+        anything else would offer values this session refuses.
+        """
+        return [{"entity": e, "attribute": a, "value": self.car.get_signal(e, a),
+                 "unit": unit, "min": lo, "max": hi}
+                for e, a, _rest, unit, lo, hi in sensed_signals()]
 
     def attach_scene_llm(self, client) -> None:
         """Attach or detach the constrained fallback, keeping everything else.
