@@ -1,6 +1,6 @@
 """Declarative scene rules and their evaluation.
 
-Conditions come in exactly two forms and there are no others. A closed vocabulary keeps every
+Conditions come in exactly three forms and there are no others. A closed vocabulary keeps every
 rule inspectable and lets a contract test walk the whole set and assert properties over all of
 it — which is what tests/scene/test_contract_sweep.py does.
 
@@ -30,7 +30,20 @@ class Signal:
     equals: Any
 
 
-Condition = Union[Observed, Signal]
+@dataclass(frozen=True)
+class SignalAbove:
+    """A vehicle fact that must exceed a threshold. Strictly above.
+
+    A third condition form rather than an operator on `Signal`, because the closed vocabulary
+    is what lets the contract sweep walk every rule and assert properties over all of them.
+    Three simple shapes stay inspectable; one shape with a comparator does not.
+    """
+    entity: str
+    attribute: str
+    above: float
+
+
+Condition = Union[Observed, Signal, SignalAbove]
 
 
 class Verdict(str, Enum):
@@ -80,6 +93,18 @@ def evaluate_explained(rule: Rule, context, facts, now: float) -> tuple:
             actual = facts.signal(cond.entity, cond.attribute)
             if actual != cond.equals:
                 return Verdict.REJECT, f"{cond.entity}/{cond.attribute} is already {actual!r}"
+        elif isinstance(cond, SignalAbove):
+            actual = facts.signal(cond.entity, cond.attribute)
+            # A signal the car does not hold is a REJECT, never a TypeError: comparing None
+            # with a float raises, and an engine that dies on a misspelled entity is worse
+            # than one that falls silent. The contract sweep separately guarantees no shipped
+            # rule can be in that state, so this branch protects hand-built and future rules.
+            if actual is None:
+                return (Verdict.REJECT,
+                        f"{cond.entity}/{cond.attribute} is not a signal this car holds")
+            if not actual > cond.above:
+                return (Verdict.REJECT,
+                        f"{cond.entity}/{cond.attribute} is {actual}, not above {cond.above}")
 
     near = []
     for cond in rule.when:
@@ -127,4 +152,24 @@ REAR_CHILD_WINDOW_LOCK = Rule(
     proposes=ToolCall("set_window_child_lock", {"enabled": True}),
 )
 
-RULES: tuple = (REAR_CHILD_WINDOW_LOCK,)
+ANIMAL_AHEAD = Rule(
+    id="animal_ahead",
+    description="前方检测到动物且车辆行驶中",
+    when=(Observed("outside.front_object", equals="animal"),
+          SignalAbove("vehicle.all", "speed_kph", above=5.0)),
+    # Readier to fire than the child-lock question, deliberately: a missed animal is worse
+    # than a spurious warning, while a spurious question is merely annoying.
+    threshold=0.70,
+    floor=0.40,
+    persist_for=0.0,
+    # Outranks the question. This is the first pair of shipped rules that can contend, so it
+    # is also the first time the arbitration code has anything real to arbitrate.
+    priority=90,
+    cooldown=30.0,
+    intent="notify_animal_ahead",
+    # Warns and proposes nothing. No vehicle function makes an animal in the road safe, and
+    # the driver is the one who has to act — so there is nothing for consent to authorise.
+    proposes=None,
+)
+
+RULES: tuple = (ANIMAL_AHEAD, REAR_CHILD_WINDOW_LOCK)

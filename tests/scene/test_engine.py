@@ -40,6 +40,13 @@ def _child(confidence=0.9, at=100.0):
     return Observation("inside.rear_occupant", "child", confidence, "cabin_cam", at, ttl=300.0)
 
 
+def _report(eng, rule_id="rear_child_window_lock"):
+    """The report FOR a rule, never `explain()[0]`. These tests drive the child-lock rule, and
+    positional access silently started describing a different rule the moment a second one
+    shipped — reading the animal warning's REJECT as the child rule's verdict."""
+    return next(r for r in eng.explain() if r.rule_id == rule_id)
+
+
 def test_a_matching_rule_asks_and_touches_nothing(cards):
     ex = RecordingExecutor()
     out = _engine(cards, executor=ex).observe(_child(), now=100.0)
@@ -331,9 +338,11 @@ def test_an_open_router_question_costs_no_decode(cards):
 def test_explain_reports_the_verdict_of_every_rule(cards):
     eng = _engine(cards)
     eng.observe(_child(confidence=0.62), now=100.0)
-    rows = eng.explain()
-    assert [r.rule_id for r in rows] == ["rear_child_window_lock"]
-    assert rows[0].verdict == "near_miss" and "0.62" in rows[0].reason
+    # Every rule, not just the interesting one: a rule missing from the display is a silence
+    # with no explanation beside it, which is exactly what this recording exists to remove.
+    assert [r.rule_id for r in eng.explain()] == [r.id for r in RULES]
+    row = _report(eng)
+    assert row.verdict == "near_miss" and "0.62" in row.reason
 
 
 def test_explain_reports_a_cooldown_as_the_suppressor(cards):
@@ -343,28 +352,28 @@ def test_explain_reports_a_cooldown_as_the_suppressor(cards):
     eng.observe(_child(at=100.0), now=100.0)
     eng.resolve("不用", now=101.0)
     eng.observe(_child(at=102.0), now=102.0)
-    rows = eng.explain()
-    assert rows[0].verdict == "match"
-    assert "cooldown" in rows[0].suppressed_by and "118" in rows[0].suppressed_by
+    row = _report(eng)
+    assert row.verdict == "match"
+    assert "cooldown" in row.suppressed_by and "118" in row.suppressed_by
 
 
 def test_explain_reports_a_pending_question_as_the_suppressor(cards):
     eng = _engine(cards)
     eng.observe(_child(at=100.0), now=100.0)
     eng.observe(_child(at=101.0), now=101.0)
-    assert "already asked" in eng.explain()[0].suppressed_by
+    assert "already asked" in _report(eng).suppressed_by
 
 
 def test_explain_reports_the_router_holding_a_question(cards):
     eng = _engine(cards)
     eng.observe(_child(), now=100.0, question_open=True)
-    assert "router" in eng.explain()[0].suppressed_by
+    assert "router" in _report(eng).suppressed_by
 
 
 def test_explain_says_nothing_suppressed_a_rule_that_spoke(cards):
     eng = _engine(cards)
     eng.observe(_child(), now=100.0)
-    assert eng.explain()[0].suppressed_by == ""
+    assert _report(eng).suppressed_by == ""
 
 
 def test_explain_before_any_observation_is_empty_not_an_error(cards):

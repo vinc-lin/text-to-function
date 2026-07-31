@@ -12,6 +12,7 @@ from __future__ import annotations
 
 SPEECH: dict[str, str] = {
     "ask_rear_child_lock":   "后排有小孩，要打开儿童锁吗？",
+    "notify_animal_ahead":   "前方有动物，请注意。",
     "notify_driver_fatigue": "您看起来有些疲劳，请注意休息。",
     "ack_declined":          "好的。",
 }

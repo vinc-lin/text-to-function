@@ -83,9 +83,14 @@ def test_attaching_a_fallback_keeps_the_car_and_the_context(session):
 
 
 def test_a_turn_carries_the_rule_reports(session):
+    from scene.rules import RULES
     turn = session.observe("rear_occupant", "child", 0.6)
-    assert turn.rules and turn.rules[0].verdict == "near_miss"
-    assert "0.60" in turn.rules[0].reason
+    # Every rule's report travels, not just the one this observation is about — a rule missing
+    # from the turn is a silence the CLI cannot explain. Selected by id rather than position,
+    # which quietly started describing a different rule the moment a second one shipped.
+    assert [r.rule_id for r in turn.rules] == [r.id for r in RULES]
+    child = next(r for r in turn.rules if r.rule_id == "rear_child_window_lock")
+    assert child.verdict == "near_miss" and "0.60" in child.reason
 
 
 # --- the /scene command's own argument handling -------------------------------------------

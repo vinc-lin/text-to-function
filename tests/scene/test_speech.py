@@ -29,3 +29,10 @@ def test_an_unknown_intent_is_silence_not_a_traceback():
     """An unsayable intent must degrade to no speech; raising here would kill a session
     after the work of the turn is already done."""
     assert speech_for("no_such_intent") == ""
+
+
+def test_the_animal_warning_exists_and_names_no_action():
+    """It tells the driver to look, not to press anything — nothing in the cabin makes an
+    animal in the road safe."""
+    from scene.speech import SPEECH
+    assert "notify_animal_ahead" in SPEECH

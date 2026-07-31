@@ -31,6 +31,18 @@ def test_only_a_rule_that_can_be_acted_on_may_be_asked_about():
     askable = set(_branches()["ask"]["properties"]["scene"]["enum"])
     assert askable == {r.id for r in RULES if r.proposes is not None}
     assert "unmatched" not in askable
+    # The converse, which only became testable with a notify-only rule in the set: a warning
+    # proposes nothing, so asking about it would open a question no answer could act on.
+    assert "animal_ahead" not in askable
+
+
+def test_a_notify_only_rule_is_notifiable_and_is_not_dead_grammar():
+    """`notifiable` held nothing but `unmatched` until the first notify-only rule shipped, so
+    the branch could name a scene the model could never usefully select. A rule that warns
+    must be reachable by name, or its speech is unsayable through the fallback."""
+    notifiable = set(_branches()["notify"]["properties"]["scene"]["enum"])
+    assert notifiable == {r.id for r in RULES if r.proposes is None} | {"unmatched"}
+    assert "animal_ahead" in notifiable
 
 
 def test_no_action_needs_no_intent_because_it_says_nothing():
@@ -61,9 +73,15 @@ def test_the_reason_is_bounded_by_the_grammar():
 
 def test_a_rule_set_with_nothing_askable_drops_the_ask_branch():
     """An empty enum is not valid JSON schema, so the branch must disappear rather than be
-    emitted in a form no decoder can satisfy."""
+    emitted in a form no decoder can satisfy.
+
+    Named explicitly rather than taken as `RULES[0]`: the set is ordered by priority now, so
+    index 0 is `animal_ahead`, which already proposes nothing — stripping a proposal it never
+    had would leave this asserting on a rule that was never askable in the first place."""
     import dataclasses
-    notify_only = dataclasses.replace(RULES[0], proposes=None)
+    from scene.rules import REAR_CHILD_WINDOW_LOCK
+    assert REAR_CHILD_WINDOW_LOCK.proposes is not None, "the premise of this test"
+    notify_only = dataclasses.replace(REAR_CHILD_WINDOW_LOCK, proposes=None)
     assert "ask" not in _branches(rules=(notify_only,))
 
 

@@ -10,6 +10,13 @@ def session():
     return Session.build(fake=True, llm=False, gate="permissive")
 
 
+def _rule(session, rule_id="rear_child_window_lock"):
+    """The pane row FOR a rule, never `["rules"][0]`. These tests drive the child-lock rule,
+    and positional access silently started describing a different rule the moment a second
+    one shipped."""
+    return next(r for r in snapshot(session)["rules"] if r["rule_id"] == rule_id)
+
+
 def test_a_fresh_session_snapshots_cleanly(session):
     s = snapshot(session)
     assert s["perception"] == [] and s["rules"] == [] and s["car"] == []
@@ -26,8 +33,11 @@ def test_perception_carries_what_a_draining_bar_needs(session):
 
 
 def test_the_rules_pane_shows_every_rule_with_its_reason(session):
+    from scene.rules import RULES
     session.observe("rear_occupant", "child", 0.6)
-    rule = snapshot(session)["rules"][0]
+    # Every rule, because the pane's job is that a silence always has a reason beside it.
+    assert [r["rule_id"] for r in snapshot(session)["rules"]] == [r.id for r in RULES]
+    rule = _rule(session)
     assert rule["verdict"] == "near_miss" and "0.60" in rule["reason"]
 
 
@@ -88,7 +98,7 @@ def test_a_rule_carries_the_bands_the_page_draws(session):
     alternative was regexing `reason`, which scene/rules.py documents as diagnostics for a
     developer at a terminal and is therefore free to change wording without warning."""
     session.observe("rear_occupant", "child", 0.6)
-    rule = snapshot(session)["rules"][0]
+    rule = _rule(session)
     assert rule["floor"] == 0.5 and rule["threshold"] == 0.8
     assert rule["observed_keys"] == ["inside.rear_occupant"]
 
