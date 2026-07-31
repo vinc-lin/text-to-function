@@ -39,6 +39,24 @@ _PRECONDITIONS = [
 ]
 
 
+# (entity, attribute, resting value, unit, min, max) -- signals the car KNOWS and nothing
+# COMMANDS. Everything else in this file is derived from a function card, because until now
+# the simulator modelled exactly what the Central Model can change. A real vehicle bus is
+# mostly signals like these; ours had none until a scene needed to condition on one.
+#
+# They are declared here rather than derived precisely because no card can produce them, and
+# tests/sim/test_seed.py asserts no function writes one -- if a card ever gains it, this is
+# the wrong category and the seeder should derive it like everything else.
+_SENSED = [
+    ("vehicle.all", "speed_kph", 0.0, "kph", 0.0, 240.0),
+]
+
+
+def sensed_signals() -> list[tuple]:
+    """The declared sensed signals. Public so the seed guard can consult one definition."""
+    return list(_SENSED)
+
+
 def _positions(card: FunctionCard) -> list[Optional[str]]:
     """Every position this card can actually be called with. None addresses '<domain>.all'."""
     spec = card.param("position")
@@ -110,5 +128,9 @@ def seed_from_catalog(car: SqliteVehicle, cards: list[FunctionCard]) -> None:
     # a car with the A/C on and the child lock off is the useful default
     car.set_signal("climate.all", "ac_power", True)
     car.set_signal("window.all", "window_child_lock", False)
+    # After the card-derived rows, so a sensed signal can never be silently absorbed into the
+    # ON CONFLICT limit-keeping above: nothing writes these, so nothing can collide with them.
+    for entity, attribute, value, unit, lo, hi in _SENSED:
+        car.set_signal(entity, attribute, value, unit=unit, limits=(lo, hi))
     for fn, entity, attr, equals, detail in _PRECONDITIONS:
         car.add_precondition(fn, entity, attr, equals, detail)
