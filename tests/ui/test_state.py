@@ -65,6 +65,37 @@ def test_the_car_pane_shows_only_what_moved(session):
     assert {"entity": "window.all", "attribute": "window_child_lock", "value": True} in car
 
 
+def test_the_sensed_pane_shows_a_signal_at_rest(session):
+    """`car` means 'changed from seeded' and must keep meaning it. A speed of 0.0 is not a
+    change, and it is also the entire answer to why the animal rule said nothing — so it
+    lives under its own key rather than being squeezed into a pane that answers the other
+    question."""
+    s = snapshot(session)
+    assert s["car"] == []
+    assert {"entity": "vehicle.all", "attribute": "speed_kph", "value": 0.0,
+            "unit": "kph", "min": 0.0, "max": 240.0} in s["sensed"]
+
+
+def test_the_sensed_pane_follows_the_control(session):
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    row = next(r for r in snapshot(session)["sensed"] if r["attribute"] == "speed_kph")
+    assert row["value"] == 45.0
+
+
+def test_every_sensed_field_the_page_draws_is_present(session):
+    """The page bounds a control by `min` and `max` and labels it with `unit`. A field named
+    something else here renders an empty control forever and nothing raises."""
+    for row in snapshot(session)["sensed"]:
+        assert set(row) == {"entity", "attribute", "value", "unit", "min", "max"}
+
+
+def test_the_sensed_pane_returns_to_rest_on_a_reset(session):
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    session.reset()
+    row = next(r for r in snapshot(session)["sensed"] if r["attribute"] == "speed_kph")
+    assert row["value"] == 0.0
+
+
 def test_the_log_carries_the_cause_of_a_refusal(session):
     session.observe("rear_occupant", "child", 0.9)
     session.handle("好")

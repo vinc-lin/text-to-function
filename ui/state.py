@@ -85,6 +85,22 @@ def _car(session) -> list:
 
 
 @_pane(list)
+def _sensed(session) -> list:
+    """Every signal the car senses, with its live value, its unit and its limits.
+
+    A separate key from `car`, which means "changed from seeded" and has to keep meaning
+    that. A speed resting at 0.0 is not a change and would never appear there — yet it is the
+    entire answer to "why did the animal rule say nothing", so the page needs it visible
+    whatever its value. Always-visible and appears-when-it-moves are different questions and
+    one list cannot answer both.
+
+    The limits ride along because the page draws a bounded control from them, and they are
+    the same ones `Session.set_signal` enforces.
+    """
+    return session.sensed_rows()
+
+
+@_pane(list)
 def _rules(session) -> list:
     """What the LAST observation decided, per rule. `explain()` never re-evaluates.
 
@@ -164,6 +180,7 @@ def snapshot(session) -> dict:
         "scene_llm": _scene_llm(session),
         "clock_offset": _clock_offset(session),
         "perception": _perception(session),
+        "sensed": _sensed(session),
         "car": _car(session),
         "rules": _rules(session),
         "fallback": _fallback(session),

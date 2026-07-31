@@ -39,6 +39,44 @@ def test_an_unknown_action_is_404(session):
     assert handle_request(session, "POST", "/action/execute", b"{}")[0] == 404
 
 
+def test_a_control_posts_and_returns_the_new_state(session):
+    """/control/ is its own route onto its own table — see ui/actions.py for why the
+    simulator's world is not a sixth action."""
+    body = json.dumps({"entity": "vehicle.all", "attribute": "speed_kph",
+                       "value": 45}).encode()
+    status, _, out = handle_request(session, "POST", "/control/set_signal", body)
+    assert status == 200
+    sensed = json.loads(out)["state"]["sensed"]
+    assert {"entity": "vehicle.all", "attribute": "speed_kph"}.items() <= sensed[0].items()
+    assert sensed[0]["value"] == 45.0
+
+
+def test_an_unknown_control_is_404(session):
+    assert handle_request(session, "POST", "/control/execute", b"{}")[0] == 404
+
+
+def test_an_action_is_not_reachable_through_the_control_route(session):
+    """Two tables, two routes, and neither can reach the other's names — otherwise the
+    separation would be a naming convention rather than a boundary."""
+    body = json.dumps({"utterance": "好"}).encode()
+    assert handle_request(session, "POST", "/control/say", body)[0] == 404
+
+
+def test_a_control_is_not_reachable_through_the_action_route(session):
+    body = json.dumps({"entity": "vehicle.all", "attribute": "speed_kph",
+                       "value": 45}).encode()
+    assert handle_request(session, "POST", "/action/set_signal", body)[0] == 404
+
+
+def test_a_refused_control_is_400_and_keeps_the_session(session):
+    body = json.dumps({"entity": "window.all", "attribute": "window_child_lock",
+                       "value": True}).encode()
+    status, _, out = handle_request(session, "POST", "/control/set_signal", body)
+    assert status == 400 and "not a sensed signal" in json.loads(out)["error"]
+    assert handle_request(session, "GET", "/state", b"")[0] == 200
+    assert session.changed_signals() == []
+
+
 def test_malformed_json_is_400_not_a_500(session):
     assert handle_request(session, "POST", "/action/observe", b"{not json")[0] == 400
 

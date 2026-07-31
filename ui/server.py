@@ -17,7 +17,7 @@ import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from .actions import ACTIONS, perform
+from .actions import ACTIONS, CONTROLS, perform, perform_control
 from .state import snapshot
 
 PAGE = Path(__file__).parent / "page.html"
@@ -47,23 +47,31 @@ def handle_request(session, method: str, path: str, body: bytes) -> tuple:
     if method == "GET" and path == "/state":
         return _json(200, snapshot(session))
     if method == "POST" and path.startswith("/action/"):
-        return _action(session, path[len("/action/"):], body)
+        return _post(session, ACTIONS, perform, "action", path[len("/action/"):], body)
+    # A separate route because it is a separate table, and the URL says which: /action/ is the
+    # Central Model being asked to do something, /control/ is the simulated world being told
+    # what it is doing. ui/actions.py explains why that distinction is worth a second route.
+    if method == "POST" and path.startswith("/control/"):
+        return _post(session, CONTROLS, perform_control, "control",
+                     path[len("/control/"):], body)
     # Anything else, including a traversal attempt, is a plain 404: this serves exactly two
     # GETs and never resolves a path against the filesystem.
     return _json(404, {"error": f"no route for {method} {path}"})
 
 
-def _action(session, name: str, body: bytes) -> tuple:
+def _post(session, table, run, kind: str, name: str, body: bytes) -> tuple:
+    """One POST onto one table. The table is consulted for the 404 and `run` performs the
+    call, so neither route can reach a name its own table does not hold."""
     # Checked before the body is parsed: an unknown name is 404 whether or not the payload
     # was well formed, so a typo'd action never comes back as a complaint about its JSON.
-    if name not in ACTIONS:
-        return _json(404, {"error": f"unknown action {name!r}"})
+    if name not in table:
+        return _json(404, {"error": f"unknown {kind} {name!r}"})
     try:
         payload = json.loads(body or b"{}")
     except ValueError as exc:
         return _json(400, {"error": f"malformed json: {exc}"})
     try:
-        out = perform(session, name, payload)
+        out = run(session, name, payload)
     except Exception as exc:
         # 400 with the cause, never a 500 and never a raise out of the handler: a mistyped
         # confidence must not cost the session, which holds the car and a minute of models.
