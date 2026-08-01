@@ -11,3 +11,10 @@
 {"id": "consent_command", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "把窗户关上", "expect_consent": false}
 {"id": "consent_unrelated", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "后排太热了", "expect_consent": false}
 {"id": "consent_oblique_yes", "events": [{"key": "rear_occupant", "value": "child", "conf": 0.90}], "utterance": "开吧", "expect_consent": false}
+{"id": "animal_moving", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 45.0}], "events": [{"key": "outside.front_object", "value": "animal", "conf": 0.90}], "expect": "前方有动物，请注意。"}
+{"id": "animal_stopped", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 0.0}], "events": [{"key": "outside.front_object", "value": "animal", "conf": 0.90}], "expect": ""}
+{"id": "animal_walking_pace", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 3.0}], "events": [{"key": "outside.front_object", "value": "animal", "conf": 0.90}], "expect": ""}
+{"id": "animal_stale_bus", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 45.0}], "bus": false, "clock": 40.0, "events": [{"key": "outside.front_object", "value": "animal", "conf": 0.90}], "expect": ""}
+{"id": "animal_near_miss", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 45.0}], "events": [{"key": "outside.front_object", "value": "animal", "conf": 0.55}], "expect": ""}
+{"id": "animal_too_weak", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 45.0}], "events": [{"key": "outside.front_object", "value": "animal", "conf": 0.30}], "expect": ""}
+{"id": "not_an_animal", "signals": [{"entity": "vehicle.all", "attribute": "speed_kph", "value": 45.0}], "events": [{"key": "outside.front_object", "value": "cyclist", "conf": 0.95}], "expect": ""}

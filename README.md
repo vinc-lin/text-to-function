@@ -227,7 +227,7 @@ data/
   catalog/    # 92 function cards across 10 domains (YAML)
   eval/       # hand-verified gold.jsonl (328) + context_negatives.jsonl (14)
               # + generated silver.jsonl + followups.jsonl
-              # + scenes.jsonl (13) — hand-authored scene events, beliefs about perception
+              # + scenes.jsonl (20) — hand-authored scene events, beliefs about perception
   ood/        # 100 out-of-domain / chitchat negative prototypes
 eval/         # all PRD metrics, pluggable arms (C, baseline, C+LLM, D), runner
               # run_scene_eval.py + scene_metrics.py — the S / S_llm arms, a separate runner

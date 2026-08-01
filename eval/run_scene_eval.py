@@ -47,6 +47,19 @@ def predict(row: dict, *, catalog: str, config_path: str, scene_llm) -> dict:
     # cumulative. Reading it raw would charge row 13 with all twelve preceding decodes and
     # turn a per-row average into a running total.
     before_calls = getattr(session.scene.llm, "calls", 0)
+
+    # The world BEFORE perception reports anything. A rule conditioned on vehicle state is
+    # unmeasurable without this: `animal_ahead` requires the car to be moving, and no
+    # observation can express that — speed is a signal the car senses, not something a camera
+    # says. Applied in this order deliberately: signals, then the bus, then the clock, so a
+    # row can stop the bus and let a held value age out before the first event lands.
+    for sig in row.get("signals", []):
+        session.set_signal(sig["entity"], sig["attribute"], sig["value"])
+    if row.get("bus") is False:
+        session.set_bus(False)
+    if row.get("clock"):
+        session.advance_clock(float(row["clock"]))
+
     spoken = ""
     for ev in row.get("events", []):
         reply = session.observe(ev["key"], ev["value"], ev.get("conf", 0.9)).reply

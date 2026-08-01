@@ -866,3 +866,46 @@ touched, so no routing figure in any section above can have moved.
 is `test_every_proposal_validates[animal_ahead]`: a notify-only rule has no proposal to validate, so
 the sweep skips that property for it rather than passing vacuously. `t2f/` untouched. No new
 dependency.
+
+---
+
+# Scene gold, caught up with the rules — 2026-08-01
+
+**What:** seven rows added to `data/eval/scenes.jsonl` (13 → 20), and the row format grown to
+express a world rather than only a camera.
+
+**Why it was missing:** a row could apply observations and nothing else, and `animal_ahead`
+conditions on the car *moving*. No observation can say that — speed is a signal the car senses, not
+something a camera reports. So when the rule set doubled, the gold could not follow, and the rule
+shipped with unit tests and a contract sweep behind it and **nothing in the measured column**.
+
+Rows now accept `signals`, `bus` and `clock`, applied in that order before the first event, so a row
+can set a speed, stop the bus, and let the value age out.
+
+## Measured, arm S over 20 rows
+
+| metric | value | n | was |
+|---|---|---|---|
+| `scene_false_speech_rate` | **0.0000** | 15 silent | 9 |
+| `scene_recall` | **1.0000** | 5 speaking | 4 |
+| `scene_false_consent_rate` | **0.0000** | 4 | 4 |
+| `avg_llm_calls_per_event` | 0.0000 | 20 | 13 |
+
+Every metric held; only the denominators moved.
+
+## What this buys
+
+- **Both shipped rules are exercised by gold**, and a test asserts it rather than a reader checking:
+  `test_both_shipped_rules_are_exercised_by_gold` walks `RULES` and fails on any rule no row touches.
+  The next rule cannot ship uncovered the way this one did.
+- **Staleness has its first measurement.** `animal_stale_bus` is the only row in the repo where an
+  eval number moves if the freshness discipline stops working. It had tests and no metric.
+
+## What this did not do
+
+- **The gold is still hand-authored.** `scene_recall 1.000` remains agreement with what we decided
+  two cameras would report. Seven more rows of our own beliefs are seven more beliefs, not evidence
+  about perception.
+- **Arm S_llm was not re-measured.** Its column still dates from 2026-07-30 and one rule.
+- **`max_age = 2.0` is still a guess**, now with a row depending on it.
+- **871 passed, 1 skipped, 5 deselected** (from 860). The eleven new tests are the gold-row guards.

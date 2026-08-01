@@ -499,3 +499,49 @@ real changes. `t2f/` was not touched, so every routing figure in §5 stands as w
   being slipped in under a byte-identical arm S.
 - **Arm S_llm has not been re-measured since 2026-07-30**, when the rule set had one rule. Its column
   in §10 predates the second rule.
+
+---
+
+## 12. Update — 2026-08-01, later: the gold caught up with the rules
+
+§11 recorded that `animal_ahead` "has no gold row of its own" and was therefore "covered by unit
+tests and the contract sweep, and by nothing in the measured column." That is now closed.
+
+**The row format had to grow first, and that is why the gap existed.** A row could only apply
+observations, and `animal_ahead` conditions on the car *moving* — which no observation can express,
+because speed is a signal the car senses rather than something a camera says. Rows now accept
+`signals`, `bus` and `clock`, applied in that order before the first event, so a row can set a speed,
+stop the bus, and let the value age out.
+
+Seven rows added, `data/eval/scenes.jsonl` 13 → 20:
+
+| row | staged | expects |
+|---|---|---|
+| `animal_moving` | 45 kph | `前方有动物，请注意。` |
+| `animal_stopped` | 0 kph | silence |
+| `animal_walking_pace` | 3 kph — under the rule's 5 kph floor | silence |
+| `animal_stale_bus` | 45 kph, bus off, clock +40 s | silence |
+| `animal_near_miss` | 45 kph, confidence 0.55 | silence on arm S |
+| `animal_too_weak` | 45 kph, confidence 0.30 — below the rule's floor | silence |
+| `not_an_animal` | 45 kph, a cyclist | silence |
+
+**Arm S, re-measured over 20 rows.** Every metric held; only the denominators moved:
+
+| metric | value | n | was |
+|---|---|---|---|
+| `scene_false_speech_rate` | **0.0000** | 15 silent rows | 9 |
+| `scene_recall` | **1.0000** | 5 speaking rows | 4 |
+| `scene_false_consent_rate` | **0.0000** | 4 rows | 4 |
+| `avg_llm_calls_per_event` | 0.0000 | 20 rows | 13 |
+
+Two things this buys that the previous 13 rows could not:
+
+- **Both shipped rules are now exercised by gold**, asserted by a test rather than by reading the
+  file — `test_both_shipped_rules_are_exercised_by_gold` walks `RULES` and fails on any rule no row
+  touches, so the next rule cannot ship uncovered the way this one did.
+- **Staleness has its first measurement.** `animal_stale_bus` is the only place an eval number moves
+  if the freshness discipline stops working. It was tested before and measured by nothing.
+
+**What has not changed:** the gold is still hand-authored, so `scene_recall 1.000` is still agreement
+with what we decided two cameras would report, not evidence about perception. Seven more rows of our
+own beliefs are seven more beliefs. Arm S_llm still dates from 2026-07-30 and one rule.
