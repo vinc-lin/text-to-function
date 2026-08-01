@@ -89,6 +89,7 @@ The second command has nothing to resolve against unless the first one really ch
 | `/context` | every live observation: value, confidence, source, age, time to expiry |
 | `/clock +30 \| -5` | move the session clock, to elapse a cooldown or expire an observation |
 | `/signal <entity>/<attr>=<v>` | set a signal the car *senses* — today that is only the speed |
+| `/bus on\|off` | stop or start the publisher behind those signals — a stopped bus goes stale |
 | `/scene-llm on\|off` | attach or detach the scene fallback — a second model |
 | `/reset` | fresh car |
 | `/help`, `/quit` | |
@@ -555,6 +556,93 @@ That distinction is the whole reason the command exists. Telling the simulator t
 goes through validation, preconditions and physical limits, and there is exactly one route for it.
 A `/signal` that could poke any row would be a second route that skipped all of them.
 
+### The bus, and a reading that stops being true
+
+A speed is not something the car simply *has*. It is a measurement something has to keep making,
+and `/signal` puts a value on the bus that keeps making it: every command re-stamps it, so a live
+bus is fresh whenever you look at it. `/bus off` stops it, and only then does the reading age.
+
+Each sensed signal declares how long a reading of it stays true, and speed gets two seconds — a
+plausible number for a 10 Hz measurement rather than a measured one, and it should be read as
+provisional. Past that the signal reads as **absent**, exactly like one the car does not hold, so every rule
+conditioned on it rejects rather than acting on a number nobody has confirmed for forty seconds.
+The whole story, typed (this one is under `--fake`, which changes nothing here: every line is a
+command, so the embedder never gets a vote):
+
+```
+[C_llm · shipped · S · FAKE] > /signal vehicle.all/speed_kph=45
+  → vehicle.all/speed_kph = 45.0 kph · publishing · re-stamped on every command
+[C_llm · shipped · S · FAKE] > /scene outside.front_object=animal conf=0.9
+  scene        animal_ahead
+  rule         animal_ahead            match       all conditions met
+  rule         rear_child_window_lock  not_applicable  no live observation for inside.rear_occupant
+  reply        前方有动物，请注意。
+
+[C_llm · shipped · S · FAKE] > /bus off
+  → bus off · sensed signals age from here, and go absent once past their max
+[C_llm · shipped · S · FAKE] > /signal vehicle.all/speed_kph=45
+  → vehicle.all/speed_kph = 45.0 kph · bus off · this value ages from now on
+[C_llm · shipped · S · FAKE] > /clock +40
+  → clock offset +40s
+[C_llm · shipped · S · FAKE] > /scene outside.front_object=animal conf=0.9
+  scene        —
+  rule         animal_ahead            reject      vehicle.all/speed_kph is stale (40.0s > 2.0s)
+  rule         rear_child_window_lock  not_applicable  no live observation for inside.rear_occupant
+  fallback     no model attached
+  reply        —  (nothing spoken)
+
+[C_llm · shipped · S · FAKE] > /car
+  vehicle.all/speed_kph = 45.0
+[C_llm · shipped · S · FAKE] > /bus on
+  → bus on · sensed signals are republished on every command
+[C_llm · shipped · S · FAKE] > /scene outside.front_object=animal conf=0.9
+  scene        animal_ahead
+  rule         animal_ahead            match       all conditions met
+  rule         rear_child_window_lock  not_applicable  no live observation for inside.rear_occupant
+  reply        前方有动物，请注意。
+```
+
+Four things in that transcript are worth stopping on.
+
+**`/car` still says 45.** `/bus off` is not `/signal 0` — the car really is doing 45, and nothing
+disputes it. What stopped is anything still *saying* so, and a rule may not act on a measurement
+nothing is still making.
+
+**The rejection names both ages**: `is stale (40.0s > 2.0s)`. Without that it would have read
+`vehicle.all/speed_kph is 0.0, not above 5.0` — "the car is slow", when the truth is "the bus is
+quiet". Those two call for opposite responses from whoever is reading them, and until the signal
+carried an age they were indistinguishable to every rule in this engine.
+
+**Nothing was lost while the bus was off.** `/bus on` republishes the value the bus was last
+holding — between the rejection and the warning coming back there is nothing but `/car` and the
+toggle. The reading never changed; only whether anything was still making it.
+
+**`/clock +40` alone cannot do this.** With the bus running, moving the clock moves the stamps with
+it — the pump publishes on the session's own clock — so the speed is still live ten minutes
+forward. That is correct rather than a limitation: a real bus does not go quiet because time
+passed. Stopping it is what a stale reading actually means in a car, and `/bus off` is how you get
+one.
+
+The `40` in `/clock +40` is doing two jobs, and it is worth knowing which. It is past the speed's
+two-second max age, which is what makes the middle beat a stale rejection; and it is past the animal
+rule's own 30-second cooldown, which is what lets the last beat speak at all. Jump only five seconds
+and the rejection reads the same — `is stale (5.0s > 2.0s)` — but `/bus on` does not bring the
+warning back:
+
+```
+[C_llm · shipped · S · FAKE] > /bus on
+  → bus on · sensed signals are republished on every command
+[C_llm · shipped · S · FAKE] > /scene outside.front_object=animal conf=0.9
+  scene        —
+  rule         animal_ahead            match       all conditions met  · suppressed: cooldown, 25s left
+  rule         rear_child_window_lock  not_applicable  no live observation for inside.rear_occupant
+  fallback     no model attached
+  reply        —  (nothing spoken)
+```
+
+The bus is back and the rule agrees the road is worth a warning; it stays quiet because it already
+gave one. Two silences, two causes, and the `rule` line is the only thing that tells them apart.
+
 ---
 
 ## The same session, in a browser
@@ -571,11 +659,12 @@ through the same methods, so anything you can do here you can do there. It exist
 table cannot show perception decaying.** `/context` tells you an observation has 240 seconds left;
 the page shows the bar draining, and you watch the belief age out.
 
-Four panes:
+Five panes:
 
 | | |
 |---|---|
 | **Perception** | one card per observation, with a TTL bar that drains continuously and a confidence bar marked with the rule's floor and threshold — a near-miss reads as a *position*, not a number to compare in your head |
+| **Vehicle** | every signal the car *senses*, whatever its value, with a slider bounded by the same limits `/signal` enforces — plus its age, and the bus toggle |
 | **The car** | signals that differ from the seeded vehicle, flashing when they move |
 | **Rules** | every rule with its verdict, its reason, and what suppressed it — the same thing the terminal prints, but standing still instead of scrolling past |
 | **Conversation** | the transcript, plus the pending question with a live countdown and **Yes** / **No** buttons |
@@ -586,7 +675,17 @@ the terminal. A button wired straight to the vehicle would be a second route wit
 which is the thing this design spends most of its effort preventing.
 
 The header carries the clock control and the scene-fallback toggle, so the whole of `/clock` and
-`/scene-llm` is there too.
+`/scene-llm` is there too. The Vehicle pane carries `/signal` and `/bus`, and it is the one pane
+coloured like nothing else on the page, because it is the only one that is not the car being
+observed or commanded — it is the world the car is in.
+
+**A stale signal there never renders as a value.** Stop the bus, move the clock past the two
+seconds, and the readout stops saying `45 kph` and says `stale`, with the last figure demoted to
+`last said 45 kph · 40s ago · no rule reads it`. That is the same answer the rules are working
+from — the pane asks the same object they do — and a row showing a comfortable `45 kph` beside a
+rule rejecting it as stale is the one thing this instrument may not do. Otherwise the poll keeps
+the bus alive exactly as each typed command does at the terminal, so ages there sit near zero
+until you stop it.
 
 **Two things worth knowing.** The server is single-threaded on purpose — the simulated car's SQLite
 connection belongs to one thread, and a threaded server would quietly serve a page showing a car
