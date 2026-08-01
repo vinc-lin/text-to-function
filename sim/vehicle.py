@@ -24,14 +24,30 @@ class SqliteVehicle:
 
     # --- signals ---------------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value: Any,
-                   unit: Optional[str] = None, limits: tuple | None = None) -> None:
+                   unit: Optional[str] = None, limits: tuple | None = None,
+                   at: Optional[float] = None) -> None:
+        """`at` is the clock the stamp is made on, defaulting to this machine's.
+
+        Optional, and defaulted, so every existing caller keeps stamping exactly as it did.
+        It exists because `signal_age` compares this stamp against whatever clock the READER
+        holds, and the two must be the same one. The publisher in `intake/ingest.py` re-stamps
+        on the session's offset clock: without this parameter it would write `time.time()`
+        while every reader asked at `time.time() + offset`, so one `/clock +5` would make every
+        pumped signal read as five seconds old the instant it was published -- stale
+        immediately, for a reason that has nothing to do with the bus.
+
+        Not validated against wall time on purpose. A caller on a deliberately shifted clock is
+        the point, and a "that stamp looks wrong" guard here would have to encode which lies
+        about the time are legitimate.
+        """
         lo, hi = (limits or (None, None))
         self.conn.execute(
             """INSERT INTO signal (entity, attribute, value, unit, min_value, max_value, updated_at)
                VALUES (?,?,?,?,?,?,?)
                ON CONFLICT(entity, attribute) DO UPDATE SET
                  value=excluded.value, updated_at=excluded.updated_at""",
-            (entity, attribute, json.dumps(value), unit, lo, hi, time.time()))
+            (entity, attribute, json.dumps(value), unit, lo, hi,
+             time.time() if at is None else at))
         self.conn.commit()
 
     def get_signal(self, entity: str, attribute: str) -> Any:
@@ -71,7 +87,16 @@ class SqliteVehicle:
         return (row["min_value"], row["max_value"]) if row else (None, None)
 
     def write_many(self, writes: list[tuple]) -> None:
-        """All signals for one operation commit together, or none of them do."""
+        """All signals for one operation commit together, or none of them do.
+
+        No `at` here, unlike `set_signal`, and the asymmetry is checked rather than assumed:
+        the only caller is `SqliteExecutor.execute`, which holds no clock, and every signal it
+        writes is an ACTUATED one -- a window position, a temperature -- which declares no
+        `max_age` and is therefore never read for freshness at all (tests/sim/test_seed.py
+        enforces that no function writes a sensed signal). A parameter nothing passes and
+        nothing reads is one that can only ever be wrong, so it is left off until something
+        needs it.
+        """
         try:
             with self.conn:                       # implicit transaction
                 for entity, attribute, value in writes:
