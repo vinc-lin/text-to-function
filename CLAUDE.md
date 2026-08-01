@@ -6,7 +6,7 @@ fallback, never the primary router. A proactive Scene Engine sits beside it.
 ## Commands
 
 ```bash
-python3 -m pytest -q          # ~35s, 860 tests. Model tests deselected by default.
+python3 -m pytest -q          # ~35s, 871 tests. Model tests deselected by default.
 python3 -m pytest -m model -q # 5 tests, loads Qwen3 models, needs GPU
 python3 -m cli                # hand-testing session against a simulated car
 python3 -m ui                 # the same session in a browser, :8770
@@ -38,7 +38,9 @@ check plumbing after a code change — never to judge behaviour.
 t2f    → (nothing)              the router core; its measured numbers are the evidence base
 scene  → t2f
 sim    → t2f
-intake → t2f, scene, sim        the packaged composition root
+intake → scene, sim             the packaged composition root — note it does NOT import t2f;
+                                it is handed a pipeline, which is why it can be the root
+                                without depending on the thing it routes to
 cli, ui → everything            dev tools, deliberately NOT packaged
 ```
 
@@ -76,6 +78,17 @@ recorded so the silence can explain itself.
   restructure it.
 - Dated reports (`docs/TEST_REPORT.md`, `docs/superpowers/RESULTS.md`) get **appended** update
   sections. Their historical figures stay as written — they are records, not snapshots.
+
+## Docs conventions
+
+**One home per number.** `docs/TEST_REPORT.md` owns current measured figures; `README.md`
+summarises and links; `docs/superpowers/RESULTS.md` keeps dated per-spec records. All four
+living docs once restated the same metrics and drifted into being wrong in four different
+ways — adding a metric table to the README is how that starts again.
+
+**Design goes in `docs/superpowers/specs/`.** There is no plans directory; 12.5k lines of
+one-use implementation scaffolding was deleted on 2026-08-01. Dated reports get appended
+update sections rather than rewrites — they are records, not snapshots.
 
 ## Where to read next
 
