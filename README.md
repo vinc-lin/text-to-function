@@ -174,6 +174,10 @@ cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/T
   __main__.py · session.py · render.py    # loop · utterance→Turn · pure Turn→text
               # a dev tool: run from the repo, NOT packaged
               # (pyproject ships t2f/ eval/ sim/ scene/ intake/)
+ui/           # python3 -m ui — the same session in a browser; see docs/TRYING_IT.md
+  state.py · actions.py · server.py · page.html
+              # snapshot · the five actions and two controls · routes · one self-contained page
+              # stdlib only, single-threaded on purpose, and NOT packaged either
 research/     # measured, NOT shipped and NOT packaged — see research/README.md
   safety/     # Spec-3 learned confidence gate (no arm constructs it; the plain gate measures better)
   classify/   # Spec-2 char-ngram + embedding classifiers (Arm D only; no measured recall gain)
