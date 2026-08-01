@@ -45,6 +45,16 @@ def handle_request(session, method: str, path: str, body: bytes) -> tuple:
         # minute of loaded models.
         return 200, HTML, PAGE.read_bytes()
     if method == "GET" and path == "/state":
+        # The poll IS this door's loop, and the bus is pumped rather than threaded — see
+        # intake/ingest.py for why a republish thread would lie rather than break. Without this
+        # call every sensed signal ages past its declared max about two seconds after the page
+        # loads, and the instrument reports a dead bus on a session whose bus is running.
+        #
+        # Here and not inside `snapshot`, which stays pure: it is called again from every POST
+        # response and from tests, and a snapshot that wrote would make the instrument a
+        # participant in what it is meant to be observing. One named write, on the one route
+        # that is the loop.
+        _pump(session)
         return _json(200, snapshot(session))
     if method == "POST" and path.startswith("/action/"):
         return _post(session, ACTIONS, perform, "action", path[len("/action/"):], body)
@@ -57,6 +67,22 @@ def handle_request(session, method: str, path: str, body: bytes) -> tuple:
     # Anything else, including a traversal attempt, is a plain 404: this serves exactly two
     # GETs and never resolves a path against the filesystem.
     return _json(404, {"error": f"no route for {method} {path}"})
+
+
+def _pump(session) -> None:
+    """Re-stamp the running bus, and never cost the page if it cannot.
+
+    A pump that raised here would 500 the whole instrument on every poll — going blank is the
+    one failure an instrument may not have, and it is the reason each pane swallows its own
+    exception in ui/state.py. Swallowing this one is cheaper than it looks: what a missed pump
+    causes is visible rather than silent, because the rows it did not re-stamp keep ageing and
+    the Vehicle pane marks each of them stale. The page shows the consequence even when the
+    cause is quiet.
+    """
+    try:
+        session.pump()
+    except Exception:
+        pass
 
 
 def _post(session, table, run, kind: str, name: str, body: bytes) -> tuple:

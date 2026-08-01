@@ -31,6 +31,42 @@ def test_an_action_posts_and_returns_the_new_state(session):
     assert json.loads(out)["state"]["pending"]["scene"] == "rear_child_window_lock"
 
 
+def test_the_poll_pumps_the_bus(session):
+    """The page's loop is the poll, and the bus is pumped rather than threaded — so without
+    this every sensed signal would age past its max a second after load and the instrument
+    would report a dead bus on a session whose bus is running."""
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    session.advance_clock(600.0)
+    row = json.loads(handle_request(session, "GET", "/state", b"")[2])["sensed"][0]
+    assert row["stale"] is False and row["age"] < 1.0
+
+
+def test_the_poll_cannot_make_a_stopped_bus_look_alive(session):
+    """The pump is what a running bus does. A stopped one must age, or the toggle would be
+    decoration and `/bus off` would mean nothing on this door."""
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    session.set_bus(False)
+    session.advance_clock(40.0)
+    row = json.loads(handle_request(session, "GET", "/state", b"")[2])["sensed"][0]
+    assert row["stale"] is True and row["age"] >= 40.0
+
+
+def test_a_poll_that_cannot_pump_still_serves_the_page(session):
+    """One failure an instrument may not have is going blank. A pump that raised on every
+    poll would 500 the whole page; the cost of swallowing it is visible instead — the rows it
+    did not re-stamp age, and each one says stale."""
+    session.intake = None
+    status, _, body = handle_request(session, "GET", "/state", b"")
+    assert status == 200 and "sensed" in json.loads(body)
+
+
+def test_the_bus_toggle_posts_as_a_control(session):
+    status, _, out = handle_request(session, "POST", "/control/set_bus", b'{"on": false}')
+    assert status == 200
+    assert json.loads(out)["state"]["bus"] is False
+    assert handle_request(session, "POST", "/action/set_bus", b'{"on": true}')[0] == 404
+
+
 def test_an_unknown_path_is_404_not_a_traceback(session):
     assert handle_request(session, "GET", "/../../etc/passwd", b"")[0] == 404
 

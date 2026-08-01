@@ -1,4 +1,4 @@
-"""The five actions and the one control, each one call the CLI already makes.
+"""The five actions and the two controls, each one call the CLI already makes.
 
 `ACTIONS` and `CONTROLS` together are the whole surface reachable from the page, and they are
 two tables rather than one because they are two different things — see the comment above
@@ -116,18 +116,44 @@ def _set_signal(session, payload) -> dict:
     return {"reply": f"{payload['entity']}/{payload['attribute']} = {value}"}
 
 
+def _set_bus(session, payload) -> dict:
+    """Start or stop the sensed-signal publisher, as /bus types it.
+
+    A CONTROL and not an action, and the distinction is the same one the pane is coloured for.
+    Whether anything is still saying what the car is doing is a fact about the WORLD — a live
+    bus or a quiet one — not something the Central Model performs. No function in the catalog
+    can produce it, it goes nowhere near the executor, and a driver cannot ask for it.
+
+    Stopping it is the only way a sensed signal goes stale by hand, which is the point: a value
+    does not decay because time passed, it decays because nothing said it again. The clock
+    buttons in the header cannot manufacture it — the pump stamps on the session's own clock,
+    so moving the clock moves the stamps with it.
+    """
+    on = bool(payload.get("on"))
+    session.set_bus(on)
+    # Composed here rather than taken from `Session.bus_note()`, which is the one phrase this
+    # file would otherwise have wanted: that phrase names the terminal's loop ("re-stamped on
+    # every command") and this door's loop is the poll. One sentence describing the wrong loop
+    # is worse than two describing their own.
+    return {"reply": "bus on · sensed signals are republished on every poll" if on
+                     else "bus off · sensed signals age from here, and go absent past their max"}
+
+
 # A SEPARATE table from ACTIONS, on purpose, and the two must stay disjoint.
 #
 # An action is something the Central Model performs: the driver says it, the pipeline routes
 # it, the executor applies it under every check the executor exists to apply. Setting a sensed
 # signal is none of that — it is the WORLD changing, the same category as the camera seeing a
-# child or /reset re-seeding the vehicle, and nothing in the catalog can produce it.
+# child or /reset re-seeding the vehicle, and nothing in the catalog can produce it. Setting
+# whether the bus is publishing is the same category one step back: not what the car is doing,
+# but whether anything is still saying it.
 #
 # A sixth entry in ACTIONS would have made the page's route to the car look uniform when it is
 # not. Two tables with different names and different justifications means anyone later asking
 # "how does the page reach the car" finds the distinction before they find a shortcut.
 CONTROLS = {
     "set_signal": _set_signal,
+    "set_bus": _set_bus,
 }
 
 

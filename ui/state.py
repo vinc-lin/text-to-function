@@ -96,8 +96,29 @@ def _sensed(session) -> list:
 
     The limits ride along because the page draws a bounded control from them, and they are
     the same ones `Session.set_signal` enforces.
+
+    `age` and `stale` ride along for the same reason one level up: they are what the WORLD
+    says about this signal, so the pane and the rules cannot disagree about whether a value is
+    still true. Computing staleness here — an age from the car, a max from the declaration, a
+    comparison in a display — would be a second belief about one bus, and a row reading "45
+    kph" beside a rule rejecting it as stale is the failure this whole discipline removes.
     """
     return session.sensed_rows()
+
+
+@_pane(lambda: False)
+def _bus(session) -> bool:
+    """Whether the sensed-signal publisher is running.
+
+    Not derivable from the rows, which is why it is its own field: a stopped bus whose values
+    are still inside their max age looks exactly like a running one, and the toggle has to know
+    which it is before the first signal goes stale.
+
+    False when it cannot be asked, and that direction is deliberate. "Running" is the claim
+    that everything on the Vehicle pane is fresh; a pane that could not reach the session must
+    not make it.
+    """
+    return session.bus_publishing()
 
 
 @_pane(list)
@@ -181,6 +202,9 @@ def snapshot(session) -> dict:
         "clock_offset": _clock_offset(session),
         "perception": _perception(session),
         "sensed": _sensed(session),
+        # Beside `sensed` because it is what those rows MEAN: with the bus stopped, every age
+        # in them is climbing toward the moment no rule reads that signal any more.
+        "bus": _bus(session),
         "car": _car(session),
         "rules": _rules(session),
         "fallback": _fallback(session),

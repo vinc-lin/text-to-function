@@ -478,7 +478,8 @@ class Session:
         return number
 
     def sensed_rows(self) -> list[dict]:
-        """Every declared sensed signal, with its live value — the `/car` of the world.
+        """Every declared sensed signal, with its live value and how old that value is — the
+        `/car` of the world.
 
         Always all of them, never only what moved: a speed resting at 0.0 is the answer to
         "why did the animal rule say nothing", and a pane that hides it cannot give it.
@@ -486,10 +487,31 @@ class Session:
         The value comes from the car; the unit and the limits come from the declaration,
         because those limits are the ones `set_signal` above enforces — a control bounded by
         anything else would offer values this session refuses.
+
+        `stale` comes from the WORLD, not from a comparison made here. The hub already owns
+        "is this reading still true", every rule reads it through `signal_status`, and a second
+        copy of that comparison in this method would be two beliefs about one bus — with the
+        display holding the one nothing consults. A pane showing 45 as a value while every rule
+        reads it as absent is the exact lie the whole freshness discipline exists to remove.
+
+        The value itself stays on a stale row rather than being blanked: it is still the last
+        thing the bus said, it is what the control is bounded by, and it is what starting the
+        bus again would republish. `stale` is the flag that says nothing reads it, and it is the
+        display's job never to show one as the other.
         """
-        return [{"entity": e, "attribute": a, "value": self.car.get_signal(e, a),
-                 "unit": unit, "min": lo, "max": hi}
-                for e, a, _resting, unit, lo, hi, _max_age in sensed_signals()]
+        now = self._now()
+        world = self.intake.world
+        rows = []
+        for e, a, _resting, unit, lo, hi, _max_age in sensed_signals():
+            status, _detail = world.signal_status(e, a, now)
+            rows.append({"entity": e, "attribute": a, "value": self.car.get_signal(e, a),
+                         "unit": unit, "min": lo, "max": hi,
+                         # A number, or None for a signal the car does not hold. Formatted by
+                         # whoever displays it: the terminal and the page phrase an age
+                         # differently, and a string built here would be a third opinion.
+                         "age": self.car.signal_age(e, a, now),
+                         "stale": status == "stale"})
+        return rows
 
     def attach_scene_llm(self, client) -> None:
         """Attach or detach the constrained fallback, keeping everything else.
