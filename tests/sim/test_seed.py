@@ -150,6 +150,17 @@ def test_a_sensed_signal_carries_limits(car):
     assert lo == 0.0 and hi == 240.0
 
 
+def test_every_sensed_signal_declares_how_fast_it_decays():
+    """A sensed row without a `max_age` is a signal that reads live forever, which is the state
+    the whole staleness discipline exists to end. The behaviour lives in
+    tests/sim/test_staleness.py; this is the shape guard, next to the declaration it guards, so
+    a row added here cannot quietly arrive without one."""
+    from sim.seed import sensed_max_age, sensed_signals
+    ages = {(e, a): sensed_max_age(e, a) for e, a, *_ in sensed_signals()}
+    naked = [k for k, v in ages.items() if type(v) is not float or v <= 0]
+    assert naked == [], f"sensed signals that can never go stale: {naked}"
+
+
 def test_no_function_writes_a_sensed_signal():
     """That is what makes it sensed. If a card ever gains one, this is the wrong category
     for it and the seeder should be deriving it like everything else."""

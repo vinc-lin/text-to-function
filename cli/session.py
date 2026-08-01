@@ -328,7 +328,8 @@ class Session:
         the rules commanding it answers to. Checked before the value is even read, so an
         actuated signal is refused whatever you were trying to set it to.
         """
-        declared = {(e, a): (lo, hi) for e, a, _rest, _unit, lo, hi in sensed_signals()}
+        declared = {(e, a): (lo, hi)
+                    for e, a, _resting, _unit, lo, hi, _max_age in sensed_signals()}
         if (entity, attribute) not in declared:
             known = ", ".join(f"{e}/{a}" for e, a in sorted(declared))
             raise ValueError(
@@ -361,7 +362,7 @@ class Session:
         """
         return [{"entity": e, "attribute": a, "value": self.car.get_signal(e, a),
                  "unit": unit, "min": lo, "max": hi}
-                for e, a, _rest, unit, lo, hi in sensed_signals()]
+                for e, a, _resting, unit, lo, hi, _max_age in sensed_signals()]
 
     def attach_scene_llm(self, client) -> None:
         """Attach or detach the constrained fallback, keeping everything else.

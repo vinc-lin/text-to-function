@@ -130,20 +130,24 @@ def test_a_signal_the_car_does_not_hold_reports_itself_missing():
     assert "no.such/thing" in detail
 
 
-def test_a_stale_signal_names_both_ages(monkeypatch):
+def test_a_stale_signal_names_both_ages():
     """The whole point of the status: the detail is the sentence, so the rule that rejects on
-    it cannot phrase the same fact a second, different way."""
-    monkeypatch.setattr("intake.hub._declared_max_age", lambda e, a: 2.0)
+    it cannot phrase the same fact a second, different way.
+
+    Driven by the REAL declaration -- `sim/seed.py` says speed is good for 2.0s -- rather than
+    a monkeypatched `_declared_max_age`. A patched one proves the arithmetic and nothing about
+    the wiring, and the wiring is a guarded lazy import that fails silently, so a test that
+    supplies its own max age would keep passing over a hub that reads nothing at all.
+    """
     world = WorldView(SceneContext(), AgedCar(4.2, {("vehicle.all", "speed_kph"): 45.0}))
     status, detail = world.signal_status("vehicle.all", "speed_kph", now=500.0)
     assert status == "stale"
     assert detail == "vehicle.all/speed_kph is stale (4.2s > 2.0s)"
 
 
-def test_a_stale_signal_reads_as_absent(monkeypatch):
+def test_a_stale_signal_reads_as_absent():
     """Identical to a signal the car does not hold, so every condition on it rejects and the
     engine falls silent rather than acting on a value from ten minutes ago."""
-    monkeypatch.setattr("intake.hub._declared_max_age", lambda e, a: 2.0)
     world = WorldView(SceneContext(), AgedCar(4.2, {("vehicle.all", "speed_kph"): 45.0}))
     assert world.signal("vehicle.all", "speed_kph", now=500.0) is None
     assert world.live_facts(now=500.0) == {}
@@ -153,17 +157,17 @@ def test_a_signal_with_no_declared_decay_never_goes_stale():
     """An actuated signal — a window position — holds until something commands it otherwise,
     so it has no max age and no amount of age makes it stale.
 
-    It is also the state of EVERY signal until Task 3 declares one, which is why the stale
-    tests above supply their own rather than trusting the default: a staleness check that
-    silently never fires is worse than no staleness check.
+    Ten minutes of silence and it still reads live, from the real declaration: `sim/seed.py`
+    puts `max_age` on the sensed rows only, and a window position is not one of them.
     """
     world = WorldView(SceneContext(), AgedCar(600.0, {("window.all", "window_position"): 0}))
     assert world.signal_status("window.all", "window_position", now=1000.0)[0] == "live"
 
 
 def test_a_car_that_cannot_report_age_reads_as_live():
-    """A signal with no known age is not a stale signal. Treating it as one would silence
-    every rule the moment this landed, since `signal_age` arrives with Task 3."""
+    """A signal with no known age is not a stale signal. Treating it as one would silence every
+    rule the moment staleness landed, and `SqliteVehicle` is not the only thing that can be
+    passed here — the sweep's spies and any future car port are cars too."""
     world = WorldView(SceneContext(), AgelessCar({("vehicle.all", "speed_kph"): 45.0}))
     assert world.signal_status("vehicle.all", "speed_kph", now=1e9)[0] == "live"
     assert world.signal("vehicle.all", "speed_kph", now=1e9) == 45.0

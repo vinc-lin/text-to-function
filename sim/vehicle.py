@@ -39,6 +39,31 @@ class SqliteVehicle:
             "SELECT value FROM signal WHERE entity=? AND attribute=?", (entity, attribute)).fetchone()
         return json.loads(row["value"]) if row else None
 
+    def signal_age(self, entity: str, attribute: str, now: float) -> Optional[float]:
+        """Seconds since this signal was last written; `None` if the car does not hold it.
+
+        `updated_at` has been stamped on every write since this schema existed and read by
+        nothing, so a speed frozen ten minutes ago was indistinguishable from a live one to
+        every rule -- a dead bus read exactly like a stationary car. This is the first reader.
+
+        `None`, never an exception and never a large number standing in for "unknown". "I have
+        no such signal" and "I have one and it is ancient" are different facts that need
+        different words: a sentinel like 1e9 makes the first look like the second, and a caller
+        deciding whether to warn about a stale bus would warn about a signal this car has never
+        heard of. `signal_status` in the hub is built on exactly that distinction.
+
+        `now` must be on the same clock as the stamp -- i.e. `time.time()`, which is what
+        `set_signal` uses. A caller on a different time base (a monotonic clock, a session
+        offset) gets an age that is meaningless rather than merely wrong, and because a
+        negative or absurd age reads as LIVE, the symptom is staleness that silently never
+        fires. Not clamped to zero for that reason: an age from the wrong clock should look
+        obviously wrong to whoever prints it, not be quietly rounded into plausibility.
+        """
+        row = self.conn.execute(
+            "SELECT updated_at FROM signal WHERE entity=? AND attribute=?",
+            (entity, attribute)).fetchone()
+        return None if row is None else now - row["updated_at"]
+
     def limits_of(self, entity: str, attribute: str) -> tuple:
         row = self.conn.execute(
             "SELECT min_value, max_value FROM signal WHERE entity=? AND attribute=?",

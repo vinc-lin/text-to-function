@@ -50,9 +50,16 @@ def _declared_max_age(entity: str, attribute: str) -> Optional[float]:
     a minute. One declaration, every rule inherits it, and no rule can forget to ask.
 
     `None` means never stale, which is right for an actuated signal — a window position holds
-    until something commands it otherwise — and is also the answer before Task 3 lands
-    `sensed_max_age`. Tests supply their own rather than trusting this, because a staleness
-    check that silently never fires is worse than no staleness check.
+    until something commands it otherwise — and is also what a deployment with no simulator
+    gets, where every signal read is somebody else's port.
+
+    **The import is guarded, so the name it reaches for is load-bearing.** Rename
+    `sim.seed.sensed_max_age` and this returns `None` forever: every signal reads live,
+    staleness is a permanent no-op, and nothing fails — a check that silently never fires is
+    worse than no check. One test asserts this function's answer against the declaration's own
+    (`test_the_hub_actually_reads_the_declared_max_age`, in tests/sim/test_staleness.py), and it
+    is the only thing standing between that rename and a discipline that quietly stopped
+    existing.
     """
     try:
         from sim.seed import sensed_max_age
