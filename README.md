@@ -161,7 +161,7 @@ t2f/          # the shipped runtime. Everything here is reachable from Pipeline.
 sim/          # the simulated vehicle — the thing on the FAR side of the executor seam
   schema.sql · vehicle.py · mapping.py · seed.py · executor.py
 scene/        # the proactive Scene Engine (Spec 9) — a SECOND top-level entry, packaged like t2f/
-  context.py · facts.py · rules.py · engine.py · consent.py · llm.py · speech.py
+  context.py · rules.py · engine.py · consent.py · llm.py · speech.py
               # perception in, at most a question out; consent is the only path to the car, and
               # the two subsystems meet only at execute(ToolCall). It cannot reach Pipeline.route()
 cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/TRYING_IT.md

@@ -1,6 +1,6 @@
 """What perception currently believes, and for how long.
 
-Holds perception ONLY. Vehicle state is read live from the car (scene/facts.py), because
+Holds perception ONLY. Vehicle state is read live from the car (intake/hub.py), because
 copying it here would recreate the two-beliefs-about-one-actuator problem that signal-keyed
 state was built to prevent — see sim/mapping.py's module docstring.
 

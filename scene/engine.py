@@ -73,15 +73,34 @@ def _decision_note(decision) -> str:
 
 
 class SceneEngine:
-    def __init__(self, cards_by_name, facts, executor, rules=RULES, llm=None,
-                 consent_ttl: float = CONSENT_TTL):
+    def __init__(self, cards_by_name, world, executor, rules=RULES, llm=None,
+                 consent_ttl: float = CONSENT_TTL, *, perception=None):
+        """`world` is everything the rules READ; `perception` is the one store this engine
+        WRITES, and the world must be a view over it.
+
+        Two objects rather than one because the split is real: the engine is perception's only
+        writer, and the world is deliberately read-through with no door to write through — a
+        belief arriving through the hub would carry no source and no provenance, which is the
+        thing the envelope exists to make impossible. The store is therefore passed in rather
+        than created here: the world is a constructor argument, so it has to exist first, and a
+        store created in this body is one no caller could have built a view over.
+
+        Getting that wrong is silent — the engine writes where nothing reads, every rule sees an
+        empty context, and the system is merely quiet — so it is checked below rather than
+        documented. The check is duck-typed: a test may pass any object that answers `signal`,
+        `signal_status` and `observation`, and only a real `WorldView` can answer `reads`.
+        """
         self.cards = cards_by_name
-        self.facts = facts
+        self.world = world
         self.executor = executor
         self.rules = tuple(rules)
         self.llm = llm
         self.consent_ttl = consent_ttl
-        self.context = SceneContext()
+        self.context = SceneContext() if perception is None else perception
+        if hasattr(world, "reads") and not world.reads(self.context):
+            raise ValueError(
+                "the world must read the perception store this engine writes — pass "
+                "perception=<the SceneContext the WorldView was built over>")
         self._pending: Optional[PendingConsent] = None
         self._last_spoken: dict[str, float] = {}
         self._last_fallback: Optional[float] = None
@@ -139,8 +158,7 @@ class SceneEngine:
         return self._last_fallback_note
 
     def _evaluate(self, now: float, *, question_open: bool) -> SceneOutcome:
-        explained = [(r, *evaluate_explained(r, self.context, self.facts, now))
-                     for r in self.rules]
+        explained = [(r, *evaluate_explained(r, self.world, now)) for r in self.rules]
         # Recorded BEFORE anything fires: afterwards the winner's own cooldown and pending
         # consent are in place, and it would report itself as suppressed.
         self._last_reports = [
@@ -244,7 +262,11 @@ class SceneEngine:
             return NO_ACTION
         near = [r for r, v in verdicts if v is Verdict.NEAR_MISS]
         mentioned = {k for r in self.rules for k in r.observed_keys}
-        live = self.context.live(now)
+        # `live_observations`, not `live_facts`: the flattened form drops confidence, which is
+        # what describes a near-miss, and mixes in vehicle signals, which no rule's
+        # `observed_keys` can mention — every one of them would read as unconsumed and the
+        # fallback would fire on a parked car saying nothing.
+        live = self.world.live_observations(now)
         unconsumed = [k for k in live if k not in mentioned]
         if not near and not unconsumed:
             self._last_fallback_note = "no near-miss or unconsumed observation"

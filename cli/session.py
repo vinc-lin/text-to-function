@@ -15,9 +15,9 @@ from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
 from t2f.gate import Thresholds
 from t2f.types import LLMResult, ToolCall
-from scene.context import Observation
+from intake.hub import WorldView
+from scene.context import Observation, SceneContext
 from scene.engine import SceneEngine
-from scene.facts import VehicleFacts
 from sim.executor import SqliteExecutor
 from sim.mapping import resolve_writes
 from sim.seed import seed_from_catalog, sensed_signals
@@ -110,9 +110,14 @@ class Session:
         # The car and the executor are shared, not copied. A scene reasoning about its own
         # vehicle could not see what the driver's own commands did, and would ask to open a
         # lock that is already open — and its consent would write to a car nobody is driving.
+        #
+        # Perception is built HERE rather than inside the engine, because the world is a view
+        # over it and has to exist first. Both objects are over the one store, which the engine
+        # checks: a second SceneContext would be written by the engine and read by nobody.
+        perception = SceneContext()
         session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
-                                    facts=VehicleFacts(car), executor=executor,
-                                    llm=scene_llm)
+                                    world=WorldView(perception, car), executor=executor,
+                                    llm=scene_llm, perception=perception)
         session._seeded = session._snapshot()      # baseline for /car
         return session
 

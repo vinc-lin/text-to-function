@@ -136,7 +136,7 @@ def test_a_rule_carries_the_bands_the_page_draws(session):
 
 def test_a_report_with_no_matching_rule_invents_no_bands(session):
     """observe() records a '—' row when the engine itself raised. It has no bands to draw."""
-    session.scene.facts = None            # make evaluate() blow up inside observe()
+    session.scene.world = None            # make evaluate() blow up inside observe()
     session.observe("rear_occupant", "child", 0.9)
     rule = snapshot(session)["rules"][0]
     assert rule["verdict"] == "error"

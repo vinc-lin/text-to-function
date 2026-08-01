@@ -96,6 +96,22 @@ class WorldView:
     def observation(self, key: str, now: float) -> Optional["Observation"]:
         return self._observation(key, now)
 
+    def reads(self, perception) -> bool:
+        """Whether this view is over that exact perception store.
+
+        For the one consumer that is also perception's WRITER. `SceneEngine` writes a store and
+        reads this view, and if the two are different objects it writes where nothing reads:
+        every rule sees an empty context, nothing raises, and the system is merely quiet — the
+        silent failure this whole design treats as the worst kind. One check at construction
+        turns it into a refusal.
+
+        Identity only. It answers a question about a store the caller already holds and hands
+        back a bool, so it opens no route to one — `__self__` was already reachable by
+        introspection, as __init__ says, and this neither widens that nor relies on it being
+        narrow.
+        """
+        return getattr(self._observation, "__self__", None) is perception
+
     def live_observations(self, now: float) -> dict:
         """Every live observation, whole.
 

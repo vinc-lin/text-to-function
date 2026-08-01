@@ -24,7 +24,11 @@ class Observed:
 
 @dataclass(frozen=True)
 class Signal:
-    """A vehicle fact, read live from the car — never copied into Scene Context."""
+    """A vehicle fact, read live from the car — never copied into Scene Context.
+
+    Read through the world, which means a value past its declared age reads as absent and this
+    condition rejects. No rule asks for that discipline and none can forget it.
+    """
     entity: str
     attribute: str
     equals: Any
@@ -71,17 +75,22 @@ class Rule:
         return tuple(c.key for c in self.when if isinstance(c, Observed))
 
 
-def evaluate(rule: Rule, context, facts, now: float) -> Verdict:
+def evaluate(rule: Rule, world, now: float) -> Verdict:
     """The verdict alone. The engine's hot path has no use for the reason."""
-    return evaluate_explained(rule, context, facts, now)[0]
+    return evaluate_explained(rule, world, now)[0]
 
 
-def evaluate_explained(rule: Rule, context, facts, now: float) -> tuple:
+def evaluate_explained(rule: Rule, world, now: float) -> tuple:
     """Signal conditions first: cheapest and most definitive.
 
     An already-satisfied signal means there is nothing to ask about, and that answer beats any
     amount of perception uncertainty — so it is checked before confidence, or a weak detection
     against a settled car would spend a model call on a question already answered.
+
+    ONE world, not a context and a car: a rule asks what is true, and which store holds the
+    answer is not its business. Two parameters meant every caller had to know the split and
+    every new condition form had to pick a side; one parameter means a rule that later
+    conditions on both reads them the same way, through the same liveness question.
 
     The reason travels with the verdict because a bare verdict cannot be rendered usefully:
     NEAR_MISS does not say which observation was weak, and REJECT does not say which signal
@@ -89,28 +98,35 @@ def evaluate_explained(rule: Rule, context, facts, now: float) -> tuple:
     spoken to a driver, so they name keys, entities and thresholds deliberately.
     """
     for cond in rule.when:
+        if not isinstance(cond, (Signal, SignalAbove)):
+            continue
+        actual = world.signal(cond.entity, cond.attribute, now)
+        # Absent is a REJECT, never a TypeError: comparing None with a float raises, and an
+        # engine that dies on a misspelled entity is worse than one that falls silent.
+        #
+        # Absent now means two different things — a signal this car does not hold, and one
+        # whose value went quiet four seconds ago — and only the world can tell them apart.
+        # So the sentence is asked for rather than composed here, and the same fact is never
+        # phrased two ways: a bare "is 45.0, not above 5.0" about a frozen value reads as
+        # "the car is slow" when the truth is "the bus is quiet".
+        #
+        # The contract sweep separately guarantees no SHIPPED rule can name a signal the car
+        # does not hold, so that half of this branch protects hand-built and future rules; the
+        # stale half is reachable by every rule, every time the bus stops.
+        if actual is None:
+            return Verdict.REJECT, world.signal_status(cond.entity, cond.attribute, now)[1]
         if isinstance(cond, Signal):
-            actual = facts.signal(cond.entity, cond.attribute)
             if actual != cond.equals:
                 return Verdict.REJECT, f"{cond.entity}/{cond.attribute} is already {actual!r}"
-        elif isinstance(cond, SignalAbove):
-            actual = facts.signal(cond.entity, cond.attribute)
-            # A signal the car does not hold is a REJECT, never a TypeError: comparing None
-            # with a float raises, and an engine that dies on a misspelled entity is worse
-            # than one that falls silent. The contract sweep separately guarantees no shipped
-            # rule can be in that state, so this branch protects hand-built and future rules.
-            if actual is None:
-                return (Verdict.REJECT,
-                        f"{cond.entity}/{cond.attribute} is not a signal this car holds")
-            if not actual > cond.above:
-                return (Verdict.REJECT,
-                        f"{cond.entity}/{cond.attribute} is {actual}, not above {cond.above}")
+        elif not actual > cond.above:
+            return (Verdict.REJECT,
+                    f"{cond.entity}/{cond.attribute} is {actual}, not above {cond.above}")
 
     near = []
     for cond in rule.when:
         if not isinstance(cond, Observed):
             continue
-        obs = context.get(cond.key, now)
+        obs = world.observation(cond.key, now)
         # No observation, a different value, or one too weak to consider: the rule simply does
         # not apply. Absence of evidence is not ambiguity about it, and treating it as a
         # near-miss would have the fallback fire on an empty context.
