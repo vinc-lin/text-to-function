@@ -2,10 +2,17 @@
 
 **Date:** 2026-07-28
 **Scope:** the 131 end-to-end cases covering the Central Model's business workflow
-**Suite:** 456 passed · 1 xfailed · 3 deselected  *(2026-07-30: 624 passed · 0 xfailed · 3 deselected)*
+**Suite when this was written:** 456 passed · 1 xfailed · 3 deselected. **The current figure lives in
+the newest update section and nowhere else — §11.**
 **Updated 2026-07-29** after the extractor and negation fixes — see §8.
 **Updated 2026-07-30** with the Scene Engine and the last red case — see §10.
+**Updated 2026-08-01** with sensed signals, staleness, a second rule, and intake — see §11.
 **Evaluation:** arm C (deterministic, zero LLM), real embedder, gold test split n=192
+
+> **This document is the home of the repository's current measured numbers.** `README.md` summarises
+> and links here; `docs/superpowers/RESULTS.md` records what each spec measured *when it shipped* and
+> is not updated afterwards. A figure quoted anywhere else without a date should be checked against
+> the newest section here.
 
 ---
 
@@ -362,3 +369,133 @@ proposal that validates, no outcome speaks an ASCII identifier or an internal si
 never fires when its `Signal` condition already holds, cooldown is never bypassed, and every rule
 yields to a router question already open. With one rule in the set those are cheap to satisfy; they
 are written to stay true of the tenth.
+
+---
+
+## 11. Update — 2026-08-01: sensed signals, staleness, a second rule, and intake
+
+**Suite: 860 passed · 1 skipped · 5 deselected**, ~32 s (`python3 -m pytest -q`, run 2026-08-01 at
+HEAD). 866 tests collected; the 5 deselected are the `model` marker, which needs a GPU.
+
+The one skip is legitimate and permanent while the rule set is what it is:
+`test_every_proposal_validates[animal_ahead]` in `tests/scene/test_contract_sweep.py` — the property
+is "every `ask` carries a proposal that validates before the question is spoken", and `animal_ahead`
+is notify-only, so there is no proposal to validate. The sweep parametrises over the rule set, so a
+notify rule skips that one property and is asserted by the other seven. **It skips rather than passes
+vacuously**, which matters: §4's counterpart failure mode is a sweep that silently shrinks to fit, and
+a vacuous pass is exactly how that looks.
+
+Where the tests are:
+
+| area | tests | |
+|---|---|---|
+| `tests/scene/` | 154 | + the 1 skip above |
+| `tests/cli/` | 120 | |
+| `tests/ui/` | 57 | |
+| `tests/sim/` | 56 | |
+| `tests/intake/` | 47 | new |
+| `tests/` root + `tests/e2e/` | the balance | the router core and the e2e suite |
+
+**The 131 end-to-end cases of §2 are unchanged in number and composition.** §1 says "131 of the 398
+tests" — the 131 is still right, the 398 is the denominator as it stood on 2026-07-28 and is now 861
+non-model tests. The ratio moved because the suite grew around the e2e cases, not because any e2e case
+changed.
+
+### A second rule, and a third condition form
+
+`scene/rules.py` ships two rules now: `animal_ahead` and `rear_child_window_lock`. The first fires on
+an animal detected ahead of a car that is **moving**, which needed a condition form the closed
+vocabulary did not have — `SignalAbove("vehicle.all", "speed_kph", above=5.0)`, a third shape rather
+than a comparator on `Signal`, because it is the closed vocabulary that lets the contract sweep walk
+every rule and assert properties over all of them.
+
+`animal_ahead` proposes nothing. No vehicle function makes an animal in the road safe, so there is
+nothing for consent to authorise, and it is the first rule whose only outcome is to speak. It also
+outranks the child-lock question (priority 90 vs 50) and is readier to fire (threshold 0.70 vs 0.80) —
+a missed animal is worse than a spurious warning, while a spurious question is merely annoying. **This
+is the first time two shipped rules can contend**, so it is the first time arbitration has been
+exercised by anything other than a test fixture: the suppressed rule reports `outranked by
+animal_ahead` and does not spend its own cooldown.
+
+The eight sweep properties now run over both rules. That is what turned up the skip above — with one
+rule, "every ask has a valid proposal" was a property of the only rule there was.
+
+### Staleness: `updated_at` is finally read
+
+`updated_at` had been written on every signal write since Spec 7 and **read by nothing**. A rule
+conditioning on speed therefore fired off a value frozen ten minutes ago exactly as readily as off a
+live one: **a dead bus and a stationary car were indistinguishable to every rule.** Perception had
+received this discipline in Spec 9 — `Observation.is_live`, read-time expiry, no sweeper — and the car
+never had.
+
+Sensed signals now declare a `max_age` (speed: 2.0 s). Past it the signal reads as `None` — identical
+to a signal the car does not hold — so every condition on it rejects and the engine falls silent
+**with both ages named**: `vehicle.all/speed_kph is stale (40.0s > 2.0s)`. Silence that explains
+itself, which is the same posture as everywhere else here.
+
+**Actuated signals never expire, and the asymmetry is deliberate.** A window position holds until
+something commands it otherwise; a speed is a continuous measurement whose absence means the bus
+stopped. So `max_age` lives only on sensed signals. And it is declared on the **signal**, not the
+rule, so no rule can forget to ask — a per-rule setting puts the burden on every new rule, and the one
+that forgets reads stale values with nothing to catch it.
+
+Two findings from wiring it, both of which would have shipped looking correct:
+
+- **Staleness failed open.** The session ran on a monotonic clock (~756 thousand) while the car stamps
+  `time.time()` (~1.79 billion), so the computed age was about **minus 1.78 billion seconds** — under
+  every `max_age`, so everything read as fresh. The discipline had tests passing around it and did
+  nothing. The session moved to wall clock, because `--db` persists the car and a monotonic stamp in a
+  file outliving its process means nothing on the next run.
+- **The seeded speed kept its seed stamp**, so two seconds into any session the animal rule blamed the
+  bus for a car that was simply parked.
+
+### Intake — one envelope, and a view that owns nothing
+
+Every input now arrives as one `Input(source, at, payload)` whose payload type *is* its kind (there is
+no `kind` field to disagree with the payload), from a source that declares what it may produce —
+`Input(source="cabin_cam", payload=SignalWrite(...))` cannot be constructed. `WorldView` is one
+read-through view over perception **and** the car; it is asserted to hold nothing writable by walking
+the instance, because "read-only" in a docstring is not an enforcement mechanism.
+
+`intake/` is packaged. It is the composition root — the thing that assembles router, scene engine and
+car — which until now existed only inside `cli/session.py`, a dev tool `pyproject` deliberately does
+not ship, so a real integration had to reimplement wiring the CLI had already worked out.
+
+The bus is **pumped, not threaded**: `sim/vehicle.py` opens SQLite with default thread affinity, and a
+background republish thread would not even fail loudly — `ui/state.py` wraps each pane defensively, so
+it would serve a snapshot with an empty car while everything else rendered fine. The semantics that
+fall out are the right ones anyway: a live bus is fresh whenever you look, and `/bus off` is what makes
+age accumulate.
+
+### Nothing measured moved
+
+Both proof obligations hold. `python3 -m eval.run_scene_eval --arm S` was re-run at HEAD on 2026-08-01
+and is **byte-identical** to §10's arm S column — `scene_false_speech_rate` 0.0000 (9 silent rows),
+`scene_recall` 1.0000 (4 speaking rows), `scene_false_consent_rate` 0.0000 (4 rows),
+`avg_llm_calls_per_event` 0.0000 (13 rows) — **with two rules in the set instead of one**. Arm C is
+byte-identical apart from its `p50/p95_latency_ms` lines, which are wall-clock jitter larger than most
+real changes. `t2f/` was not touched, so every routing figure in §5 stands as written.
+
+### What this update does NOT establish
+
+- **`data/eval/scenes.jsonl` is still hand-authored, so it encodes our beliefs about perception rather
+  than measured perception.** This is the caveat that matters most here, and adding a second rule did
+  not weaken it — it doubled the rule set without adding a single observed row. There is no camera, no
+  vision model and no recorded cabin data anywhere in this repo. `scene_recall 1.000` is agreement
+  with what we decided a cabin camera and a front camera would report; it is a contract test wearing a
+  metric's clothes. The denominators are still 4 and 9, and the 13 rows are still a vertical slice.
+- **`animal_ahead` has no gold row of its own.** The scene gold predates it and was deliberately not
+  rewritten to keep a number stable. So the rule is covered by unit tests and the contract sweep, and
+  by nothing in the measured column.
+- **`max_age = 2.0` for speed is a guess.** No measurement supports it; it is a plausible number for a
+  10 Hz signal. It is one constant in one declaration and should be read as provisional.
+- **The pump is only as good as its callers.** A consumer that forgets to pump sees everything stale.
+  That is the safe direction — stale reads as absent, so the failure is silence rather than a wrong
+  action — but it is a real footgun.
+- **`can0` is a declared source with no hardware behind it.** There is still no vehicle bus, and no
+  ASR and no TTS.
+- **`live_facts()` covers both stores but is not yet wired into the fallback prompt.** Doing so would
+  move arm S_llm, which neither proof obligation covers, so it needs its own measurement rather than
+  being slipped in under a byte-identical arm S.
+- **Arm S_llm has not been re-measured since 2026-07-30**, when the rule set had one rule. Its column
+  in §10 predates the second rule.

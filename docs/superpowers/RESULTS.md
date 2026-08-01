@@ -1,13 +1,13 @@
-> **Read this first:** these are per-spec *measured* results, recorded when each spec shipped. For
-> what the system covers against the Central Model business workflow — and what it does not — see
+> **Read this first:** these are per-spec *measured* results, **recorded when each spec shipped and
+> left as written** — a section here says what was true then, not what is true now. Where a later
+> spec moved an earlier number, the later section says so. **Current** measured figures live in
+> [`../TEST_REPORT.md`](../TEST_REPORT.md), which is the only place they are maintained; for what
+> the system covers against the Central Model business workflow, see
 > [`2026-07-25-central-model-system-design.md`](specs/2026-07-25-central-model-system-design.md).
 > **No number anywhere below was measured on the 87 platform.**
 >
-> **Superseded, 2026-07-30:** this banner used to say step 4b (explain the failure cause) was unmet.
-> It is now covered — all three failure categories are spoken with their cause, `reply_cause_coverage`
-> **1.000** over 15 annotations. The sections below are left as they were written, so a per-spec
-> result records what was true when that spec shipped rather than what is true now. Where a later
-> spec moved an earlier number, the later section says so.
+> The last section is not a spec. Sensed signals, staleness and `intake/` landed after Spec 9 and are
+> recorded here in the same form.
 
 # Spec 1 — Evaluation Results
 
@@ -722,3 +722,147 @@ Arm C was re-measured after the change and no routing metric moved; `reply_exact
   retrieval over scene prototypes, with its own calibration and gold.
 
 **624 passed, 5 deselected, 0 xfailed** (from 498/1 before Spec 8).
+
+---
+
+# After Spec 9 — Sensed Signals, Staleness and Intake
+
+**Date:** 2026-08-01
+**What:** two pieces of work that are deliberately **not** numbered specs. They add no capability to
+the router; they change what the car can know and how facts reach the modules that read them.
+`sim/` gained signals it senses but cannot command, `scene/` gained a second rule, and `intake/` —
+packaged — became the composition root and the one door every input comes through.
+**Headline:** **no measured number moved, and that is the result.** Both proof obligations came back
+byte-identical, with the scene arms re-run over **two** rules instead of one.
+
+## Why this is not a spec
+
+Every numbered spec above answers "what can the system now do". These answer "what can the system now
+*know*, and can it tell the difference between knowing and having known". A capability claim is
+measured against gold; this is measured against **the absence of change** in gold that already exists.
+Filing it as Spec 10 would have implied a metric to move, and the only honest metric here is that
+nothing moved.
+
+## The defect underneath both
+
+`updated_at` had been written on every signal write since Spec 7 and was **read by nothing** — a
+repo-wide grep found it in a schema line and two comments. So `SignalAbove("vehicle.all",
+"speed_kph", above=5.0)` fired the animal warning off a speed frozen ten minutes ago exactly as
+readily as off a live one. **A dead bus and a stationary car were indistinguishable to every rule.**
+
+Perception had received precisely this discipline in Spec 9 — `Observation.is_live`, read-time expiry,
+no sweeper — and the car never had. The asymmetry was invisible because nothing in the repo could
+express it: the two stores were separated by a string prefix (`inside.` / `outside.` / `vehicle.`),
+which is a convention, not a type.
+
+## Sensed signals, and the second rule
+
+`sim/` had modelled exactly what the 92 cards can write. That was right until a rule needed to read
+something no card produces, and the correct response was not to weaken the guard that asserts it:
+`tests/sim/test_seed.py` now asserts the car holds exactly the writable signals **plus the declared
+sensed ones**, both directions still enforced, and a sensed signal nobody declared is still a failure.
+
+Motion needed a condition form the closed vocabulary did not have. `SignalAbove` is a **third shape**
+rather than an operator on `Signal`, because the closed vocabulary is what lets the contract sweep walk
+every rule and assert properties over all of them — three trivially inspectable forms stay inspectable;
+one form with a comparator does not.
+
+`ANIMAL_AHEAD` proposes nothing: no vehicle function makes an animal in the road safe, so there is
+nothing for consent to authorise. It outranks the child-lock question (90 vs 50) and is readier to fire
+(0.70 vs 0.80), because a missed animal is worse than a spurious warning while a spurious question is
+merely annoying. **It is the first pair of shipped rules that can contend**, so it is also the first
+time the arbitration code has had anything real to arbitrate — the suppressed rule reports `outranked
+by animal_ahead` and does not spend its own cooldown.
+
+Setting a sensed signal is a **simulator control, not a Central Model action**. Telling the simulator
+the car is doing 45 is the world changing, the same category as a camera seeing a child, so it lives
+outside `ACTIONS` in a disjoint `CONTROLS` table with its own route — `/control/`, not `/action/`.
+Anyone later asking "how does the page reach the car" finds two lists with different names and
+different justifications rather than one list with a quiet sixth entry.
+
+## Intake, and a view that owns nothing
+
+One envelope: `Input(source, at, payload)`. **There is no `kind` field** — the payload's type *is* the
+kind, and a kind beside a payload is two statements about one fact that eventually differ. Sources
+declare what they produce, so `Input(source="cabin_cam", payload=SignalWrite(...))` cannot be
+constructed; before this, `source` was decoration that everything defaulted to `"cabin_cam"`,
+including vehicle-namespace observations, and nothing noticed.
+
+`WorldView` is read-through and **owns nothing**. A hub that stored would recreate exactly the problem
+signal-keyed state was built to prevent: `open_window` and `set_window_position` are keyed by signal so
+they cannot hold two contradictory beliefs about one window, and a hub holding a copy of
+`window_child_lock` rebuilds that one level up, with its own staleness, so the car and the hub can
+disagree about a lock. That it holds nothing writable is asserted by walking the instance, inheriting
+the property `VehicleFacts` carried before it was absorbed.
+
+`intake/` ships. The composition root — the only thing that assembled router, scene engine and car —
+had lived in `cli/session.py`, which `pyproject` deliberately excludes, so a real integration had to
+reimplement wiring the CLI already worked out.
+
+Staleness falls out: a sensed signal past its `max_age` reads as `None`, identical to a signal the car
+does not hold, so every condition rejects and names both ages
+(`vehicle.all/speed_kph is stale (40.0s > 2.0s)`). **Actuated signals never expire** — a window
+position holds until commanded, a speed is a measurement whose absence means the bus stopped. And
+`max_age` is declared on the **signal**, not the rule, so **no rule can forget to ask**.
+
+## Five silent failures found by building it
+
+Each would have shipped looking correct:
+
+1. **Staleness failed open.** The session was on a monotonic clock (~756 thousand) while the car
+   stamps `time.time()` (~1.79 billion), so the age came out at about **minus 1.78 billion seconds** —
+   under every `max_age`, so every stale signal read as fresh. The discipline had tests passing around
+   it and did nothing.
+2. **The seeded speed kept its seed stamp**, so two seconds into any session the animal rule blamed
+   the bus for a car that was simply parked.
+3. **`/reset` left a held 45 kph to republish** into a freshly seeded vehicle, arriving perfectly live
+   while `/car` reported the car as seeded.
+4. **`SceneEngine.reset()` rebound the perception store**, which would have stranded every `WorldView`
+   built over it on the discarded instance — reading empty perception forever, with nothing raising.
+   It clears in place now.
+5. **`intake/hub.py` reaches `sim.seed` through a guarded import**, so renaming `sensed_max_age` would
+   have made staleness a permanent no-op **with no test failing**. There is now a test that fails on
+   exactly that, verified by performing the rename.
+
+The contract sweep was re-verified by mutation rather than assumed: eleven mutations, each caught by
+the property meant to catch it. The animal rule's signal typo is caught by exactly one test in the
+suite — the sweep property whose own docstring warns that the failure is "indistinguishable from
+working correctly."
+
+## Measured
+
+| obligation | result |
+|---|---|
+| `run_eval --arm C --fake --permissive` | byte-identical but for `p50/p95_latency_ms`, which is host jitter larger than most real changes |
+| `run_scene_eval --arm S` | **byte-identical**, over two rules instead of one |
+
+Arm S, re-run 2026-08-01: `scene_false_speech_rate` **0.0000** (9), `scene_recall` **1.0000** (4),
+`scene_false_consent_rate` **0.0000** (4), `avg_llm_calls_per_event` **0.0000** (13). `t2f/` was not
+touched, so no routing figure in any section above can have moved.
+
+## What this did not do
+
+- **It added no observed data.** The rule set doubled and the gold file did not grow by a row.
+  `animal_ahead` has **no gold row at all** — it is covered by unit tests and the contract sweep and by
+  nothing in the measured column. The gold was deliberately not rewritten to keep a number stable.
+- **`max_age = 2.0` for speed is a guess.** No measurement supports it; it is a plausible number for a
+  10 Hz signal, one constant in one declaration, and provisional.
+- **The pump is only as good as its callers.** A consumer that forgets to pump sees everything stale.
+  That is the safe direction — stale reads as absent, so the failure is silence rather than a wrong
+  action — but it is a real footgun, and it belongs in the module docstring rather than in a reader's
+  memory.
+- **`live_facts()` is not wired into the fallback prompt.** It now covers both stores, which is what
+  would finally make "complex relationships between multiple context states" — named as a fallback job
+  in the original scene-engine brief — expressible at all. Wiring it would move arm S_llm, which
+  neither proof obligation covers, so it deserves its own measurement instead of arriving under a
+  byte-identical arm S.
+- **Arm S_llm was not re-measured.** Its column dates from 2026-07-30, when one rule shipped.
+- **No caption parsing, no cross-modal reasoning, no real CAN adapter.** "VLM output" is still a
+  structured `Percept` rather than a sentence; a rule still cannot condition on what the driver said;
+  `can0` is a declared source with no hardware behind it. All three are named as deferred in the
+  design, and the envelope makes each of them a new *source* later rather than a new *door*.
+
+**860 passed, 1 skipped, 5 deselected, 0 xfailed** (from 624/5 at the close of Spec 9). The one skip
+is `test_every_proposal_validates[animal_ahead]`: a notify-only rule has no proposal to validate, so
+the sweep skips that property for it rather than passing vacuously. `t2f/` untouched. No new
+dependency.
