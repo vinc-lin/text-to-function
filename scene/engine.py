@@ -97,7 +97,11 @@ class SceneEngine:
         driver answer a question that was asked about a car that no longer exists — and an
         explanation about the previous vehicle is the same class of mistake.
         """
-        self.context = SceneContext()
+        # Cleared in place, never rebound. A WorldView — or anything else — built over this
+        # store keeps holding the same object across a reset; rebinding would leave every
+        # reader pointed at the discarded instance, reading empty perception forever with
+        # nothing raising.
+        self.context.clear()
         self._pending = None
         self._last_spoken.clear()
         self._last_fallback = None

@@ -37,6 +37,16 @@ class SceneContext:
         if prev is None or obs.at >= prev.at:
             self._by_key[obs.key] = obs
 
+    def clear(self) -> None:
+        """Forget everything, in place.
+
+        In place rather than by rebinding, because anything holding this store keeps holding
+        it across a reset. A caller that rebound `engine.context = SceneContext()` would leave
+        every existing reader pointed at the discarded instance, and the failure is silence —
+        perception reads empty forever, with nothing raising.
+        """
+        self._by_key.clear()
+
     def get(self, key: str, now: float) -> Optional[Observation]:
         obs = self._by_key.get(key)
         return obs if obs is not None and obs.is_live(now) else None

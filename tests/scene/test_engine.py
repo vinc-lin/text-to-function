@@ -460,3 +460,14 @@ def test_an_earlier_suppressor_is_not_overwritten_by_a_later_one(cards):
                       rules=(broken,))
     eng.observe(_child(), now=100.0, question_open=True)
     assert "router" in eng.explain()[0].suppressed_by
+
+
+def test_a_reset_keeps_the_same_perception_store(cards):
+    """The engine's reset must not swap the store out from under a reader. WorldView binds
+    this object's methods, so a rebind would strand it on the discarded instance."""
+    eng = _engine(cards)
+    before = eng.context
+    eng.observe(_child(), now=100.0)
+    eng.reset()
+    assert eng.context is before
+    assert eng.context.live(now=100.0) == {}

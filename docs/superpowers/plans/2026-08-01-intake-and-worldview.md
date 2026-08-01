@@ -295,6 +295,20 @@ Say in the module docstring that it is **read-through, never a cache**: the mome
 - [ ] `_SENSED` rows gain a trailing `max_age`: `("vehicle.all", "speed_kph", 0.0, "kph", 0.0, 240.0, 2.0)`. Every unpacking site changes — `cli/session.py` has two.
 - [ ] `SqliteVehicle.signal_age(entity, attribute, now) -> Optional[float]` reads `updated_at`, which has been written since Spec 7 and read by nothing. `None` for a signal the car does not hold.
 - [ ] `sensed_max_age(entity, attribute) -> Optional[float]` in `sim/seed.py`, so one definition answers "how fast does this decay".
+
+  **The name is load-bearing and must not drift.** `intake/hub.py` reaches it through a *guarded lazy import*, so if this function is named anything else the import is swallowed, `_declared_max_age` returns `None` forever, every signal reads live, and **no test fails**. That is precisely the "a check that silently never fires is worse than no check" failure `sim/seed.py`'s own docstring warns about. So this task must include a test that fails when the wiring breaks:
+
+```python
+def test_the_hub_actually_reads_the_declared_max_age():
+    """Wired through a guarded lazy import, so a rename here is swallowed silently and
+    staleness becomes a permanent no-op with nothing to notice. This is the test that
+    notices."""
+    from intake.hub import _declared_max_age
+    from sim.seed import sensed_max_age
+    assert sensed_max_age("vehicle.all", "speed_kph") == 2.0
+    assert _declared_max_age("vehicle.all", "speed_kph") == 2.0
+    assert _declared_max_age("window.all", "window_child_lock") is None
+```
 - [ ] Tests: a freshly written signal has age ~0; age grows with `now`; a signal the car lacks has age `None`; **an actuated signal has no max age at all** — a window position holds until commanded and does not decay.
 - [ ] commit: `feat(sim): a sensed signal can go stale`
 

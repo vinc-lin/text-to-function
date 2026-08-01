@@ -167,3 +167,16 @@ def test_a_car_that_cannot_report_age_reads_as_live():
     world = WorldView(SceneContext(), AgelessCar({("vehicle.all", "speed_kph"): 45.0}))
     assert world.signal_status("vehicle.all", "speed_kph", now=1e9)[0] == "live"
     assert world.signal("vehicle.all", "speed_kph", now=1e9) == 45.0
+
+
+def test_live_observations_keeps_what_live_facts_drops():
+    """The prompt wants {name: value}; the engine's fallback needs confidence to describe a
+    near-miss and the live key set to decide what is unconsumed. Two callers, two shapes."""
+    world = WorldView(_ctx(confidence=0.62), SpyCar())
+    whole = world.live_observations(now=150.0)
+    assert whole["inside.rear_occupant"].confidence == 0.62
+    assert whole["inside.rear_occupant"].source == "cabin_cam"
+
+
+def test_live_observations_omits_what_has_expired():
+    assert WorldView(_ctx(ttl=10.0), SpyCar()).live_observations(now=200.0) == {}

@@ -89,6 +89,16 @@ class WorldView:
     def observation(self, key: str, now: float) -> Optional["Observation"]:
         return self._observation(key, now)
 
+    def live_observations(self, now: float) -> dict:
+        """Every live observation, whole.
+
+        `live_facts` flattens to `{name: value}` and drops confidence and source, which is
+        right for a prompt and wrong for the engine: its fallback needs the confidence to
+        describe a near-miss, and needs the live key set to decide what is unconsumed. Two
+        callers, two shapes, one store — rather than one shape that serves neither well.
+        """
+        return self._live(now)
+
     # --- the car ------------------------------------------------------------------------
     def signal(self, entity: str, attribute: str, now: float) -> Optional[Any]:
         """A stale signal reads exactly like one the car does not hold.
