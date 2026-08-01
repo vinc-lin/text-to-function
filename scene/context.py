@@ -1,6 +1,6 @@
 """What perception currently believes, and for how long.
 
-Holds perception ONLY. Vehicle state is read live from the car (scene/facts.py), because
+Holds perception ONLY. Vehicle state is read live from the car (intake/hub.py), because
 copying it here would recreate the two-beliefs-about-one-actuator problem that signal-keyed
 state was built to prevent — see sim/mapping.py's module docstring.
 
@@ -36,6 +36,16 @@ class SceneContext:
         # not overwrite a fresher belief about the same key.
         if prev is None or obs.at >= prev.at:
             self._by_key[obs.key] = obs
+
+    def clear(self) -> None:
+        """Forget everything, in place.
+
+        In place rather than by rebinding, because anything holding this store keeps holding
+        it across a reset. A caller that rebound `engine.context = SceneContext()` would leave
+        every existing reader pointed at the discarded instance, and the failure is silence —
+        perception reads empty forever, with nothing raising.
+        """
+        self._by_key.clear()
 
     def get(self, key: str, now: float) -> Optional[Observation]:
         obs = self._by_key.get(key)

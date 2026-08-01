@@ -152,3 +152,29 @@ def test_the_boundary_values_are_allowed(session):
     session.observe("a", "x", 0.0)
     session.observe("b", "y", 1.0)
     assert len(session.context_rows()) == 2
+
+
+def test_the_session_clock_agrees_with_the_car(session):
+    """The blocker that would have made staleness a silent no-op.
+
+    SqliteVehicle stamps updated_at with time.time(); a session on monotonic subtracted
+    ~756 thousand from ~1.79 billion and got an age of about minus 1.78 billion seconds.
+    Negative is under every max_age, so every signal read LIVE and the discipline never
+    fired -- failing open, in the one direction that looks wired while doing nothing.
+    """
+    session.set_signal("vehicle.all", "speed_kph", 45.0)
+    age = session.car.signal_age("vehicle.all", "speed_kph", session._now())
+    assert age is not None
+    assert 0 <= age < 5.0, f"session clock and car clock disagree: age {age}"
+
+
+def test_a_stale_signal_reads_as_absent_through_the_world(session):
+    """End to end on the session's own clock, which is what Task 4 will rely on."""
+    from intake.hub import WorldView
+    session.set_signal("vehicle.all", "speed_kph", 45.0)
+    world = WorldView(session.scene.context, session.car)
+    assert world.signal("vehicle.all", "speed_kph", session._now()) == 45.0
+    session.advance_clock(5.0)
+    assert world.signal("vehicle.all", "speed_kph", session._now()) is None
+    status, why = world.signal_status("vehicle.all", "speed_kph", session._now())
+    assert status == "stale" and "2.0" in why

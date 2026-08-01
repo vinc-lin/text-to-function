@@ -39,22 +39,61 @@ _PRECONDITIONS = [
 ]
 
 
-# (entity, attribute, resting value, unit, min, max) -- signals the car KNOWS and nothing
-# COMMANDS. Everything else in this file is derived from a function card, because until now
-# the simulator modelled exactly what the Central Model can change. A real vehicle bus is
+# (entity, attribute, resting value, unit, min, max, max_age) -- signals the car KNOWS and
+# nothing COMMANDS. Everything else in this file is derived from a function card, because until
+# now the simulator modelled exactly what the Central Model can change. A real vehicle bus is
 # mostly signals like these; ours had none until a scene needed to condition on one.
 #
 # They are declared here rather than derived precisely because no card can produce them, and
 # tests/sim/test_seed.py asserts no function writes one -- if a card ever gains it, this is
 # the wrong category and the seeder should derive it like everything else.
+#
+# `max_age` is how long a reading stays true, and it is the LAST field for a reason: it exists
+# only on this list. An actuated signal has none, because a window position holds until
+# something commands it otherwise -- nothing measures it, so there is nothing that can go
+# quiet. A speed is a continuous measurement, and its absence means the bus stopped, which is a
+# different fact from "the car is stationary" and must not read as one.
+#
+# 2.0s for speed is a GUESS and should be treated as provisional: no measurement supports it,
+# it is a plausible number for a signal a real bus publishes at around 10 Hz, and it is one
+# constant in one declaration precisely so that changing it is a one-line decision rather than
+# an audit of every rule. Freshness is declared on the SIGNAL, never on a rule, because how
+# fast a value decays is a property of the source -- speed at 10 Hz is dead after a second, a
+# door-ajar flag is fine for a minute. One declaration, every rule inherits it, and no rule can
+# forget to ask.
 _SENSED = [
-    ("vehicle.all", "speed_kph", 0.0, "kph", 0.0, 240.0),
+    ("vehicle.all", "speed_kph", 0.0, "kph", 0.0, 240.0, 2.0),
 ]
 
 
 def sensed_signals() -> list[tuple]:
     """The declared sensed signals. Public so the seed guard can consult one definition."""
     return list(_SENSED)
+
+
+def sensed_max_age(entity: str, attribute: str) -> Optional[float]:
+    """How long a reading of this signal stays true; `None` if it never decays.
+
+    One definition answers "how fast does this decay", for every reader -- the seeder, the
+    session's control, the hub that turns an old value into an absence. A second copy anywhere
+    is two beliefs about one bus, and the one that is not consulted is the one that is wrong.
+
+    `None` for anything not declared sensed, which is the right answer rather than an error:
+    an actuated signal genuinely has no decay, and asking about a signal that does not exist
+    should not be a different kind of event from asking about one that never goes stale. Both
+    mean "no amount of age makes this read as absent".
+
+    **The name is load-bearing and must not drift.** `intake/hub.py` reaches this through a
+    GUARDED lazy import, so renaming it does not break anything loudly: the import is swallowed,
+    `_declared_max_age` returns `None` forever, every signal reads live, and nothing fails. That
+    is exactly the dead-precondition failure this module's own docstring warns about -- config
+    that can never be satisfied or violated and reads as working. One test exists solely to
+    notice: `test_the_hub_actually_reads_the_declared_max_age`, in tests/sim/test_staleness.py.
+    """
+    for e, a, _value, _unit, _lo, _hi, max_age in _SENSED:
+        if (e, a) == (entity, attribute):
+            return max_age
+    return None
 
 
 def _positions(card: FunctionCard) -> list[Optional[str]]:
@@ -130,7 +169,10 @@ def seed_from_catalog(car: SqliteVehicle, cards: list[FunctionCard]) -> None:
     car.set_signal("window.all", "window_child_lock", False)
     # After the card-derived rows, so a sensed signal can never be silently absorbed into the
     # ON CONFLICT limit-keeping above: nothing writes these, so nothing can collide with them.
-    for entity, attribute, value, unit, lo, hi in _SENSED:
+    # `max_age` is not written to the row: it is a property of the SOURCE, not of the value,
+    # so it belongs in the declaration and not in the car. A copy in the signal table would be
+    # a second answer to "how fast does this decay" that no write path keeps in step.
+    for entity, attribute, value, unit, lo, hi, _max_age in _SENSED:
         car.set_signal(entity, attribute, value, unit=unit, limits=(lo, hi))
     for fn, entity, attr, equals, detail in _PRECONDITIONS:
         car.add_precondition(fn, entity, attr, equals, detail)

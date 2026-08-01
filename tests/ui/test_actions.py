@@ -55,10 +55,12 @@ def test_the_action_table_is_the_whole_surface(session):
 
 # --- the controls, which are not actions --------------------------------------------------
 
-def test_the_control_table_holds_exactly_one_entry():
-    """Setting a sensed signal is the only thing the page may do to the simulator that the
-    Central Model is not doing. A second entry here needs the same argument made again."""
-    assert set(CONTROLS) == {"set_signal"}
+def test_the_control_table_holds_the_two_world_controls():
+    """Both entries are the simulated world being told what it is doing, never the Central
+    Model being asked to do something. Setting a sensed signal says what the car is doing;
+    setting the bus says whether anything is still saying it. Neither is in the catalog and
+    neither goes near the executor — a third entry needs the same argument made again."""
+    assert set(CONTROLS) == {"set_signal", "set_bus"}
 
 
 def test_the_two_tables_are_disjoint():
@@ -89,6 +91,34 @@ def test_a_control_refuses_a_value_out_of_range(session):
         perform_control(session, "set_signal", {"entity": "vehicle.all",
                                                 "attribute": "speed_kph", "value": 300})
     assert session.car.get_signal("vehicle.all", "speed_kph") == 0.0
+
+
+def test_the_bus_control_stops_and_starts_the_publisher(session):
+    assert session.bus_publishing() is True
+    perform_control(session, "set_bus", {"on": False})
+    assert session.bus_publishing() is False
+    perform_control(session, "set_bus", {"on": True})
+    assert session.bus_publishing() is True
+
+
+def test_stopping_the_bus_from_the_page_makes_a_signal_go_stale(session):
+    """The same story the terminal tells with /bus off, through the other door. Nothing here
+    changes the value — only whether anything is still saying it."""
+    perform_control(session, "set_signal", {"entity": "vehicle.all",
+                                            "attribute": "speed_kph", "value": 45})
+    perform_control(session, "set_bus", {"on": False})
+    session.advance_clock(40.0)
+    turn = session.observe("outside.front_object", "animal", 0.9)
+    report = next(r for r in turn.rules if r.rule_id == "animal_ahead")
+    assert report.reason == "vehicle.all/speed_kph is stale (40.0s > 2.0s)"
+    assert session.car.get_signal("vehicle.all", "speed_kph") == 45.0
+
+
+def test_the_bus_control_is_not_reachable_as_an_action(session):
+    """It is the world being described, not the car being commanded, and the tables are what
+    keep that from becoming a naming convention."""
+    with pytest.raises(KeyError):
+        perform(session, "set_bus", {"on": False})
 
 
 def test_an_action_name_is_not_reachable_as_a_control(session):

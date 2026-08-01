@@ -24,20 +24,61 @@ class SqliteVehicle:
 
     # --- signals ---------------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value: Any,
-                   unit: Optional[str] = None, limits: tuple | None = None) -> None:
+                   unit: Optional[str] = None, limits: tuple | None = None,
+                   at: Optional[float] = None) -> None:
+        """`at` is the clock the stamp is made on, defaulting to this machine's.
+
+        Optional, and defaulted, so every existing caller keeps stamping exactly as it did.
+        It exists because `signal_age` compares this stamp against whatever clock the READER
+        holds, and the two must be the same one. The publisher in `intake/ingest.py` re-stamps
+        on the session's offset clock: without this parameter it would write `time.time()`
+        while every reader asked at `time.time() + offset`, so one `/clock +5` would make every
+        pumped signal read as five seconds old the instant it was published -- stale
+        immediately, for a reason that has nothing to do with the bus.
+
+        Not validated against wall time on purpose. A caller on a deliberately shifted clock is
+        the point, and a "that stamp looks wrong" guard here would have to encode which lies
+        about the time are legitimate.
+        """
         lo, hi = (limits or (None, None))
         self.conn.execute(
             """INSERT INTO signal (entity, attribute, value, unit, min_value, max_value, updated_at)
                VALUES (?,?,?,?,?,?,?)
                ON CONFLICT(entity, attribute) DO UPDATE SET
                  value=excluded.value, updated_at=excluded.updated_at""",
-            (entity, attribute, json.dumps(value), unit, lo, hi, time.time()))
+            (entity, attribute, json.dumps(value), unit, lo, hi,
+             time.time() if at is None else at))
         self.conn.commit()
 
     def get_signal(self, entity: str, attribute: str) -> Any:
         row = self.conn.execute(
             "SELECT value FROM signal WHERE entity=? AND attribute=?", (entity, attribute)).fetchone()
         return json.loads(row["value"]) if row else None
+
+    def signal_age(self, entity: str, attribute: str, now: float) -> Optional[float]:
+        """Seconds since this signal was last written; `None` if the car does not hold it.
+
+        `updated_at` has been stamped on every write since this schema existed and read by
+        nothing, so a speed frozen ten minutes ago was indistinguishable from a live one to
+        every rule -- a dead bus read exactly like a stationary car. This is the first reader.
+
+        `None`, never an exception and never a large number standing in for "unknown". "I have
+        no such signal" and "I have one and it is ancient" are different facts that need
+        different words: a sentinel like 1e9 makes the first look like the second, and a caller
+        deciding whether to warn about a stale bus would warn about a signal this car has never
+        heard of. `signal_status` in the hub is built on exactly that distinction.
+
+        `now` must be on the same clock as the stamp -- i.e. `time.time()`, which is what
+        `set_signal` uses. A caller on a different time base (a monotonic clock, a session
+        offset) gets an age that is meaningless rather than merely wrong, and because a
+        negative or absurd age reads as LIVE, the symptom is staleness that silently never
+        fires. Not clamped to zero for that reason: an age from the wrong clock should look
+        obviously wrong to whoever prints it, not be quietly rounded into plausibility.
+        """
+        row = self.conn.execute(
+            "SELECT updated_at FROM signal WHERE entity=? AND attribute=?",
+            (entity, attribute)).fetchone()
+        return None if row is None else now - row["updated_at"]
 
     def limits_of(self, entity: str, attribute: str) -> tuple:
         row = self.conn.execute(
@@ -46,7 +87,16 @@ class SqliteVehicle:
         return (row["min_value"], row["max_value"]) if row else (None, None)
 
     def write_many(self, writes: list[tuple]) -> None:
-        """All signals for one operation commit together, or none of them do."""
+        """All signals for one operation commit together, or none of them do.
+
+        No `at` here, unlike `set_signal`, and the asymmetry is checked rather than assumed:
+        the only caller is `SqliteExecutor.execute`, which holds no clock, and every signal it
+        writes is an ACTUATED one -- a window position, a temperature -- which declares no
+        `max_age` and is therefore never read for freshness at all (tests/sim/test_seed.py
+        enforces that no function writes a sensed signal). A parameter nothing passes and
+        nothing reads is one that can only ever be wrong, so it is left off until something
+        needs it.
+        """
         try:
             with self.conn:                       # implicit transaction
                 for entity, attribute, value in writes:

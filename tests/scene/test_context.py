@@ -56,3 +56,18 @@ def test_live_omits_stale_keys():
 
 def test_an_unknown_key_reads_as_absent_not_an_error():
     assert SceneContext().get("nope", now=0.0) is None
+
+
+def test_clear_empties_in_place_rather_than_rebinding():
+    """Anything holding this store keeps holding it across a reset. A caller that rebound
+    the attribute would leave every existing reader pointed at the discarded instance, and
+    the failure is silence: perception reads empty forever with nothing raising."""
+    ctx = SceneContext()
+    ctx.update(_obs())
+    holder = ctx                      # stands in for a WorldView built over this store
+    ctx.clear()
+    assert holder is ctx
+    assert holder.get("inside.rear_occupant", now=100.0) is None
+    ctx.update(_obs(at=200.0))
+    assert holder.get("inside.rear_occupant", now=200.0) is not None, \
+        "a reader must see writes made after the reset"

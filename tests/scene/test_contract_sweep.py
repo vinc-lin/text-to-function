@@ -11,28 +11,51 @@ fire") and two more passed without exercising anything — the sweep shrank to f
 instead of measuring it, and reported green while doing so. A sweep that quietly narrows is
 worse than no sweep, because the green is read as coverage. A fourth condition form must
 break this file loudly.
+
+The car is a spy and the perception store is a real `SceneContext`, joined by a real
+`WorldView` — the same object the engine reads in production. The stub that used to stand in
+for the car answered `signal(entity, attribute)` and knew nothing of freshness, so once rules
+began reading through the world it would have been a sweep measuring a shape that no longer
+exists.
 """
 import re
 
 import pytest
 
-from scene.context import Observation
+from intake.hub import WorldView
+from scene.context import Observation, SceneContext
 from scene.engine import SceneEngine, NO_ACTION
 from scene.rules import RULES, Observed, Signal, SignalAbove
 from scene.speech import speech_for
-from sim.seed import seed_from_catalog
+from sim.seed import seed_from_catalog, sensed_max_age, sensed_signals
 from sim.vehicle import SqliteVehicle
 from t2f.cards import load_catalog
 from t2f.types import ExecResult
 from t2f.validate import validate_tool_call
 
+ANCIENT = 10 * 60.0        # ten minutes without a write, in seconds
 
-class _Facts:
-    def __init__(self, answers):
-        self.answers = answers
 
-    def signal(self, e, a):
-        return self.answers.get((e, a))
+class _Car:
+    """A car holding exactly the signals a case dictates, at an age it dictates.
+
+    `age` is what `signal_age` answers for every signal held; `None` is a car that cannot
+    report age at all, which is what a port from before the freshness discipline looks like.
+    """
+
+    def __init__(self, signals, age=0.0):
+        self.signals = dict(signals)
+        self.age = age
+        self.writes = []
+
+    def get_signal(self, entity, attribute):
+        return self.signals.get((entity, attribute))
+
+    def signal_age(self, entity, attribute, now):
+        return self.age if (entity, attribute) in self.signals else None
+
+    def set_signal(self, *a, **k):
+        self.writes.append(a)
 
 
 class _Executor:
@@ -63,14 +86,14 @@ def _vehicle_conditions(rule):
     return [c for c in rule.when if isinstance(c, (Signal, SignalAbove))]
 
 
-def _satisfying_facts(rule):
+def _satisfying(rule):
     """A car in the state the rule is about. `SignalAbove` is strictly above, so clear it."""
-    return _Facts({(c.entity, c.attribute):
-                   (c.above + 1.0) if isinstance(c, SignalAbove) else c.equals
-                   for c in _vehicle_conditions(rule)})
+    return {(c.entity, c.attribute):
+            (c.above + 1.0) if isinstance(c, SignalAbove) else c.equals
+            for c in _vehicle_conditions(rule)}
 
 
-def _unsatisfying_facts(rule):
+def _unsatisfying(rule):
     """A car in which every vehicle condition FAILS.
 
     A boolean `Signal` inverts; any other value gets something it cannot equal; a `SignalAbove`
@@ -81,7 +104,21 @@ def _unsatisfying_facts(rule):
         if isinstance(c, SignalAbove):
             return c.above
         return (not c.equals) if isinstance(c.equals, bool) else object()
-    return _Facts({(c.entity, c.attribute): failing(c) for c in _vehicle_conditions(rule)})
+    return {(c.entity, c.attribute): failing(c) for c in _vehicle_conditions(rule)}
+
+
+def _engine(cards, rule, signals, *, executor=None, age=0.0):
+    """One perception store, written by the engine and read by the world over it.
+
+    The store is built here rather than inside the engine because the world is a constructor
+    argument and has to exist first. Handing the engine a world over a DIFFERENT store would
+    not raise on its own — the engine would write one and every rule would read the other,
+    empty, and every property below would pass on a rule that never evaluated anything — so
+    the engine refuses that pairing and this helper is the only place the pairing is made.
+    """
+    perception = SceneContext()
+    return SceneEngine(cards, WorldView(perception, _Car(signals, age)),
+                       executor or _Executor(), rules=(rule,), perception=perception)
 
 
 def _satisfy(engine, rule, now):
@@ -99,7 +136,7 @@ def test_a_rule_match_never_reaches_the_car_on_its_own(cards, rule):
     """Consent is the ONLY path to the vehicle. This is the invariant the whole design exists
     to make true, so it is asserted over every rule rather than over one."""
     ex = _Executor()
-    eng = SceneEngine(cards, _satisfying_facts(rule), ex, rules=(rule,))
+    eng = _engine(cards, rule, _satisfying(rule), executor=ex)
     _satisfy(eng, rule, now=100.0)
     eng.observe(_tick(), now=100.0)
     assert ex.calls == []
@@ -149,14 +186,56 @@ def test_a_rule_stays_silent_when_its_vehicle_condition_does_not_hold(cards, rul
     """
     if not _vehicle_conditions(rule):
         pytest.skip("no vehicle condition")
-    eng = SceneEngine(cards, _unsatisfying_facts(rule), _Executor(), rules=(rule,))
+    eng = _engine(cards, rule, _unsatisfying(rule))
     _satisfy(eng, rule, now=100.0)
     assert eng.observe(_tick(), now=100.0) == NO_ACTION
 
 
 @pytest.mark.parametrize("rule", RULES, ids=[r.id for r in RULES])
+def test_a_rule_reads_its_vehicle_conditions_through_the_freshness_discipline(cards, rule):
+    """Ten minutes since the last write, with every vehicle condition otherwise SATISFIED.
+
+    Two outcomes, and which one a rule gets is decided by what the signal IS: a condition on a
+    measured signal goes quiet, because the absence of a measurement means the bus stopped and
+    a car doing 45 four seconds ago is not a car doing 45 now. A condition on an actuated
+    signal does not, because a window position holds until something commands it otherwise.
+
+    The branch is keyed on `sensed_signals()` — is this a measurement? — and NOT on
+    `sensed_max_age(...) is not None`, which is the same question asked of the config being
+    tested. Keyed the second way, deleting speed's `max_age` moves `animal_ahead` from the
+    silent branch to the fires branch and the sweep goes green on a discipline that has stopped
+    existing: a property that reclassifies its subject rather than failing is the shrink-to-fit
+    failure this file was written about, one level up. Keyed the first way, that deletion lands
+    in the branch below and the assertion catches it.
+
+    Branching rather than skipping, for the same reason. Both shipped rules land on a branch
+    and both branches assert, so no rule can excuse itself — and a rule mixing a measured
+    condition with an actuated one lands in the silent branch, which is right: one stale
+    condition is enough.
+    """
+    measured = [c for c in _vehicle_conditions(rule)
+                if (c.entity, c.attribute) in {(e, a) for e, a, *_ in sensed_signals()}]
+    eng = _engine(cards, rule, _satisfying(rule), age=ANCIENT)
+    _satisfy(eng, rule, now=100.0)
+    out = eng.observe(_tick(), now=100.0)
+    if measured:
+        assert out == NO_ACTION, f"{rule.id} acted on a measurement {ANCIENT:.0f}s old"
+        why = next(r.reason for r in eng.explain() if r.rule_id == rule.id)
+        # Named, not merely silent: a bare "is 45.0, not above 5.0" about a frozen value reads
+        # as "the car is slow" when the truth is "the bus is quiet".
+        assert "stale" in why, why
+        for cond in measured:
+            max_age = sensed_max_age(cond.entity, cond.attribute)
+            assert max_age is not None, \
+                f"{cond.entity}/{cond.attribute} is measured and declares no max_age"
+            assert str(max_age) in why, why
+    else:
+        assert out != NO_ACTION, f"{rule.id} went quiet on a signal that cannot decay"
+
+
+@pytest.mark.parametrize("rule", RULES, ids=[r.id for r in RULES])
 def test_cooldown_is_never_bypassed(cards, rule):
-    eng = SceneEngine(cards, _satisfying_facts(rule), _Executor(), rules=(rule,))
+    eng = _engine(cards, rule, _satisfying(rule))
     _satisfy(eng, rule, now=100.0)
     first = eng.observe(_tick(100.0), now=100.0)
     # Asserted, not skipped. `pytest.skip("rule did not fire")` is how this property stopped
@@ -173,7 +252,7 @@ def test_cooldown_is_never_bypassed(cards, rule):
 @pytest.mark.parametrize("rule", RULES, ids=[r.id for r in RULES])
 def test_every_rule_yields_to_an_open_router_question(cards, rule):
     """At most one open question across both systems, whatever the rule."""
-    eng = SceneEngine(cards, _satisfying_facts(rule), _Executor(), rules=(rule,))
+    eng = _engine(cards, rule, _satisfying(rule))
     _satisfy(eng, rule, now=100.0)
     assert eng.observe(_tick(), now=100.0, question_open=True) == NO_ACTION
 

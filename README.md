@@ -161,12 +161,23 @@ t2f/          # the shipped runtime. Everything here is reachable from Pipeline.
 sim/          # the simulated vehicle — the thing on the FAR side of the executor seam
   schema.sql · vehicle.py · mapping.py · seed.py · executor.py
 scene/        # the proactive Scene Engine (Spec 9) — a SECOND top-level entry, packaged like t2f/
-  context.py · facts.py · rules.py · engine.py · consent.py · llm.py · speech.py
+  context.py · rules.py · engine.py · consent.py · llm.py · speech.py
               # perception in, at most a question out; consent is the only path to the car, and
               # the two subsystems meet only at execute(ToolCall). It cannot reach Pipeline.route()
+intake/       # one door in, one view out — packaged, and the composition root a real integration
+  envelope.py · sources.py · hub.py · ingest.py
+              # every input arrives as one Input(source, at, payload) and is handed to the module
+              # that owns the decision; WorldView is the single read-through view over perception
+              # AND the car, which is what lets a sensed signal go stale instead of being believed
+              # forever. Assembling router + scene engine + car used to live only in cli/session.py
 cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/TRYING_IT.md
   __main__.py · session.py · render.py    # loop · utterance→Turn · pure Turn→text
-              # a dev tool: run from the repo, NOT packaged (pyproject ships t2f/ eval/ sim/ scene/)
+              # a dev tool: run from the repo, NOT packaged
+              # (pyproject ships t2f/ eval/ sim/ scene/ intake/)
+ui/           # python3 -m ui — the same session in a browser; see docs/TRYING_IT.md
+  state.py · actions.py · server.py · page.html
+              # snapshot · the five actions and two controls · routes · one self-contained page
+              # stdlib only, single-threaded on purpose, and NOT packaged either
 research/     # measured, NOT shipped and NOT packaged — see research/README.md
   safety/     # Spec-3 learned confidence gate (no arm constructs it; the plain gate measures better)
   classify/   # Spec-2 char-ngram + embedding classifiers (Arm D only; no measured recall gain)

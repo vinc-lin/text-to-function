@@ -65,6 +65,10 @@ def test_the_car_pane_shows_only_what_moved(session):
     assert {"entity": "window.all", "attribute": "window_child_lock", "value": True} in car
 
 
+def _speed(session):
+    return next(r for r in snapshot(session)["sensed"] if r["attribute"] == "speed_kph")
+
+
 def test_the_sensed_pane_shows_a_signal_at_rest(session):
     """`car` means 'changed from seeded' and must keep meaning it. A speed of 0.0 is not a
     change, and it is also the entire answer to why the animal rule said nothing — so it
@@ -73,20 +77,74 @@ def test_the_sensed_pane_shows_a_signal_at_rest(session):
     s = snapshot(session)
     assert s["car"] == []
     assert {"entity": "vehicle.all", "attribute": "speed_kph", "value": 0.0,
-            "unit": "kph", "min": 0.0, "max": 240.0} in s["sensed"]
+            "unit": "kph", "min": 0.0, "max": 240.0}.items() <= _speed(session).items()
 
 
 def test_the_sensed_pane_follows_the_control(session):
     session.set_signal("vehicle.all", "speed_kph", 45)
-    row = next(r for r in snapshot(session)["sensed"] if r["attribute"] == "speed_kph")
-    assert row["value"] == 45.0
+    assert _speed(session)["value"] == 45.0
 
 
 def test_every_sensed_field_the_page_draws_is_present(session):
-    """The page bounds a control by `min` and `max` and labels it with `unit`. A field named
-    something else here renders an empty control forever and nothing raises."""
+    """The page bounds a control by `min` and `max`, labels it with `unit`, prints `age` and
+    reads `stale` to decide whether to show the value at all. A field named something else
+    here renders an empty control forever and nothing raises."""
     for row in snapshot(session)["sensed"]:
-        assert set(row) == {"entity", "attribute", "value", "unit", "min", "max"}
+        assert set(row) == {"entity", "attribute", "value", "unit", "min", "max",
+                            "age", "stale"}
+
+
+def test_a_sensed_row_carries_its_age(session):
+    """A number, not a phrase: the pane renders it and the terminal does not, so a string
+    formatted here would be a second opinion about how an age reads."""
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    row = _speed(session)
+    assert isinstance(row["age"], float) and row["age"] < 1.0
+    assert row["stale"] is False
+
+
+def test_a_stale_row_says_so(session):
+    """The pane must be able to read as STALE rather than as a value. A stale 45 drawn as
+    '45 kph' is exactly the lie this discipline exists to remove — no rule can read it."""
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    session.set_bus(False)
+    session.advance_clock(40.0)
+    row = _speed(session)
+    assert row["stale"] is True
+    assert row["age"] >= 40.0
+    # The value itself is still the last thing the bus said, and the control is still bounded
+    # by it. `stale` is what says nothing reads it.
+    assert row["value"] == 45.0
+
+
+def test_the_pane_and_the_rules_agree_about_staleness(session):
+    """One world, one answer. A pane comparing ages for itself would be a second belief about
+    one bus, and the one nothing consults is the one that is wrong."""
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    session.set_bus(False)
+    session.advance_clock(40.0)
+    turn = session.observe("outside.front_object", "animal", 0.9)
+    report = next(r for r in turn.rules if r.rule_id == "animal_ahead")
+    assert "stale" in report.reason
+    assert _speed(session)["stale"] is True
+
+
+def test_a_live_bus_never_shows_a_stale_row(session):
+    """Ten minutes forward with the bus running. A real bus does not go quiet because time
+    passed, and the pane must not claim it did."""
+    session.set_signal("vehicle.all", "speed_kph", 45)
+    session.advance_clock(600.0)
+    session.pump()
+    row = _speed(session)
+    assert row["stale"] is False and row["age"] < 1.0
+
+
+def test_the_bus_state_is_in_the_snapshot(session):
+    """The toggle needs the state, and it cannot be derived from the rows: a stopped bus whose
+    values are still inside their max age looks exactly like a running one."""
+    assert snapshot(session)["bus"] is True
+    session.set_bus(False)
+    assert snapshot(session)["bus"] is False
 
 
 def test_the_sensed_pane_returns_to_rest_on_a_reset(session):
@@ -136,7 +194,7 @@ def test_a_rule_carries_the_bands_the_page_draws(session):
 
 def test_a_report_with_no_matching_rule_invents_no_bands(session):
     """observe() records a '—' row when the engine itself raised. It has no bands to draw."""
-    session.scene.facts = None            # make evaluate() blow up inside observe()
+    session.scene.world = None            # make evaluate() blow up inside observe()
     session.observe("rear_occupant", "child", 0.9)
     rule = snapshot(session)["rules"][0]
     assert rule["verdict"] == "error"

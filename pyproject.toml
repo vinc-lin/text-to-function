@@ -13,7 +13,12 @@ model = ["sentence-transformers>=3.0"]
 dev = ["pytest>=8"]
 
 [tool.setuptools.packages.find]
-include = ["t2f*", "eval*", "sim*", "scene*"]   # research/, cli/ and ui/ are deliberately NOT packaged
+# intake/ ships because it is product code: the composition root a real integration imports to
+# assemble router + scene engine + car, which until now existed only inside cli/session.py — a
+# dev tool that is deliberately not packaged, so an integrator had to reimplement it. research/,
+# cli/ and ui/ stay out: two of them are tools for driving this by hand and one is measured, not
+# shipped.
+include = ["t2f*", "eval*", "sim*", "scene*", "intake*"]
 
 [tool.pytest.ini_options]
 markers = ["model: tests that load the real embedding model (needs network/torch)"]
