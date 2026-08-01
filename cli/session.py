@@ -15,8 +15,10 @@ from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
 from t2f.gate import Thresholds
 from t2f.types import LLMResult, ToolCall
+from intake.envelope import Input, Percept, SignalWrite, Utterance
 from intake.hub import WorldView
-from scene.context import Observation, SceneContext
+from intake.ingest import Intake
+from scene.context import SceneContext
 from scene.engine import SceneEngine
 from sim.executor import SqliteExecutor
 from sim.mapping import resolve_writes
@@ -24,6 +26,19 @@ from sim.seed import seed_from_catalog, sensed_signals
 from sim.vehicle import SqliteVehicle
 
 PERMISSIVE = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+
+# Which declared source this session speaks for, per payload type. Named once, here, rather
+# than spelled at each call: `Input` refuses a source that does not produce what is being sent,
+# so a typo would surface as a ValueError at the door — but three literals scattered through
+# the file are three places to keep in step with the registry, and the registry is the thing
+# that is allowed to change.
+#
+# `/signal` claims to be the bus because that is what it stands in for: the world moving, not
+# an instruction to the car. Sending it under any other name would put a measurement into the
+# system with provenance that is not true.
+UTTERANCE_SOURCE = "mic"
+PERCEPT_SOURCE = "cabin_cam"
+SIGNAL_SOURCE = "can0"
 
 
 @dataclass
@@ -115,10 +130,19 @@ class Session:
         # over it and has to exist first. Both objects are over the one store, which the engine
         # checks: a second SceneContext would be written by the engine and read by nobody.
         perception = SceneContext()
+        world = WorldView(perception, car)
         session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
-                                    world=WorldView(perception, car), executor=executor,
+                                    world=world, executor=executor,
                                     llm=scene_llm, perception=perception)
+        # The session stops being the composition root and becomes a consumer of one. It used
+        # to be the only thing that assembled router + scene engine + car, which is why it grew
+        # `route`, `observe` and `set_signal` as three unrelated methods with three different
+        # disciplines — and `cli/` is deliberately not packaged, so a real integration would
+        # have had to reimplement that wiring. It is `intake`'s now; the three methods below
+        # are envelope builders over one door.
+        session.intake = Intake(pipe, session.scene, car, world)
         session._seeded = session._snapshot()      # baseline for /car
+        session._hold_sensed()
         return session
 
     @staticmethod
@@ -149,6 +173,12 @@ class Session:
             self.cards, self.pipeline.embedder, self.config, llm_client=client,
             executor=self.executor, ood_texts=ood,
             thresholds=PERMISSIVE if self.gate == "permissive" else None)
+        # The door routes through whatever pipeline it holds, so the swap has to reach it:
+        # otherwise /llm off would detach the model from the session while every utterance kept
+        # going to the router that still had it. Rebound rather than rebuilt, because a fresh
+        # Intake would drop the bus's held values and its publishing state — and those belong
+        # to the car and to this session, not to the router configuration.
+        self.intake.pipeline = self.pipeline
         # `self.scene` is deliberately untouched. A mode switch replaces the router, and the
         # point of the switch is to type the same words twice against the same car; a pending
         # question belongs to the conversation, not to the router configuration, so /llm off
@@ -186,6 +216,66 @@ class Session:
         self.clock_offset += seconds
         return self.clock_offset
 
+    # --- the bus -------------------------------------------------------------------------
+    def pump(self, now: Optional[float] = None) -> int:
+        """Re-stamp the running bus, on THIS session's clock. Returns how many values moved.
+
+        Called by every path that decides something, so a live bus is fresh whenever anything
+        looks at it. `now` is passed in where the caller already has one, so the re-stamp and
+        the read that follows it are the same instant rather than two microseconds apart — an
+        irrelevant difference today, and exactly the kind that becomes a flaky test later.
+
+        The clock is the session's, not the machine's, which is the whole reason `set_signal`
+        grew an `at`: the car stamps `time.time()` and this session reads at `time.time() +
+        offset`, so a pump on the wall clock would publish values that are already `offset`
+        seconds old. `/clock +5` would then make every pumped signal stale on arrival — the
+        bus wired, running, and silencing every rule.
+        """
+        return self.intake.pump(self._now() if now is None else now)
+
+    def _hold_sensed(self) -> None:
+        """Put the seeded values on the bus, so a live bus is live from the first moment.
+
+        Without this nothing is held until someone types /signal, and the car's resting speed
+        keeps whatever stamp `seed_from_catalog` gave it — so two seconds into any session the
+        animal rule would start reporting `speed_kph is stale` with the bus running, which is
+        precisely the state that is supposed to be fresh whenever you look. A real bus
+        publishes from power-on; this is that.
+
+        Read back from the car rather than from the declaration's resting value, because the
+        car is what was actually seeded and the two must not be able to disagree.
+        """
+        now = self._now()
+        for entity, attribute, *_rest in sensed_signals():
+            value = self.car.get_signal(entity, attribute)
+            if value is None:
+                continue                  # declared but unseeded: nothing to publish yet
+            self.intake.ingest(Input(source=SIGNAL_SOURCE, at=now,
+                                     payload=SignalWrite(entity, attribute, value)))
+
+    def set_bus(self, on: bool) -> bool:
+        """Start or stop the publisher. Returns the state it is now in.
+
+        Stopping it is the only way a sensed signal goes stale, which is the point: a value
+        does not decay because time passed, it decays because nothing said it again.
+        """
+        self.intake.set_publishing(SIGNAL_SOURCE, on)
+        return on
+
+    def bus_publishing(self) -> bool:
+        return self.intake.publishing(SIGNAL_SOURCE)
+
+    def bus_note(self) -> str:
+        """One phrase saying whether what was just set will stay true.
+
+        Shown on the line that sets a signal because "45 kph" and "45 kph as of some moment in
+        the past" are different facts, and only one of them is what a rule will read. A control
+        that silently sets a value which is about to expire is the same defect as `ttl=30` being
+        accepted and ignored.
+        """
+        return ("publishing · re-stamped on every command" if self.bus_publishing()
+                else "bus off · this value ages from now on")
+
     # --- one turn ----------------------------------------------------------------------
     OBSERVATION_TTL = 300.0
 
@@ -210,29 +300,41 @@ class Session:
         if ttl is not None and float(ttl) <= 0:
             raise ValueError(f"ttl must be positive, got {ttl}")
         now = self._now()
+        self.pump(now)
         # The design namespaces keys inside. / outside. / vehicle., and prefixing every key
         # unconditionally made two of those three unreachable — there was no way to state an
         # outside.weather observation at all. A key that already names its namespace is taken
         # as written; a bare one still gets the cabin, so /scene rear_occupant=child works.
         full_key = key if "." in key else f"inside.{key}"
-        obs = Observation(full_key, value, confidence, source, now,
-                          self.OBSERVATION_TTL if ttl is None else ttl)
         before = self._snapshot()
-        outcome = self.scene.observe(obs, now, question_open=False)
+        # An envelope, not an Observation: the source and the time are the envelope's to carry,
+        # and `intake` is what turns them into perception's own shape. This method's job is now
+        # the validation above and nothing else.
+        outcome = self.intake.ingest(
+            Input(source=source, at=now,
+                  payload=Percept(full_key, value, confidence,
+                                  self.OBSERVATION_TTL if ttl is None else ttl)))
         return Turn(utterance=f"[scene] {key}={value}", reply=outcome.speech,
                     scene=outcome.scene or "—", deltas=self._deltas_since(before),
                     rules=list(self.scene.explain()), fallback=self.scene.fallback_note())
 
     def handle(self, utterance: str) -> Turn:
+        now = self._now()
+        self.pump(now)
         before = self._snapshot()
         try:
-            consent = self.scene.resolve(utterance, self._now())
+            # Consent stays here, ahead of the door, and §11 says why it is deferred: a pending
+            # question is not a fact about the world, and putting it in intake is how intake
+            # becomes the thing every module imports. 好 is only an answer because this session
+            # is holding a question — nothing in the envelope can know that.
+            consent = self.scene.resolve(utterance, now)
             if consent.answered:
                 # The driver was answering the car, not commanding it. Routing these words
                 # would treat 好 as an utterance to match against 92 functions.
                 return Turn(utterance=utterance, reply=consent.speech, scene="consent",
                             deltas=self._deltas_since(before))
-            result = self.pipeline.route(utterance)
+            result = self.intake.ingest(
+                Input(source=UTTERANCE_SOURCE, at=now, payload=Utterance(utterance)))
         except Exception as exc:                      # a crash costs a 60s reload; survive it
             return Turn(utterance=utterance, error=f"{type(exc).__name__}: {exc}")
         deltas = self._deltas_since(before)
@@ -365,7 +467,14 @@ class Session:
             raise ValueError(f"{entity}/{attribute} is {lo}–{hi}, got {number}")
         # Limits are not repeated on the write: `SqliteVehicle.set_signal` keeps the row's
         # existing min/max on conflict, and they were seeded from this same declaration.
-        self.car.set_signal(entity, attribute, number)
+        #
+        # Through the door rather than straight at the car, which is what puts the value on the
+        # bus: a signal set by hand is the last thing the bus said, so it keeps being said
+        # until the bus stops. It is also what stamps it on the SESSION's clock — set after
+        # /clock +100, a value written at wall time would have been a hundred seconds old the
+        # moment it landed.
+        self.intake.ingest(Input(source=SIGNAL_SOURCE, at=self._now(),
+                                 payload=SignalWrite(entity, attribute, number)))
         return number
 
     def sensed_rows(self) -> list[dict]:
@@ -402,6 +511,13 @@ class Session:
         self.car.conn.commit()
         seed_from_catalog(self.car, self.cards)
         self._seeded = self._snapshot()
+        # The bus has to forget too, and then start again from the new car. A held 45 kph is a
+        # measurement of a vehicle that no longer exists, and the next pump would write it into
+        # the freshly seeded one looking perfectly live — a car that reads as doing 45 while
+        # /car reports it as it was seeded. Re-held immediately afterwards so the new car's own
+        # resting values are what is being published.
+        self.intake.forget()
+        self._hold_sensed()
         # The scene engine has to forget too. A pending consent asked about the old car would
         # otherwise be answerable against the new one — 好 after a reset would re-open a lock
         # nobody was asked about — and a cooldown carried across would silence a rule for a

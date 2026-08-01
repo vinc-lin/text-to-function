@@ -16,6 +16,7 @@ HELP = """
   /log                       recent operations, and what the car said
   /scene <key>=<value> [conf=] [ttl=]   one perception event, as if the cabin camera saw it
   /signal <entity>/<attr>=<value>       what the car is doing: a signal it senses, not a command
+  /bus on|off                stop or start the sensed-signal publisher — a stopped bus goes stale
   /context                   what perception currently believes, and for how long
   /clock +30 | -5            move the session clock, to elapse a ttl or a cooldown
   /scene-llm on|off          attach or detach the scene fallback (a second model)
@@ -72,6 +73,15 @@ def _scene(session, parts) -> None:
 _SIGNAL_USAGE = "  usage: /signal vehicle.all/speed_kph=45"
 
 
+def _unit(session, entity: str, attribute: str) -> str:
+    """The declared unit, or nothing. From `sensed_rows` because that is the same declaration
+    `set_signal` enforces its limits from — a unit printed from anywhere else could describe a
+    value in terms this session would refuse."""
+    row = next((r for r in session.sensed_rows()
+                if (r["entity"], r["attribute"]) == (entity, attribute)), None)
+    return f" {row['unit']}" if row and row.get("unit") else ""
+
+
 def _signal(session, parts) -> None:
     """Set a signal the car senses — the world moving, not an instruction to the car.
 
@@ -92,7 +102,29 @@ def _signal(session, parts) -> None:
         # session holds the car and the models, and losing it to a typo costs a 60s reload.
         print(f"  {exc}")
         return
-    print(f"  → {entity}/{attribute} = {value}")
+    # The bus state is on this line, not tucked behind another command, because it changes what
+    # the value MEANS: with the bus stopped, 45 kph is what the car was doing a moment ago and
+    # every rule reading it will shortly see nothing at all.
+    print(f"  → {entity}/{attribute} = {value}{_unit(session, entity, attribute)}"
+          f" · {session.bus_note()}")
+
+
+_BUS_USAGE = "  usage: /bus on|off"
+
+
+def _bus(session, arg: str) -> None:
+    """Stop or start the publisher — the only way to make a sensed signal go stale by hand.
+
+    `/clock` cannot do it while the bus is running, and that is correct rather than a
+    limitation: the pump stamps on the session's own clock, so moving the clock moves the
+    stamps with it. A dead bus is what staleness models, so stopping the bus is how you get it.
+    """
+    if arg not in ("on", "off"):
+        print(_BUS_USAGE)
+        return
+    session.set_bus(arg == "on")
+    print("  → bus on · sensed signals are republished on every command" if arg == "on"
+          else "  → bus off · sensed signals age from here, and go absent once past their max")
 
 
 def _print_context(session):
@@ -160,6 +192,12 @@ def _scene_llm(session, arg: str) -> None:
 
 def _command(session, line: str) -> bool:
     """Returns False to quit."""
+    # Every command pumps first, so a live bus is fresh whenever you look at it — the design's
+    # "the CLI on each command", the terminal's half of what the UI poll does on the other
+    # door. `handle` and `observe` pump for themselves because they decide something and must
+    # not depend on which caller reached them; this covers the commands that only look, so a
+    # signal's age never depends on how you asked to see it.
+    session.pump()
     parts = line.split()
     name, arg = parts[0], (parts[1] if len(parts) > 1 else "")
     if name in ("/quit", "/exit"):
@@ -180,6 +218,8 @@ def _command(session, line: str) -> bool:
         _scene(session, parts[1:])
     elif name == "/signal":
         _signal(session, parts[1:])
+    elif name == "/bus":
+        _bus(session, arg)
     elif name == "/context":
         _print_context(session)
     elif name == "/clock":
