@@ -153,11 +153,24 @@ class Session:
     def _now(self) -> float:
         """The only clock the session reads. Every call site goes through here.
 
-        A missed `_time.monotonic()` elsewhere would make the offset apply to some decisions
-        and not others — an observation that expires while the cooldown that silenced it does
-        not — which is worse than having no offset at all.
+        A missed clock read elsewhere would make the offset apply to some decisions and not
+        others — an observation that expires while the cooldown that silenced it does not —
+        which is worse than having no offset at all.
+
+        **Wall clock, not monotonic, and the car is why.** `SqliteVehicle` stamps `updated_at`
+        with `time.time()`, and the car can be persisted with `--db`, so a monotonic stamp
+        would be written into a file that outlives the process that produced it and mean
+        nothing on the next run. Once `signal_age` began reading those stamps, a session on
+        monotonic subtracted ~756 thousand from ~1.79 billion and got an age of roughly minus
+        1.78 billion seconds — which is under every max_age, so every signal read LIVE and
+        staleness silently never fired. It failed open, in the one direction that leaves a
+        discipline looking wired while doing nothing.
+
+        The cost is that a system clock jump moves ages with it. For an instrument that is
+        irrelevant; for a vehicle it would not be, and a real integration should pass its own
+        clock rather than inherit this one.
         """
-        return _time.monotonic() + self.clock_offset
+        return _time.time() + self.clock_offset
 
     def advance_clock(self, seconds: float) -> float:
         """Move the session's clock forward (or back), returning the new total offset.
