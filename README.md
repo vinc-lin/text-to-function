@@ -143,8 +143,8 @@ not as shipped behaviour.
 
 Full analysis and the safety/coverage frontier are in
 **[`docs/superpowers/RESULTS.md`](docs/superpowers/RESULTS.md)** — a per-spec record written as each
-spec shipped and left as written; each spec's design and TDD plan live under
-`docs/superpowers/specs/` and `docs/superpowers/plans/`.
+spec shipped and left as written; each feature's design reasoning lives under
+`docs/superpowers/specs/`.
 
 ## After Spec 9: what the numbered specs do not cover
 
@@ -182,7 +182,7 @@ measurement whose absence means the bus stopped. The bus is **pumped, not thread
 affinity forces it), so a live bus is fresh whenever you look and `/bus off` is what makes age
 accumulate.
 
-Design and reasoning: **[sensed signals](docs/superpowers/plans/2026-07-31-sensed-signals.md)** ·
+Design and reasoning: **[sensed signals](docs/superpowers/specs/2026-07-31-sensed-signals-design.md)** ·
 **[intake and WorldView](docs/superpowers/specs/2026-08-01-intake-and-worldview-design.md)**.
 
 ## Layout

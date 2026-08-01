@@ -212,7 +212,7 @@ Single-clause pure-context (and OOD) false-execution at the C_llm point is the o
 
 # Spec 5 — Utterance-Level Reply Results
 
-Design: `docs/superpowers/specs/2026-07-25-utterance-level-reply-design.md`. Plan: `docs/superpowers/plans/2026-07-25-utterance-level-reply.md`. Adds a single spoken `RouteResult.reply`, composed deterministically from what the router already produced, plus four contract metrics that make the eval harness enforce it on every run. Suite: **208 core + 3 model tests**.
+Design: `docs/superpowers/specs/2026-07-25-utterance-level-reply-design.md`. Adds a single spoken `RouteResult.reply`, composed deterministically from what the router already produced, plus four contract metrics that make the eval harness enforce it on every run. Suite: **208 core + 3 model tests**.
 
 ## What the gap was
 
