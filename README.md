@@ -8,9 +8,11 @@ Qwen3-0.6B).
 
 > **Status:** Specs 1–9 complete, plus work that came after and is deliberately **not** a numbered
 > spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`, then **the
-> store** ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1105 automated tests + 5
-> model-backed**, and **no red cases left**: the count went 11 → 9 → 1 → 0, and because every red
-> case was `xfail(strict=True)`, closing a gap made the suite say so rather than waiting to be asked.
+> store** ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1135 automated tests + 74
+> model-backed**, and **one red case** — the count went 11 → 9 → 1 → 0 and back to 1, opened by the
+> model tier rather than left behind: a strict `xfail` pinning a ranking weakness the real embedder
+> exposed and the shipped gate contains ([§15][tier]). Every red case is `xfail(strict=True)`, so
+> closing a gap makes the suite say so rather than waiting to be asked.
 > No performance number has been measured on the 87 platform. Start with **[the Central Model system
 > design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**; current measured
 > figures live in **[`docs/TEST_REPORT.md`](docs/TEST_REPORT.md)**.
@@ -278,8 +280,16 @@ Core deps: `numpy pyyaml pytest`. Real models add `transformers torch` (embedder
 
 ```bash
 python3 -m pytest -q            # core suite (no network / no model)
-python3 -m pytest -m model -q   # model-backed tests (load Qwen3 models; need GPU/network)
+python3 -m pytest -m model -q   # the model tier: the end-to-end suite re-run on the real embedder,
+                                # plus the model-backed unit tests (Qwen3; need GPU/network)
 ```
+
+The default suite routes through `FakeEmbedder`, a hashed-n-gram stand-in with no semantics. The
+second tier re-runs the end-to-end bodies on the real Qwen3 embedder under the shipped fusion
+weights, so those claims are about the router that ships rather than about the stand-in — what it
+proves, and what it still does not, is **[TEST_REPORT §15][tier]**.
+
+[tier]: docs/TEST_REPORT.md#15-update--2026-08-02-later-still-the-model-tier-and-the-circularity-it-removes
 
 ## Run the evaluation
 

@@ -67,6 +67,15 @@ class Profile:
         Config.default()   keyword_alias .15 + param_compat .25 + domain_prior .05 = 0.45 > 0.2
         config.yaml        keyword_alias .04 + param_compat .05 + domain_prior .03 = 0.12 < 0.2
 
+    config.yaml weights a fifth signal, `classifier_prob`, at 0.15, and it is absent from that
+    sum on purpose rather than by oversight: `t2f/build.py` wires no classifier source, so
+    `t2f/score.py:29` reads `cp` as 0.0 for every card and the term contributes nothing anywhere
+    this fixture, `cli --no-llm` or test_s9_shipped_gate_cost.py can reach. Only
+    `eval/arms.py::build_arm_d` supplies one, past the factory. Wire a classifier into
+    `build_pipeline` and the shipped row becomes 0.27,
+    which CLEARS 0.2 — at which point the sentence below is false and the mutation that proved
+    it needs re-running. `Config.default()` has no such caveat; its classifier_prob is 0.0.
+
     So under the default weights a clause can be dispatched with NO embedding signal at all —
     measured: with the real embedder's output zeroed, 10 of the 29 real-profile cases still
     pass. Under the shipped weights, one does. config.yaml is embedding-dominant on purpose (a
