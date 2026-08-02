@@ -650,3 +650,75 @@ def test_a_raw_row_that_raised_carries_its_error_onto_the_turn(store):
 
 def test_an_empty_store_reads_back_empty(store):
     assert store.recent_turns() == []
+
+
+# --- one turn, as the rows it is made of -------------------------------------------------------
+
+def test_a_trace_walks_from_the_raw_row_to_everything_it_became(store):
+    """The read the browser's trace pane is: which row this was, and what followed from it.
+    Rows with their ids, not four lines of prose — the ids are the substance, because a path
+    through this system is a path through five tables."""
+    raw = store.put_raw("mic", 100.0, '{"text": "开车窗"}')
+    utt = store.put_utterance(raw, 100.0, "开车窗")
+    tid = store.open_turn(raw, 100.0, "route")
+    did = store.put_decision(tid, "开车窗", "high", chosen="open_window")
+    store.close_turn(tid, "已为您打开当前区域车窗。")
+
+    tr = store.trace(tid)
+    assert tr["turn"] == {"id": tid, "at": 100.0, "kind": "route",
+                          "reply": "已为您打开当前区域车窗。"}
+    assert tr["raw"]["id"] == raw and tr["raw"]["source"] == "mic"
+    assert [u["id"] for u in tr["utterance"]] == [utt]
+    assert [d["id"] for d in tr["decisions"]] == [did]
+    assert tr["perception"] == []
+
+
+def test_a_traces_decisions_are_oldest_first(store):
+    """Within one turn this is the order they were decided in, and a multi-clause utterance
+    reads backwards otherwise. The same argument `operations_for_turn` makes."""
+    tid = store.open_turn(None, 100.0, "route")
+    first = store.put_decision(tid, "开车窗", "high", chosen="open_window")
+    second = store.put_decision(tid, "空调调到22度", "medium", chosen="set_temperature")
+    assert [d["id"] for d in store.trace(tid)["decisions"]] == [first, second]
+
+
+def test_a_trace_of_a_turn_nothing_wrote_is_none(store):
+    """None, not an empty trace: `ui/server.py` has to be able to answer 404, and "no such
+    turn" is a different fact from "a turn that recorded nothing"."""
+    assert store.trace(9999) is None
+
+
+def test_a_trace_survives_the_words_that_caused_it(store):
+    """The LEFT JOIN, one read across. Retention deletes the raw row and every pointer at it
+    goes NULL, so an inner join would hide precisely the turns old enough to be looked up —
+    and the parsed rows can no longer be found, because the only edge to them was that id."""
+    raw = store.put_raw("cabin_cam", 100.0, '{"key": "inside.rear_occupant"}', expires_at=200.0)
+    store.put_perception(raw, 100.0, "inside.rear_occupant", "child", 0.9, 300.0, "cabin_cam")
+    tid = store.open_turn(raw, 100.0, "scene")
+    store.put_decision(tid, "rear_child_window_lock", "match", chosen="rear_child_window_lock")
+    store.close_turn(tid, "后排有小孩，要打开儿童锁吗？")
+    store.commit()
+    store.sweep(now=300.0)
+
+    tr = store.trace(tid)
+    assert tr["raw"] is None, "the frame is gone"
+    assert tr["perception"] == [], "and with it the only link to the belief it produced"
+    assert store.newest_perception("inside.rear_occupant") is not None, "which still exists"
+    assert [d["verdict"] for d in tr["decisions"]] == ["match"], "the reasoning is untouched"
+
+
+def test_a_turn_nothing_triggered_traces_with_no_raw_row(store):
+    """`open_turn(None, ...)` and a swept turn are the same fact to a reader — nothing to show
+    — and this read does not pretend to tell them apart, the same conflation `recent_turns`
+    makes between '' and NULL."""
+    tid = store.open_turn(None, 100.0, "consent")
+    assert store.trace(tid)["raw"] is None
+
+
+def test_a_trace_reads_an_unwritten_payload_as_absent(store):
+    """`--no-raw-capture` leaves '' in a NOT NULL column. It means what NULL means everywhere
+    else here, and one value for one fact is what stops a display inventing a second."""
+    quiet = Store(store.conn, raw_capture=False)
+    raw = quiet.put_raw("mic", 100.0, '{"text": "开车窗"}')
+    tid = quiet.open_turn(raw, 100.0, "route")
+    assert quiet.trace(tid)["raw"]["payload"] is None

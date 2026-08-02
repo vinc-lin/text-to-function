@@ -824,13 +824,32 @@ Six panes:
 | **The car** | signals that differ from the seeded vehicle, flashing when they move |
 | **Rules** | every rule with its verdict, its reason, and what suppressed it — the same thing the terminal prints, but standing still instead of scrolling past |
 | **Conversation** | the transcript, plus the pending question with a live countdown and **Yes** / **No** buttons |
-| **The record** | `/store` as a pane: heard · decided · did · said, newest first, for the last eight turns |
+| **The record** | `/store` as a pane: heard · decided · did · said, newest first, for the last eight turns — and click a turn to open it into the rows it became |
 
 The record pane is the only one that is not a fact about *now*. Everything above it is the
 running system — what perception believes this second, what the last observation decided — and
 all of it is replaced by the next event. That pane is what survives, so it is deliberately the
-quietest thing on the page: no colour of its own, nothing that moves, nothing to click. It reads
-the store and there is no route back — a page cannot write the record, only the door can.
+quietest thing on the page: no colour of its own, nothing that moves. It reads the store and
+there is no route back — a page cannot write the record, only the door can.
+
+**Clicking a turn shows the path its input took.** In this architecture the dataflow and the
+database are the same thing, so a path through the system is a path through five tables, and the
+turn opens into exactly that: the `observation_raw` row that arrived, whatever it was parsed into
+(`utterance` for a voice turn, `perception` for a camera frame, nothing at all for a `好`, which
+is an answer rather than something to parse), the `turn` it opened, and the `decision` and
+`operation_log` rows that followed. Row numbers and all — the ids are the substance.
+
+It is `GET /trace/<turn id>`, fetched on the click and never on the poll, and it has no entry in
+`ACTIONS` or `CONTROLS`: those two tables are the page's routes to the *car* and they exist for
+writes.
+
+**What retention has taken is said out loud rather than left blank.** An hour on, the frame is
+deleted and every pointer at it goes NULL — so the chain opens with `observation_raw  —  (not
+recorded)`, the same phrase `/store` prints, and a note saying what it was parsed into can no
+longer be found without it. The decisions and the operations are still there, which is the whole
+point of the raw/parsed split. The same discipline applies to silence: a turn that executed
+nothing draws `operation_log  —  (nothing executed)` rather than omitting the line, because an
+absent section says "this view did not look" and the truth is that the car did nothing.
 
 Those two buttons submit the utterances `好` and `不用`. They are not a shortcut past the consent
 lexicon — there is exactly one route to the car and the page uses it, the same one you type into at

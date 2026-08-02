@@ -417,6 +417,56 @@ def test_a_scene_observation_writes_a_turn_and_one_decision_per_rule(car):
         ("child_alone", "match", None, "outranked by rear_occupant")]
 
 
+class Believing(SpyEngine):
+    """A `SceneEngine` that writes a belief on the way through, as the real one does.
+
+    `SpyEngine` does not, because most of these tests are about dispatch. The two below are
+    about the one column dispatch has to fill in afterwards, so the write has to happen.
+    """
+    def __init__(self, store, reports=()):
+        super().__init__(reports)
+        self.store = store
+
+    def observe(self, obs, now, **kw):
+        # Exactly what `SceneContext.update` does: `raw_id` None, because an Observation has
+        # already lost the envelope that said which row arrived.
+        self.store.put_perception(None, obs.at, obs.key, obs.value, obs.confidence,
+                                  obs.ttl, obs.source)
+        return super().observe(obs, now, **kw)
+
+
+def _believing_door(car):
+    store = Store(car.conn)
+    return store, Intake(SpyPipeline(), Believing(store), car, None, store=store)
+
+
+def test_a_belief_written_during_an_observation_names_the_frame_that_produced_it(car):
+    """The other half of provenance, and the half that was missing.
+
+    `SceneContext.update` writes the belief with `raw_id` NULL — it has only an `Observation`
+    by then — so the id is applied from the door afterwards, off a watermark. Without it the
+    trace of a scene turn shows a frame that produced nothing while the belief sits in the next
+    table along. Not an ambient "current raw row" the context reads instead: a caller that
+    forgets to clear one of those does not leave a NULL, it leaves the PREVIOUS frame's id on
+    this frame's beliefs, which is a wrong answer rather than no answer.
+    """
+    _store, door = _believing_door(car)
+    door.ingest(Input("cabin_cam", 100.0, Percept("inside.rear_occupant", "child", 0.9, 300.0)))
+    rows = _rows(car, "perception")
+    assert len(rows) == 1
+    assert rows[0]["raw_id"] == _rows(car, "observation_raw")[0]["id"]
+
+
+def test_the_watermark_does_not_let_one_frame_claim_an_earlier_belief(car):
+    """What the watermark is FOR. Two frames in a row must each own their own row, or the
+    record says one camera frame produced every belief the session ever held."""
+    _store, door = _believing_door(car)
+    door.ingest(Input("cabin_cam", 100.0, Percept("inside.rear_occupant", "child", 0.9, 300.0)))
+    door.ingest(Input("cabin_cam", 200.0, Percept("inside.rear_occupant", "adult", 0.9, 300.0)))
+    raws = [r["id"] for r in _rows(car, "observation_raw")]
+    assert [p["raw_id"] for p in _rows(car, "perception")] == raws
+
+
 def test_a_signal_write_records_the_frame_and_opens_no_turn(car):
     """A signal write is the world moving: no decision to record and nothing said. A turn per
     frame would also mean a turn at 10 Hz in which nothing happened."""

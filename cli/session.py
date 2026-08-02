@@ -554,6 +554,35 @@ class Session:
                 for op in self.car.operations_for_turn(turn["id"])]
         return turns
 
+    def trace(self, turn_id: int) -> Optional[dict]:
+        """One turn and every row it became — the store's rows, plus what the car did.
+
+        The other question `recent_turns` cannot answer. That one is "what has been happening";
+        this is "which row was this input, and what followed from it", so it comes back as rows
+        with their ids rather than as four lines of prose.
+
+        Joined here for the reason `recent_turns` is joined here, and it is the same seam:
+        `intake.store` owns the turn, the raw row, the parsed rows and the decisions; `sim`
+        owns `operation_log` and therefore what the car actually did. This object holds both,
+        so neither module has to reach into the other's tables.
+
+        None passes straight through. A turn id nothing wrote has no operations to attach, and
+        returning an empty trace for it would answer "nothing happened" to a question that was
+        "which turn?" — `ui/server.py` needs those to be different so one can be a 404.
+
+        `parameters` is handed on as the column holds it, a JSON string. `/store` prints what
+        is in the column rather than a prettier account of it, and this is the same read.
+        """
+        found = self.intake.store.trace(turn_id)
+        if found is None:
+            return None
+        found["operations"] = [
+            {"id": op["id"], "at": op["at"], "function": op["function"],
+             "parameters": op["parameters"], "outcome": op["outcome"],
+             "error": op["error"], "detail": op["detail"]}
+            for op in self.car.operations_for_turn(turn_id)]
+        return found
+
     # --- the world, not the car ----------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value):
         """Tell the simulator what the car is DOING. Returns the number written.
