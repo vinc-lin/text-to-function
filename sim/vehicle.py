@@ -9,6 +9,8 @@ import json, sqlite3, time
 from pathlib import Path
 from typing import Any, Optional
 
+from sim.migrate import migrate, refuse_if_newer
+
 SCHEMA = Path(__file__).parent / "schema.sql"
 
 
@@ -19,8 +21,16 @@ class SqliteVehicle:
         self.conn.execute("PRAGMA foreign_keys = ON")
 
     def init_schema(self) -> None:
+        """Create what is absent, then change what has changed shape. Both, in that order.
+
+        The order is required rather than tidy, and the refusal comes first because it is a
+        read: a store from a newer build must not be written to by the CREATE pass on its way
+        to being refused. sim/migrate.py holds the whole argument for both.
+        """
+        refuse_if_newer(self.conn)
         self.conn.executescript(SCHEMA.read_text(encoding="utf-8"))
         self.conn.commit()
+        migrate(self.conn)
 
     # --- signals ---------------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value: Any,
