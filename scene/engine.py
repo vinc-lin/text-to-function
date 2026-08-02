@@ -55,6 +55,17 @@ class ConsentResult:
     speech: str = ""
     executed: bool = False
     tool_call: Optional[ToolCall] = None
+    # How the words were classified — the `Answer`'s value, reported rather than thrown away.
+    # `_resolve` has always computed this and kept it to itself, which left the caller writing
+    # the consent turn down with no way to say "the driver said yes and it failed" instead of
+    # "the driver said no": both arrive as answered, not executed, no tool_call. A record that
+    # cannot tell those apart is a record that is sometimes false.
+    #
+    # "" means nothing was classified — no question was pending, or `resolve` caught an
+    # infrastructure fault before it knew. That is a third fact, not a missing one, which is
+    # why the default is empty rather than NOT_AN_ANSWER. Last field with a default, so every
+    # existing construction keeps working.
+    answer: str = ""
 
 
 NO_ACTION = SceneOutcome("no_action", "", "", None, "rule", "")
@@ -351,10 +362,11 @@ class SceneEngine:
             # Abandon the question rather than hold it open: a driver who said something else
             # has moved on, and a stale question would make the NEXT 好 ambiguous.
             self._pending = None
-            return ConsentResult(answered=False)
+            return ConsentResult(answered=False, answer=answer.value)
         self._pending = None
         if answer is Answer.NO:
-            return ConsentResult(answered=True, speech=speech_for("ack_declined"))
+            return ConsentResult(answered=True, speech=speech_for("ack_declined"),
+                                 answer=answer.value)
         return self._execute(pending.proposal)
 
     def _execute(self, proposal: ToolCall) -> ConsentResult:
@@ -363,10 +375,13 @@ class SceneEngine:
         The car may have changed between the question and the answer, so the call is
         re-validated and re-dispatched here rather than trusted from ask time.
         """
+        # Reached only on Answer.YES, so every result below carries it. Stated on all three
+        # branches rather than added by the caller: the two that did not act are exactly the
+        # ones a reader would otherwise mistake for a refusal by the driver.
         tc, _ = validate_tool_call(proposal.name, dict(proposal.parameters),
                                    self.cards, [proposal.name])
         if tc is None:
-            return ConsentResult(answered=True, speech=_FAILURE)
+            return ConsentResult(answered=True, speech=_FAILURE, answer=Answer.YES.value)
         res = self.executor.execute(tc)
         if not res.ok:
             # Stripped before the emptiness test, the way t2f/reply.py::_exec_failures already
@@ -374,6 +389,7 @@ class SceneEngine:
             # appends a terminator, and the driver hears a spoken full stop with no cause.
             detail = (res.detail or "").strip()
             return ConsentResult(answered=True, speech=_sentence(detail) or _FAILURE,
-                                 tool_call=tc)
+                                 tool_call=tc, answer=Answer.YES.value)
         return ConsentResult(answered=True, executed=True, tool_call=tc,
-                             speech=_sentence(render_response(self.cards[tc.name], tc)))
+                             speech=_sentence(render_response(self.cards[tc.name], tc)),
+                             answer=Answer.YES.value)

@@ -17,8 +17,9 @@ from t2f.gate import Thresholds
 from t2f.types import LLMResult, ToolCall
 from intake.envelope import Input, Percept, SignalWrite, Utterance
 from intake.hub import WorldView
-from intake.ingest import Intake
+from intake.ingest import Intake, encode_payload
 from intake.store import Store
+from scene.consent import Answer
 from scene.context import SceneContext
 from scene.engine import SceneEngine
 from sim.executor import SqliteExecutor
@@ -347,6 +348,11 @@ class Session:
         self.pump(now)
         before = self._snapshot()
         try:
+            # Taken before `resolve`, because `resolve` is a path that ACTUATES: a watermark
+            # read afterwards sits above the operations it is meant to claim and attributes
+            # nothing. Discarded when the words turn out not to be an answer — `Intake._route`
+            # takes its own for the routing turn that follows.
+            since = self.intake.store.operations_watermark()
             # Consent stays here, ahead of the door, and §11 says why it is deferred: a pending
             # question is not a fact about the world, and putting it in intake is how intake
             # becomes the thing every module imports. 好 is only an answer because this session
@@ -355,6 +361,7 @@ class Session:
             if consent.answered:
                 # The driver was answering the car, not commanding it. Routing these words
                 # would treat 好 as an utterance to match against 92 functions.
+                self._record_consent(utterance, consent, now, since)
                 return Turn(utterance=utterance, reply=consent.speech, scene="consent",
                             deltas=self._deltas_since(before))
             result = self.intake.ingest(
@@ -364,6 +371,58 @@ class Session:
         deltas = self._deltas_since(before)
         return Turn(utterance=utterance, reply=result.reply,
                     spans=[self._span(cl, deltas) for cl in result.clauses])
+
+    def _record_consent(self, utterance: str, consent, now: float, since: int) -> None:
+        """Write the consent turn down, because nothing else will.
+
+        **This is the only path to the car that does not go through the door**, so it is the
+        only one whose record the door cannot write. Without these five statements an action
+        the driver authorised lands in `operation_log` with a NULL `turn_id` — an execution
+        with nothing in the store saying who asked for it, which is precisely what
+        `tests/intake/test_completeness.py` exists to make impossible. It was NULL until this
+        method existed; the negative test there is what keeps it filled.
+
+        Written here rather than moved into `intake` because this is where the decision is
+        made, and the reason it is made here has not changed: 好 is only an answer because this
+        session is holding a question, and nothing in an envelope can know that. **The residual
+        gap is worth stating rather than leaving to be discovered** — `cli/` is not packaged,
+        so a consumer that assembled its own composition and called `SceneEngine.resolve`
+        itself would get no record. There is no such consumer: `resolve` has exactly one caller
+        in the repo, above. A second one is the thing to notice.
+
+        Opened AFTER the work, which is the opposite of `_route` and needs its reason said out
+        loud: `SceneEngine.resolve` is documented never to raise — it catches everything and
+        returns a failure result — so there is no mid-way death for an early row to survive.
+        What genuinely has to happen first is the watermark, and it does.
+        """
+        store = self.intake.store
+        # One raw row, and only now that the words have turned out to be an answer. An
+        # utterance that is NOT an answer goes on to the door, which writes its own raw row —
+        # writing one here as well would put the same sentence in the record twice and read as
+        # the driver having said it twice.
+        raw_id = store.put_raw(UTTERANCE_SOURCE, now, encode_payload(Utterance(utterance)))
+        turn_id = store.open_turn(raw_id, now, "consent")
+        store.put_decision(
+            turn_id,
+            # Through `spoken`, because 好 IS speech: the privacy switch has to reach the answer
+            # the same way it reaches a routed clause, or it keeps the words it claims to drop.
+            store.spoken(utterance) or "",
+            # The classification, not the outcome. "yes, and the car refused" and "no" are
+            # different facts and both end up answered-but-not-executed; a verdict derived from
+            # `executed` alone would file the first as the second. "" only when `resolve` caught
+            # an infrastructure fault before it classified anything.
+            consent.answer or "unclassified",
+            consent.tool_call.name if consent.tool_call else None,
+            # Why nothing happened, when nothing did. Empty for the two cases that need no
+            # explanation: it worked, or the driver said no.
+            "" if consent.executed or consent.answer == Answer.NO.value else consent.speech)
+        store.close_turn(turn_id, consent.speech, since_operation=since)
+        # Marked processed for the reason `ingest` marks its own: this row was handled
+        # synchronously, and one left pending is one `process_pending` would run a second time.
+        store.mark_processed(raw_id, now)
+        # One commit per input, the boundary `Intake.ingest` uses. Half a consent turn in the
+        # record is a worse artifact than none.
+        store.commit()
 
     def _deltas_since(self, before: dict) -> list:
         return [Delta(e, a, before.get((e, a)), v) for (e, a), v in self._snapshot().items()
