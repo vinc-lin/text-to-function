@@ -48,6 +48,57 @@ def _mode(session) -> str:
     return session.mode_label()
 
 
+# What each piece of `mode_label()` means, in words. The codes are the eval arms' own names and
+# stay — a chip reading `C_llm` is the same thing `eval/` measures, and renaming it here would
+# leave the page and the report describing one configuration in two vocabularies. But the arms
+# are only legible to someone who already knows them, and the browser has the room the terminal
+# prompt does not, so each code arrives with a sentence.
+_MEANING = {
+    "C":     ("voice · rules only", "Recognition is deterministic. The MEDIUM band is a dead "
+                                    "end — nothing resolves it, so borderline commands go "
+                                    "unanswered rather than being guessed at."),
+    "C_llm": ("voice · LLM fallback", "Qwen3-0.6B resolves the MEDIUM band under constrained "
+                                      "decoding. It never overrides a confident answer; it "
+                                      "only picks up what the gate would otherwise drop."),
+    "S":     ("scene · rules only", "The shipped rules decide. An observation no rule matches "
+                                    "produces silence."),
+    "S_llm": ("scene · LLM fallback", "A second model may propose a scene when no rule matches. "
+                                      "Its proposal is validated before anything is said."),
+    "FAKE":  ("fake embedder", "Hashed character n-grams with no semantics. Routing is NOT "
+                               "meaningful — this mode exists to check plumbing."),
+    "no-raw": ("not recording words", "The store keeps what was decided and never the payload: "
+                                      "no transcript, no clause text. A later reader finding no "
+                                      "words should know that was a setting, not a fault."),
+}
+
+
+@_pane(list)
+def _mode_parts(session) -> list:
+    """`mode` split into pieces the page can explain, rather than a string for it to parse.
+
+    `scene_llm` is already structured for this reason — testing the joined label for "S_llm"
+    also matches "S". The same trap applies to every chip, so the split happens here, once,
+    beside the label it comes from.
+    """
+    gate = session.pipeline.gate.t
+    meaning = dict(_MEANING)
+    # Read from the gate actually in force, not restated. These three numbers are the whole
+    # difference between the two modes, and a copy of them here would be a second home for a
+    # figure `config.yaml` owns — free to drift the day either is retuned.
+    meaning[session.gate] = (
+        f"gate · {session.gate}",
+        f"A recognition reaches HIGH — and is acted on — at top1 ≥ {gate.high_top1:g} with a "
+        f"margin ≥ {gate.high_margin:g} over the runner-up; below top1 {gate.low_top1:g} it is "
+        f"refused outright. The margin is usually what binds: the right function often wins by "
+        f"too little to act on alone.")
+    parts = []
+    for code in session.mode_label().split("·"):
+        code = code.strip()
+        label, detail = meaning.get(code, (code, ""))
+        parts.append({"code": code, "label": label, "detail": detail})
+    return parts
+
+
 @_pane(lambda: False)
 def _scene_llm(session) -> bool:
     return session.scene.llm is not None
@@ -216,6 +267,9 @@ def _store(session) -> list:
 def snapshot(session) -> dict:
     return {
         "mode": _mode(session),
+        # The same label, split and explained. The page renders these; `mode` stays because the
+        # CLI prompt and /mode still speak in the compact form.
+        "mode_parts": _mode_parts(session),
         # Structured, not parsed back out of `mode`. The label joins its parts with " · " and
         # a page testing it for "S_llm" would also match "S" — the toggle would read as on the
         # moment the scene fallback was off.

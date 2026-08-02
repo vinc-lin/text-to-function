@@ -75,8 +75,15 @@
   .chip {
     font: 11px/1 var(--mono); padding: 4px 7px; border-radius: 3px;
     background: var(--panel-2); border: 1px solid var(--line); color: var(--ink);
+    display: inline-flex; align-items: baseline; gap: 6px; cursor: help;
   }
+  .chip:focus { outline: 1px solid var(--line-2); outline-offset: 1px; }
+  .chip-label { font-family: var(--sans); }
+  /* The eval arm's name, present but subordinate: the words are what you read, the code is
+     what ties this page to the report. */
+  .chip-code { color: var(--dim); font-size: 10px; }
   .chip.fake { color: var(--warn); border-color: #4a3a1c; }
+  .chip.fake .chip-code { color: var(--warn); opacity: 0.75; }
   .clock { font: 11px/1 var(--mono); color: var(--dim); white-space: nowrap; }
   .clock b { color: var(--live); font-weight: 600; }
   .clock.shifted b { color: var(--warn); }
@@ -692,13 +699,19 @@ function ctl(name, body) { return send("/control/" + name, body); }
 
 // ------------------------------------------------------------------- header
 function renderHeader(s) {
-  const parts = String(s.mode || "—").split("·").map(function (p) {
-    return p.trim();
-  }).filter(Boolean);
+  // Rendered from mode_parts, never by splitting `mode`: the page does not get to decide what
+  // "S_llm" means, and a substring test for it would match plain "S" too.
   const box = $("mode");
   box.textContent = "";
-  parts.forEach(function (p) {
-    box.appendChild(el("span", p === "FAKE" ? "chip fake" : "chip", p));
+  (s.mode_parts || []).forEach(function (p) {
+    const chip = el("span", p.code === "FAKE" ? "chip fake" : "chip");
+    chip.appendChild(el("span", "chip-label", p.label || p.code));
+    // The arm's own name, kept beside the words: this chip and the eval report are describing
+    // the same configuration, and only the code says so.
+    chip.appendChild(el("span", "chip-code", p.code));
+    if (p.detail) { chip.title = p.detail; }
+    chip.tabIndex = 0;                       // the detail is reachable without a mouse
+    box.appendChild(chip);
   });
 
   const off = Number(s.clock_offset) || 0;
