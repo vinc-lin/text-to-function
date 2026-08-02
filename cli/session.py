@@ -39,7 +39,19 @@ PERMISSIVE = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
 # an instruction to the car. Sending it under any other name would put a measurement into the
 # system with provenance that is not true.
 UTTERANCE_SOURCE = "mic"
+# Which camera saw it, from the namespace the key names. A single default made every
+# `outside.*` observation claim the cabin camera saw the road -- all six front_object rows in
+# the scene gold say exactly that -- which is the decorative `source` that intake/sources.py
+# was declared to end. An unknown namespace falls to the cabin because that is where an
+# unprefixed key already lands.
 PERCEPT_SOURCE = "cabin_cam"
+_PERCEPT_SOURCE_BY_NAMESPACE = {"inside": "cabin_cam", "outside": "front_cam"}
+
+
+def percept_source(key: str) -> str:
+    """The declared source a key of this namespace comes from."""
+    namespace, _, _ = key.partition(".")
+    return _PERCEPT_SOURCE_BY_NAMESPACE.get(namespace, PERCEPT_SOURCE)
 SIGNAL_SOURCE = "can0"
 
 
@@ -305,7 +317,7 @@ class Session:
     OBSERVATION_TTL = 300.0
 
     def observe(self, key: str, value, confidence: float = 0.9,
-                source: str = "cabin_cam", ttl: Optional[float] = None) -> Turn:
+                source: Optional[str] = None, ttl: Optional[float] = None) -> Turn:
         """One perception event in, one Turn out — the scene analogue of handle().
 
         Validated here rather than in each caller, because the terminal and the browser are
@@ -336,7 +348,7 @@ class Session:
         # and `intake` is what turns them into perception's own shape. This method's job is now
         # the validation above and nothing else.
         outcome = self.intake.ingest(
-            Input(source=source, at=now,
+            Input(source=source or percept_source(full_key), at=now,
                   payload=Percept(full_key, value, confidence,
                                   self.OBSERVATION_TTL if ttl is None else ttl)))
         return Turn(utterance=f"[scene] {key}={value}", reply=outcome.speech,
