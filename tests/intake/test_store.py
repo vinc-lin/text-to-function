@@ -180,3 +180,16 @@ def test_clearing_perception_leaves_the_raw_record(store):
     store.clear_perception()
     assert store.newest_perception("inside.rear_occupant") is None
     assert store.conn.execute("SELECT COUNT(*) FROM observation_raw").fetchone()[0] == 1
+
+
+# --- the scan --------------------------------------------------------------------------------
+
+def test_live_keys_and_newest_agree_by_construction(store):
+    """`live_perception_keys` is `newest_perception` in a loop, so the newest-per-key rule has
+    one implementation. Two queries that had to agree would eventually not."""
+    store.put_perception(None, at=100.0, key="k", value="old", confidence=0.9, ttl=1000.0,
+                         source="cabin_cam")
+    store.put_perception(None, at=150.0, key="k", value="new", confidence=0.9, ttl=1.0,
+                         source="cabin_cam")
+    assert [r["value"] for r in store.live_perception_keys()] == \
+           [store.newest_perception("k")["value"]] == ["new"]
