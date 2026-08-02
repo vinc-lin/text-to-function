@@ -325,18 +325,23 @@ class Intake:
         p = item.payload
         turn_id = self.store.open_turn(raw_id, item.at, "scene")
         since = self.store.operations_watermark()
+        # The same trick one table across, and for the same reason -- see
+        # `Store.perception_watermark`. Taken before the work, applied after it.
+        beliefs = self.store.perception_watermark()
         outcome = None
         try:
             # The `perception` row is written from inside here, by SceneContext.update. Not
             # duplicated at this level: two accounts of one belief is exactly what the store
             # exists to stop being normal.
             #
-            # The cost is that the belief lands with `raw_id` NULL -- an `Observation` has
-            # already lost its envelope by the time the context sees it, and the only ways to
-            # carry the id down are a parameter on `SceneEngine.observe` (a signature the
-            # design freezes) or a fix-up UPDATE from here guessing which rows were just
-            # written. Neither is worth it: the turn above already points at the raw row, and
-            # retention makes this column NULL anyway (ON DELETE SET NULL in sim/schema.sql).
+            # The belief therefore lands with `raw_id` NULL -- an `Observation` has already
+            # lost its envelope by the time the context sees it -- and the id is applied from
+            # out here afterwards, off a watermark. Not through a parameter on
+            # `SceneEngine.observe`, whose signature the design freezes, and not off an ambient
+            # "current raw row": see `Store.perception_watermark` for why that one fails in the
+            # wrong direction. Retention empties the column again when the frame is swept (ON
+            # DELETE SET NULL in sim/schema.sql), which is the honest end state -- the belief
+            # outlives the frame, and the link does not.
             outcome = self.engine.observe(
                 Observation(p.key, p.value, p.confidence, item.source, item.at, p.ttl), item.at)
             for report in self.engine.explain():
@@ -349,6 +354,11 @@ class Intake:
                     report.reason, report.suppressed_by)
             return outcome
         finally:
+            # Beside `close_turn` and in the same `finally`, because they answer the same
+            # obligation: a frame that died mid-way still wrote a belief and still opened a
+            # turn, and both have to point at the row that arrived or the record of the
+            # failure is the one with no provenance on it.
+            self.store.attribute_perception(raw_id, beliefs)
             self.store.close_turn(turn_id, outcome.speech if outcome else "",
                                   since_operation=since)
 

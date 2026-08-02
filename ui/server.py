@@ -56,6 +56,8 @@ def handle_request(session, method: str, path: str, body: bytes) -> tuple:
         # that is the loop.
         _pump(session)
         return _json(200, snapshot(session))
+    if method == "GET" and path.startswith("/trace/"):
+        return _trace(session, path[len("/trace/"):])
     if method == "POST" and path.startswith("/action/"):
         return _post(session, ACTIONS, perform, "action", path[len("/action/"):], body)
     # A separate route because it is a separate table, and the URL says which: /action/ is the
@@ -64,8 +66,8 @@ def handle_request(session, method: str, path: str, body: bytes) -> tuple:
     if method == "POST" and path.startswith("/control/"):
         return _post(session, CONTROLS, perform_control, "control",
                      path[len("/control/"):], body)
-    # Anything else, including a traversal attempt, is a plain 404: this serves exactly two
-    # GETs and never resolves a path against the filesystem.
+    # Anything else, including a traversal attempt, is a plain 404: this serves three GETs,
+    # one of which takes an integer, and never resolves a path against the filesystem.
     return _json(404, {"error": f"no route for {method} {path}"})
 
 
@@ -83,6 +85,44 @@ def _pump(session) -> None:
         session.pump()
     except Exception:
         pass
+
+
+def _trace(session, ident: str) -> tuple:
+    """One turn opened into the rows it is made of.
+
+    **Request-driven, and that is the whole reason it is a route rather than a key in the
+    snapshot.** `/state` ships on every 400 ms tick; a trace is table contents, and putting it
+    there would make the poll carry every row of every turn on the page whether or not anybody
+    had opened one — with the cost growing as the record does.
+
+    **A read, so there is no `ACTIONS` and no `CONTROLS` entry behind it.** Those two tables
+    are the page's routes to the car and they exist for writes; a read in either would widen
+    the surface they are meant to bound, and `ui/actions.py` keeps them disjoint by test
+    precisely so nothing drifts into them sideways.
+
+    No `_pump` either. The poll is this door's loop and pumps because it IS the loop; this is a
+    read of what was already written down, and re-stamping the bus from here would make looking
+    at history a way of changing the present.
+    """
+    try:
+        turn_id = int(ident)
+    except ValueError:
+        # A 404 and not a 400. `/trace/abc` names no turn, which is the same answer
+        # `/trace/9999` deserves — one shape for "there is nothing there", so a caller never
+        # has to tell a malformed id from a missing one to know it got nothing.
+        return _json(404, {"error": f"no turn {ident!r}"})
+    try:
+        found = session.trace(turn_id)
+    except Exception as exc:
+        # Never a 500 and never a raise out of the handler, the discipline `_post` follows: no
+        # request may cost the session, which holds the car and a minute of loaded models.
+        return _json(400, {"error": f"{type(exc).__name__}: {exc}"})
+    if found is None:
+        # The store distinguishes "no such turn" from "a turn that recorded nothing" so that
+        # this line can exist. A turn with no decisions and no operations is a 200 with empty
+        # lists, and it means something quite different.
+        return _json(404, {"error": f"no turn #{turn_id}"})
+    return _json(200, found)
 
 
 def _post(session, table, run, kind: str, name: str, body: bytes) -> tuple:

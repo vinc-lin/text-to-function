@@ -417,6 +417,56 @@
   .rec-line.did .outcome.executed { color: var(--ok); }
   .rec-line.did .outcome.refused { color: var(--bad); }
 
+  /* --------------------------------------------------------------- the trace */
+  /* One turn opened into the rows it is made of. Same quiet palette as the record it grows
+     out of, because it is the same thing — history, and nothing in it moves. The one new idea
+     is the indent: a row's children are the rows it caused, and the rule down the left is that
+     edge drawn rather than described. */
+  .rec.clickable { cursor: pointer; }
+  /* Background and not `border-color`, which is the obvious version and is wrong: the left
+     edge carries the turn's KIND, and the shorthand would grey it out under the cursor. */
+  .rec.clickable:hover { background: #161d28; }
+  .rec:focus-visible { outline: 1px solid var(--live); outline-offset: 1px; }
+  .rec.open { background: #121822; }
+  .rec-head .open-hint { color: var(--faint); }
+
+  .trace { margin-top: 5px; }
+  .tr-row {
+    display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+    font: 11px/1.6 var(--mono); overflow-wrap: anywhere;
+  }
+  .tr-table { flex: none; color: var(--faint); }
+  .tr-id    { flex: none; color: var(--dim); }
+  .tr-what  { color: var(--ink); }
+  .tr-meta  { margin-left: auto; text-align: right; color: var(--faint); }
+  /* A row that is not there. Italic and faint, the treatment `.rec-line.gone` already gives
+     the same fact one pane up — one vocabulary for "not recorded", not two. */
+  .tr-absent .tr-what { color: var(--faint); font-style: italic; }
+  .tr-note {
+    font: 10px/1.5 var(--mono); color: var(--faint); font-style: italic;
+    margin: 1px 0 3px 0; overflow-wrap: anywhere;
+  }
+  .tr-payload {
+    font: 11px/1.5 var(--mono); color: var(--ink);
+    margin: 1px 0 4px 0; overflow-wrap: anywhere;
+  }
+  .tr-payload.absent { color: var(--faint); font-style: italic; }
+  .tr-fail .tr-what { color: var(--bad); }
+  .tr-row .verdict { color: var(--dim); }
+  .tr-row .why { color: var(--faint); }
+  .tr-row .outcome.executed { color: var(--ok); }
+  .tr-row .outcome.refused { color: var(--bad); }
+
+  /* The edge itself: children are indented behind a rule, with a tick where each one hangs
+     off it. Drawn in CSS rather than with box-drawing characters, which would need a fixed
+     cell width the moment a row wrapped. */
+  .tr-kids { margin: 2px 0 0 6px; padding-left: 13px; border-left: 1px solid var(--line-2); }
+  .tr-kids > * { position: relative; }
+  .tr-kids > *::before {
+    content: ""; position: absolute; left: -13px; top: .85em;
+    width: 9px; height: 1px; background: var(--line-2);
+  }
+
   body.stale main { opacity: .55; filter: saturate(.5); }
 
   @media (max-width: 900px) {
@@ -510,9 +560,15 @@
     ACTIONS and none in CONTROLS, because nothing here asks the system for anything — the
     record is written by the door as each input goes through it. It is last on the page for
     the same reason it is last in the snapshot: everything above is the system now.
+
+    Clicking a turn opens it into the rows it is made of, over GET /trace/<id>. Still no entry
+    in either table: those are for writes, and a read that appeared in one would widen the
+    surface they exist to bound. Fetched on the click and never on the poll — the snapshot
+    ships every 400ms and table contents must not ride along with it.
   -->
   <section class="pane">
-    <h2>The record <span class="hint">heard · decided · did · said</span>
+    <h2>The record <span class="hint">heard · decided · did · said &mdash;
+        click a turn for the rows it became</span>
         <span class="count" id="scount"></span></h2>
     <div class="body" id="store"></div>
   </section>
@@ -568,6 +624,11 @@ let pending = null;           // {scene, anchor, expiresIn, max}
 let lastTalk = "";
 let lastLog = "";
 let lastStore = "";
+// Which turn is opened into its rows, and what came back for it. One at a time: the chain is
+// four levels deep and two of them open at once turns the record into a wall. `openTrace` set
+// with `openRows` still null is the state between the click and the answer.
+let openTrace = null;
+let openRows = null;
 
 // ---------------------------------------------------------------- transport
 function fail(msg) {
@@ -1139,7 +1200,9 @@ function opLine(op) {
 }
 
 function renderStore(rows) {
-  const sig = JSON.stringify(rows);
+  // The open turn is part of what is drawn, so it belongs in the signature: without it the
+  // pane would refuse to redraw on a click, the store JSON not having changed.
+  const sig = JSON.stringify([rows, openTrace, openRows]);
   if (sig === lastStore) return;
   lastStore = sig;
   const box = $("store");
@@ -1152,12 +1215,32 @@ function renderStore(rows) {
   }
   // Newest first, as the snapshot hands them over. Not re-sorted.
   rows.forEach(function (t) {
-    const node = el("div", "rec k-" + t.kind);
+    const open = t.id === openTrace;
+    const node = el("div", "rec clickable k-" + t.kind + (open ? " open" : ""));
+    // A div and not a button, because it contains four lines of structured text and a nested
+    // chain — but it answers to a keyboard the way a button does, or the record would be the
+    // one pane on this page reachable only with a mouse.
+    node.setAttribute("role", "button");
+    node.setAttribute("tabindex", "0");
+    node.setAttribute("aria-expanded", open ? "true" : "false");
+    node.onclick = function () { toggleTrace(t.id); };
+    node.onkeydown = function (e) {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleTrace(t.id); }
+    };
     const head = el("div", "rec-head");
     head.appendChild(el("span", "kind", t.kind));
     head.appendChild(el("span", "id", "#" + t.id));
     head.appendChild(el("span", "at", at(t.at)));
     node.appendChild(head);
+    if (open) {
+      // The four lines are REPLACED rather than kept above the chain. They are a reading of
+      // the same rows, and printing both would show every decision twice — once as prose and
+      // once as the row it came from — with nothing saying they are one fact.
+      head.appendChild(el("span", "open-hint", "· rows"));
+      node.appendChild(traceBody());
+      box.appendChild(node);
+      return;
+    }
     // null is a fact, not a gap. --no-raw-capture never wrote the words down and retention
     // deletes them an hour later while the turn survives; a blank line would read as a bug.
     node.appendChild(t.heard === null || t.heard === undefined
@@ -1172,6 +1255,167 @@ function renderStore(rows) {
                              : recLine("quiet", "said", "nothing spoken"));
     box.appendChild(node);
   });
+}
+
+// ------------------------------------------------------------------- the trace
+// One input and every row it became. The chain reads downwards: the row that arrived, what
+// that row was parsed into, the turn it opened, and what the turn decided and did.
+//
+// GET /trace/<id>, on the click, and held only while that turn stays open. Rows already
+// written do not change — but retention DELETES them, so a copy kept across opens would go on
+// showing words the store has thrown away. Re-asked every time is the honest version.
+const NOT_RECORDED = "—  (not recorded)";   // the phrasing /store prints. Not a second one.
+
+// One line of the chain: which table, which row, and what is in it. `what` is handed back on
+// the node so a caller can go on appending spans to it — a decision and an operation both put
+// a coloured verdict after the plain text, and reaching back in with a selector would make the
+// class name load-bearing in two places.
+function trRow(cls, table, ident, what) {
+  const row = el("div", ("tr-row " + cls).trim());
+  row.appendChild(el("span", "tr-table", table));
+  if (ident) row.appendChild(el("span", "tr-id", ident));
+  const body = el("span", "tr-what", what);
+  row.appendChild(body);
+  row.what = body;
+  return row;
+}
+
+function traceBody() {
+  if (openRows === null || openRows.error) {
+    const box = el("div", "trace");
+    box.appendChild(el("div", "tr-note",
+      openRows === null ? "reading the rows …" : openRows.error));
+    return box;
+  }
+  return traceChain(openRows);
+}
+
+function traceChain(tr) {
+  const box = el("div", "trace");
+  const raw = tr.raw;
+  if (raw) {
+    const head = trRow("", "observation_raw", "#" + raw.id, "");
+    head.appendChild(el("span", "tr-meta",
+      show(raw.source) + " · " + (raw.processed_at === null ? "pending" : "processed")));
+    box.appendChild(head);
+    const payload = el("div", "tr-payload" + (raw.payload ? "" : " absent"));
+    payload.textContent = raw.payload || NOT_RECORDED;
+    box.appendChild(payload);
+    // Written on the raw row by Intake._dispatch, and this is the only place it shows as a
+    // property of the ROW rather than of the turn — the turn it opened just looks quiet.
+    if (raw.error) box.appendChild(trRow("tr-fail", "observation_raw.error", "", raw.error));
+  } else {
+    // The turn outlived the row that caused it. An empty box here would read as "nothing
+    // arrived"; the truth is that the words are gone and the reasoning below is not — and
+    // with them went the only link to whatever they were parsed into.
+    box.appendChild(trRow("tr-absent", "observation_raw", "", NOT_RECORDED));
+    box.appendChild(el("div", "tr-note",
+      "no row to point at — swept by retention, or a turn nothing triggered. " +
+      "what it was parsed into cannot be found without it"));
+  }
+
+  const kids = el("div", "tr-kids");
+  const perception = tr.perception || [];
+  const utterance = tr.utterance || [];
+  perception.forEach(function (p) {
+    const row = trRow("", "perception", "#" + p.id, p.key + " = " + show(p.value));
+    row.appendChild(el("span", "tr-meta",
+      "conf " + Number(p.confidence).toFixed(2) + " · ttl " + secs(Number(p.ttl)) +
+      " · " + show(p.source)));
+    kids.appendChild(row);
+  });
+  utterance.forEach(function (u) {
+    kids.appendChild(u.text ? trRow("", "utterance", "#" + u.id, u.text)
+                            : trRow("tr-absent", "utterance", "#" + u.id, NOT_RECORDED));
+  });
+  // Drawn rather than omitted when the raw row produced neither, so "this became nothing"
+  // cannot be misread as "this view did not look". A consent turn is the honest case: it
+  // writes a raw row and a turn and nothing in between, because 好 is an answer to a question
+  // the session was already holding rather than something to parse.
+  if (raw && !perception.length && !utterance.length) {
+    kids.appendChild(trRow("tr-absent", "perception · utterance", "", "—  (nothing parsed)"));
+  }
+
+  const branch = el("div", "tr-branch");
+  const turn = trRow("", "turn", "#" + tr.turn.id, tr.turn.kind);
+  turn.appendChild(el("span", "tr-meta", at(tr.turn.at)));
+  branch.appendChild(turn);
+  branch.appendChild(turnKids(tr));
+  kids.appendChild(branch);
+  box.appendChild(kids);
+  return box;
+}
+
+function turnKids(tr) {
+  const kids = el("div", "tr-kids");
+  const decisions = tr.decisions || [];
+  const operations = tr.operations || [];
+  decisions.forEach(function (d) {
+    // An empty subject is a swept one: retention blanks the clause on a route or consent turn
+    // and keeps the judgement, exactly as the record pane's own decision line says.
+    const row = trRow("", "decision", "#" + d.id, (d.subject || "—") + "  ");
+    const body = row.what;
+    body.appendChild(el("span", "verdict", d.verdict + (d.chosen ? " → " + d.chosen : "")));
+    const why = [d.reason, d.suppressed_by ? "suppressed: " + d.suppressed_by : ""]
+      .filter(Boolean).join(" · ");
+    if (why) body.appendChild(el("span", "why", "  " + why));
+    kids.appendChild(row);
+  });
+  if (!decisions.length) {
+    kids.appendChild(trRow("tr-absent", "decision", "", "—  (nothing decided)"));
+  }
+  operations.forEach(function (op) {
+    const row = trRow("", "operation_log", "#" + op.id, op["function"] + "  ");
+    const body = row.what;
+    body.appendChild(el("span", "outcome " + op.outcome, op.outcome));
+    const why = [op.parameters, op.error, op.detail].filter(Boolean).join(" · ");
+    if (why) body.appendChild(el("span", "why", "  " + why));
+    kids.appendChild(row);
+  });
+  // Silence is a fact and it has to be stated. An absent section would say "we did not look";
+  // this says the car did nothing, which for most turns on this system is the correct outcome.
+  if (!operations.length) {
+    kids.appendChild(trRow("tr-absent", "operation_log", "", "—  (nothing executed)"));
+  }
+  kids.appendChild(tr.turn.reply
+    ? trRow("", "turn.reply", "", tr.turn.reply)
+    : trRow("tr-absent", "turn.reply", "", "—  (nothing spoken)"));
+  return kids;
+}
+
+function redrawStore() {
+  if (snap) renderStore(snap.store || []);
+}
+
+function toggleTrace(id) {
+  if (openTrace === id) {
+    openTrace = null;
+    openRows = null;
+    redrawStore();
+    return;
+  }
+  openTrace = id;
+  openRows = null;         // the pane says it is reading, rather than showing the last turn's
+  redrawStore();
+  fetch("/trace/" + id, { cache: "no-store" })
+    .then(function (res) {
+      return res.json().catch(function () { return null; }).then(function (data) {
+        if (!res.ok) throw new Error((data && data.error) || ("HTTP " + res.status));
+        return data;
+      });
+    })
+    .then(function (data) {
+      // A second click while the first was in flight wins. Landing the older answer into the
+      // newer turn is the one way this pane could show one turn's rows under another's id.
+      if (openTrace !== id) return;
+      openRows = data;
+      redrawStore();
+    })
+    .catch(function (e) {
+      if (openTrace !== id) return;
+      openRows = { error: String(e.message || e) };
+      redrawStore();
+    });
 }
 
 function emptyState(box, isEmpty, text) {

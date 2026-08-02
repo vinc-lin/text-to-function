@@ -302,6 +302,32 @@ class Store:
             (raw_id, at, key, json.dumps(value), confidence, ttl, source))
         return cur.lastrowid
 
+    def perception_watermark(self) -> int:
+        """The last `perception` id before an observation is handled. 0 when nothing is believed.
+
+        The same device as `operations_watermark`, one layer down and for the same reason.
+        `SceneContext.update` writes the belief and has only an `Observation` by then — the
+        envelope naming which row arrived is long gone — so `raw_id` has to be applied from
+        outside. The two ways to do that are this and an ambient "current raw row" the context
+        reads, and ambient state does not fail to a NULL when a caller forgets to clear it: it
+        leaves the PREVIOUS input's id on this input's beliefs. A wrong answer in the table you
+        consult to find out what happened is worse than no answer.
+        """
+        row = self.conn.execute("SELECT MAX(id) AS last FROM perception").fetchone()
+        return row["last"] or 0
+
+    def attribute_perception(self, raw_id: int, since: int) -> None:
+        """Point every belief written since `since` at the row that arrived.
+
+        Bounded by `raw_id IS NULL` as well as by the watermark, exactly as `close_turn` bounds
+        its operations: a row that already names where it came from is not this input's to
+        claim. Nothing reads this column to decide anything — it is the edge `Store.trace`
+        walks to answer "what did that frame become", and without it a scene turn's trace shows
+        a raw row that produced nothing while the belief sits in the next table along.
+        """
+        self.conn.execute(
+            "UPDATE perception SET raw_id = ? WHERE id > ? AND raw_id IS NULL", (raw_id, since))
+
     def put_utterance(self, raw_id: Optional[int], at: float, text: Optional[str]) -> int:
         # Through `spoken`, so the switch reaches the second copy of the sentence as well as
         # the first. The row is still written: that somebody spoke, when, and which turn it
@@ -424,6 +450,75 @@ class Store:
                 {"subject": d["subject"], "verdict": d["verdict"], "chosen": d["chosen"],
                  "reason": d["reason"], "suppressed_by": d["suppressed_by"]})
         return turns
+
+    def trace(self, turn_id: int) -> Optional[dict]:
+        """One turn as the rows it is made of: what arrived, what that became, what was decided.
+
+        `recent_turns` answers "what has been happening" and flattens each turn into four
+        lines. This answers the other question — *which row was this, and what followed from
+        it* — so it hands back the rows themselves, ids and all. The ids are the substance and
+        not decoration: in this architecture the dataflow and the database are the same thing,
+        so a path through the system IS a path through five tables, and a view of it that
+        dropped the row numbers would be a prettier `recent_turns`.
+
+        None for a turn id nothing wrote, so a caller can tell "no such turn" from "a turn that
+        recorded nothing". `ui/server.py` turns the first into a 404 and would have no way to
+        without the distinction being made here.
+
+        **Every join is LEFT, for the reason `recent_turns` documents.** A turn outlives what
+        triggered it: retention deletes the raw row and the schema's `ON DELETE SET NULL`
+        empties `raw_id`, so an inner join would fail to find precisely the turns old enough to
+        be worth looking up. A swept turn comes back with `raw` None and its decisions intact,
+        and a display of that has to say the words are gone rather than drawing an empty box.
+
+        `raw` is None for a turn nothing triggered too — `open_turn(None, ...)`. The store does
+        not pretend to tell that apart from a swept one, the same conflation `recent_turns`
+        already makes between `''` and NULL: both are "not recorded", one fact, one spelling.
+
+        **The parsed rows are found through the raw row and not through the turn**, because
+        that is the edge the schema has: `perception` and `utterance` name what arrived, never
+        what was decided about it. Which is also why they come back empty on a swept turn —
+        those rows survive the sweep and the link to them does not, so an honest answer here is
+        that the belief can no longer be tied to the frame that produced it.
+        """
+        row = self.conn.execute(
+            "SELECT t.id, t.at, t.kind, t.reply, t.raw_id, "
+            "       r.id AS raw_row, r.at AS raw_at, r.source, r.payload, "
+            "       r.processed_at, r.error "
+            "FROM turn t LEFT JOIN observation_raw r ON r.id = t.raw_id "
+            "WHERE t.id = ?", (int(turn_id),)).fetchone()
+        if row is None:
+            return None
+        raw = None if row["raw_row"] is None else {
+            "id": row["raw_row"], "at": row["raw_at"], "source": row["source"],
+            # '' is what `--no-raw-capture` leaves in a NOT NULL column, and it means what NULL
+            # means everywhere else in this module: not recorded. One value for one fact.
+            "payload": row["payload"] or None,
+            "processed_at": row["processed_at"], "error": row["error"]}
+        perception, utterance = [], []
+        if row["raw_id"] is not None:
+            # Skipped rather than left to `WHERE raw_id = NULL`, which matches nothing anyway:
+            # the point is that a swept turn asks the parsed layer no question at all, instead
+            # of asking one whose empty answer would read as "the frame produced nothing".
+            perception = [self._decode(p) for p in self.conn.execute(
+                "SELECT * FROM perception WHERE raw_id = ? ORDER BY id", (row["raw_id"],))]
+            utterance = [{"id": u["id"], "at": u["at"], "text": u["text"]}
+                         for u in self.conn.execute(
+                             "SELECT id, at, text FROM utterance WHERE raw_id = ? ORDER BY id",
+                             (row["raw_id"],))]
+        # Oldest first, unlike `recent_turns`: within one turn this is the order the decisions
+        # were made in, and a multi-clause utterance reads backwards otherwise. The same
+        # argument `SqliteVehicle.operations_for_turn` makes about one turn's operations.
+        decisions = [{"id": d["id"], "subject": d["subject"], "verdict": d["verdict"],
+                      "chosen": d["chosen"], "reason": d["reason"],
+                      "suppressed_by": d["suppressed_by"]}
+                     for d in self.conn.execute(
+                         "SELECT id, subject, verdict, chosen, reason, suppressed_by "
+                         "FROM decision WHERE turn_id = ? ORDER BY id", (int(turn_id),))]
+        return {"turn": {"id": row["id"], "at": row["at"], "kind": row["kind"],
+                         "reply": row["reply"]},
+                "raw": raw, "perception": perception, "utterance": utterance,
+                "decisions": decisions}
 
     # --- reads for Scene Context --------------------------------------------------------
     def newest_perception(self, key: str) -> Optional[dict]:
