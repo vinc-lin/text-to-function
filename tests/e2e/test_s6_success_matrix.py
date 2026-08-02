@@ -25,6 +25,13 @@ kept only because it reached the function it names; no assertion here was relaxe
 routing happened to do, and no expected value was guessed — each is what the car was measured
 to hold afterwards.
 
+That probing is honest but it is also a selection, and a selection cannot be its own evidence:
+these cases were kept BECAUSE they passed. `-m model` runs every case below a second time on
+the real embedder and the shipped embedding-dominant weights (the `profile` fixture in
+conftest.py), against inputs chosen for a different router entirely — so the matrix has a
+witness that had no hand in picking it, and one that cannot reach HIGH on lexical signals
+alone the way the fake profile's weights can.
+
 Signal addresses are the ones `sim.mapping.resolve_writes` really produces
 (`climate.driver`/`temperature`, `window.driver`/`window_position` — not `position`).
 
@@ -48,7 +55,6 @@ import pytest
 
 from t2f.cards import load_catalog
 from t2f.config import Config
-from t2f.embed import FakeEmbedder
 from t2f.gate import ConfidenceGate, PERMISSIVE
 from t2f.pipeline import Pipeline, DeterministicResolver
 from t2f.score import Scorer
@@ -61,17 +67,22 @@ CARDS = load_catalog("data/catalog")
 BY = {c.name: c for c in CARDS}
 
 
-def _pipeline():
-    """(pipeline, executor) over a freshly seeded car. Thresholds are loosened exactly as in
-    tests/e2e/conftest.py and tests/e2e/test_s5_simulator.py so FakeEmbedder reaches the HIGH
-    band; nothing else is tuned, and in particular no per-case tuning happens anywhere."""
+def _pipeline(profile):
+    """(pipeline, executor) over a freshly seeded car, at the permissive gate — the shipped
+    mode used by tests/e2e/conftest.py and tests/e2e/test_s5_simulator.py, not a threshold
+    invented here. Nothing else is tuned, and in particular no per-case tuning happens
+    anywhere. The embedder and the fusion weights both come from the fixture, and come
+    together: see `Profile` in conftest.py for why they cannot be chosen apart."""
     car = SqliteVehicle(":memory:")
     car.init_schema()
     seed_from_catalog(car, CARDS)
     ex = SqliteExecutor(car, BY)
     cfg = Config.default()
     cfg.thresholds = PERMISSIVE
-    pipe = Pipeline(CARDS, FakeEmbedder(256), Scorer(cfg.weights, cfg.domain_keywords),
+    cfg.weights = dict(profile.weights)           # copied: the profile is session-scoped, and
+                                                  # one shared dict would let a debugging edit
+                                                  # here leak into every later test in the run
+    pipe = Pipeline(CARDS, profile.embedder, Scorer(cfg.weights, cfg.domain_keywords),
                     ConfidenceGate(cfg.thresholds), cfg,
                     resolver=DeterministicResolver(BY, executor=ex))
     return pipe, ex
@@ -181,7 +192,7 @@ _PARAMS = [pytest.param(*c[1:], id=c[0]) for c in CASES]
 @pytest.mark.parametrize(
     "utterance,function,parameters,entity,attribute,value,confirmation", _PARAMS)
 def test_the_whole_workflow_for_one_utterance(
-        utterance, function, parameters, entity, attribute, value, confirmation):
+        profile, utterance, function, parameters, entity, attribute, value, confirmation):
     """One spoken sentence, all four steps, asserted together.
 
     Step 2 is the tool call; step 3 is the row in the database; step 4 is what the driver
@@ -189,7 +200,7 @@ def test_the_whole_workflow_for_one_utterance(
     suite that never meet cannot catch a pipeline that confirms an operation the vehicle
     never performed, which is exactly the failure S5 was built around.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     before = ex.car.get_signal(entity, attribute)
     assert before is not None, f"{entity}/{attribute} is not a signal the seeded car has"
     assert before != value, (

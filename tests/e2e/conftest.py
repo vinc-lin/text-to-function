@@ -1,16 +1,24 @@
-"""Deterministic end-to-end harness: the REAL Pipeline.route() over a 3-card fixture
-catalog with FakeEmbedder. No model, no network, no GPU.
+"""Deterministic end-to-end harness: the REAL Pipeline.route() over a 3-card fixture catalog.
 
-Thresholds are loosened so the hashed-n-gram FakeEmbedder reaches the HIGH band on the
-fixture utterances; this mirrors tests/test_reply_e2e.py, which established the pattern.
+The gate is `PERMISSIVE` — the shipped mode behind `--gate permissive` and `/gate permissive`
+(see t2f/gate.py, docs/TRYING_IT.md), not a threshold invented for the tests. These cases
+therefore describe the product in one of its supported configurations.
+
+The router is a choice. `FakeEmbedder` keeps the default suite offline, GPU-free and instant,
+but it is a hashed-n-gram stand-in with no semantics: the files that route over the real
+92-card catalog had to pick utterances that survive it, so those cases cannot also be evidence
+that the utterances were fair ones. The `profile` fixture below runs the same test bodies a
+second time on the real model under `-m model`, which had no hand in the picking.
 """
 from __future__ import annotations
+from dataclasses import dataclass
 from pathlib import Path
+import numpy as np
 import pytest
 
 from t2f.cards import load_catalog
 from t2f.config import Config
-from t2f.embed import FakeEmbedder
+from t2f.embed import Embedder, FakeEmbedder, TransformersEmbedder
 from t2f.gate import ConfidenceGate, PERMISSIVE
 from t2f.pipeline import Pipeline, DeterministicResolver, LLMResolver
 from t2f.score import Scorer
@@ -18,6 +26,85 @@ from t2f.score import Scorer
 from .doubles import RecordingExecutor
 
 FIXTURE_CATALOG = Path(__file__).parent.parent / "fixtures" / "catalog"
+
+
+class MemoEmbedder(Embedder):
+    """Caches the real embedder's rows so a session's many pipelines pay for each text once.
+
+    Every `Pipeline(...)` re-embeds its whole catalog, so the 29 real-profile cases would be
+    29 forward passes of the same ~400 prototype texts — minutes, versus seconds cached.
+
+    The key is (text, is_query), never text alone: `TransformersEmbedder.encode` prepends the
+    query instruction when is_query is set, so one string has two correct and different
+    vectors, and a text-keyed cache would hand back whichever was asked for first.
+    """
+
+    def __init__(self, inner: Embedder):
+        self._inner = inner
+        self._cache: dict[tuple[str, bool], np.ndarray] = {}
+        self.dim = inner.dim
+
+    def encode(self, texts: list[str], is_query: bool = False) -> np.ndarray:
+        misses = list(dict.fromkeys(t for t in texts if (t, is_query) not in self._cache))
+        if misses:
+            for text, row in zip(misses, self._inner.encode(misses, is_query=is_query)):
+                self._cache[(text, is_query)] = row
+        if not texts:
+            return np.empty((0, self.dim), dtype=np.float32)
+        # a (N, dim) matrix, as the real encode returns — callers do matrix arithmetic on it,
+        # and vstack copies, so no caller can reach into the cache.
+        return np.vstack([self._cache[(t, is_query)] for t in texts])
+
+
+@dataclass(frozen=True, repr=False)
+class Profile:
+    """An embedder together with the fusion weights under which it means something.
+
+    The two halves live in one object because they are not independently choosable, and the
+    reason is worth stating. `Scorer` fuses the embedding score with three lexical signals,
+    and the permissive gate needs 0.2 to reach HIGH:
+
+        Config.default()   keyword_alias .15 + param_compat .25 + domain_prior .05 = 0.45 > 0.2
+        config.yaml        keyword_alias .04 + param_compat .05 + domain_prior .03 = 0.12 < 0.2
+
+    So under the default weights a clause can be dispatched with NO embedding signal at all —
+    measured: with the real embedder's output zeroed, 10 of the 29 real-profile cases still
+    pass. Under the shipped weights, one does. config.yaml is embedding-dominant on purpose (a
+    dev-set sweep found the lexical signals do not improve ranking over the embedder alone),
+    which is exactly what a tier meant to witness routing needs.
+
+    The fake profile keeps the default weights because it needs the opposite: hashed n-grams
+    under embedding-dominant weights misroute badly (「打开主驾车门」 breaks), so the lexical
+    signals are what make those cases about execution and replies rather than about the
+    stand-in. Each profile gets the configuration under which it proves something.
+
+    Weights and nothing else are taken from config.yaml. Its `thresholds` are the shipped gate,
+    under which 12 of S6's cases land in MEDIUM by design; the gate here stays PERMISSIVE. Its
+    `relative_steps` would also silently change what S5's 18 + step = 28 case means.
+    """
+    name: str
+    embedder: Embedder
+    weights: dict
+
+    def __repr__(self) -> str:                    # the weights dict in every failure header
+        return f"Profile({self.name})"            # is noise; the name is the whole identity
+
+
+@pytest.fixture(scope="session", params=[
+    pytest.param("fake", id="fake"),
+    pytest.param("real", id="real", marks=pytest.mark.model),
+])
+def profile(request) -> Profile:
+    """The router under test — embedder and weights together, for the reason in `Profile`.
+
+    `fake` always runs; `real` only under `-m model`. Session-scoped, so the model is loaded
+    and the config read once per param for the whole run.
+    """
+    if request.param == "fake":
+        return Profile("fake", FakeEmbedder(256), Config.default().weights)
+    cfg = Config.load("config.yaml")
+    return Profile("real", MemoEmbedder(TransformersEmbedder(cfg.model_id, mrl_dim=cfg.mrl_dim)),
+                   cfg.weights)
 
 
 def build_pipeline(executor=None, llm_client=None, state=None, thresholds=None):
