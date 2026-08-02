@@ -79,8 +79,10 @@ class Profile:
     stand-in. Each profile gets the configuration under which it proves something.
 
     Weights and nothing else are taken from config.yaml. Its `thresholds` are the shipped gate,
-    under which 12 of S6's cases land in MEDIUM by design; the gate here stays PERMISSIVE. Its
-    `relative_steps` would also silently change what S5's 18 + step = 28 case means.
+    under which much of S6's matrix lands in MEDIUM by design; the gate here stays PERMISSIVE.
+    test_s9_shipped_gate_cost.py measures exactly how much and owns that number — restating it
+    here would make it two numbers to keep true. Its `relative_steps` would also silently
+    change what S5's 18 + step = 28 case means.
     """
     name: str
     embedder: Embedder
@@ -88,6 +90,51 @@ class Profile:
 
     def __repr__(self) -> str:                    # the weights dict in every failure header
         return f"Profile({self.name})"            # is noise; the name is the whole identity
+
+
+def pytest_collection_modifyitems(items):
+    """Only `model`-marked tests may ask for `real_embedder`. Enforced, not just documented.
+
+    The failure mode is quiet, which is why it is checked: an unmarked test that declares the
+    fixture puts a GPU model load into every default run, and that reads as the suite having
+    got slow rather than as a mistake. Same reasoning as `ui/actions.py` keeping ACTIONS and
+    CONTROLS disjoint with a test — a rule nothing enforces is a rule until someone is in a
+    hurry.
+
+    At collection, so it fires before anything loads, and in both the default and the `-m
+    model` run. `fixturenames` is the declared closure, so a test reaching the fixture through
+    another one (`outcomes` in test_s9_shipped_gate_cost.py) is covered too. `profile` is not:
+    it resolves the embedder dynamically, precisely so its `fake` param does not drag the model
+    in, and its `real` param carries the marker itself.
+    """
+    unmarked = [i.nodeid for i in items
+                if "real_embedder" in getattr(i, "fixturenames", ())
+                and i.get_closest_marker("model") is None]
+    if unmarked:
+        raise pytest.UsageError(
+            "these tests request the real embedding model but are not marked `model`, so they "
+            "would load it on every default run:\n    " + "\n    ".join(unmarked)
+            + "\n  Add @pytest.mark.model (or `pytestmark = pytest.mark.model`), or take the "
+              "`profile` fixture\n  instead if the test should also run against FakeEmbedder.")
+
+
+@pytest.fixture(scope="session")
+def real_embedder() -> Embedder:
+    """The shipped Qwen3 embedder, constructed at most once per session and shared.
+
+    It is its own fixture rather than an expression inside `profile` because two callers want
+    it: the `real` profile below, and test_s9_shipped_gate_cost.py, which assembles the shipped
+    product itself instead of taking a profile. Each constructing its own would put a second
+    copy of the model on the GPU for no gain — and would halve the memo cache, which is the
+    other half of the point.
+
+    Requested by `-m model` tests only — see the collection guard above, which is what makes
+    that a fact rather than an intention. So the default run never reaches this body: verify by
+    poisoning `TransformersEmbedder.__init__` to raise and running the default suite, which
+    passes, because a fixture nobody asks for is never built.
+    """
+    cfg = Config.load("config.yaml")
+    return MemoEmbedder(TransformersEmbedder(cfg.model_id, mrl_dim=cfg.mrl_dim))
 
 
 @pytest.fixture(scope="session", params=[
@@ -99,12 +146,15 @@ def profile(request) -> Profile:
 
     `fake` always runs; `real` only under `-m model`. Session-scoped, so the model is loaded
     and the config read once per param for the whole run.
+
+    The real branch asks for `real_embedder` lazily rather than declaring it as a parameter:
+    a fixture argument is resolved before the body runs, so naming it would load the model for
+    the `fake` param too, on every default run.
     """
     if request.param == "fake":
         return Profile("fake", FakeEmbedder(256), Config.default().weights)
-    cfg = Config.load("config.yaml")
-    return Profile("real", MemoEmbedder(TransformersEmbedder(cfg.model_id, mrl_dim=cfg.mrl_dim)),
-                   cfg.weights)
+    return Profile("real", request.getfixturevalue("real_embedder"),
+                   Config.load("config.yaml").weights)
 
 
 def build_pipeline(executor=None, llm_client=None, state=None, thresholds=None):
