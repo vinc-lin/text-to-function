@@ -87,6 +87,11 @@ CREATE TABLE IF NOT EXISTS perception (
 -- deliberate: a belief expires and Scene Context needs *newest per key*, whereas a signal
 -- holds until something commands it. The history of the signals is in `observation_raw`,
 -- because every frame that arrived is there.
+--
+-- Append-only within a session, and NOT forever: `Store.compact_perception` deletes rows that
+-- are not the newest for their key and are past their own ttl, because no read can return one
+-- and `live()` walks the whole table looking for DISTINCT key. That is the only thing keeping
+-- this table small enough for the scene engine's hot path.
 CREATE INDEX IF NOT EXISTS perception_newest ON perception(key, at DESC);
 
 CREATE TABLE IF NOT EXISTS utterance (
@@ -98,7 +103,11 @@ CREATE TABLE IF NOT EXISTS utterance (
 
 CREATE TABLE IF NOT EXISTS turn (
     id      INTEGER PRIMARY KEY AUTOINCREMENT,
-    raw_id  INTEGER REFERENCES observation_raw(id),   -- what triggered it
+    -- ON DELETE SET NULL for the same reason perception and utterance have it, and it was
+    -- missed here: a plain reference PINS the raw row, and every voice or camera input opens
+    -- a turn, so the sweep raised on all of them. Only a raw row that reached no handler --
+    -- the case the first retention tests happened to use -- could be deleted at all.
+    raw_id  INTEGER REFERENCES observation_raw(id) ON DELETE SET NULL,   -- what triggered it
     at      REAL NOT NULL,
     kind    TEXT NOT NULL,           -- route | scene | consent
     reply   TEXT NOT NULL DEFAULT '' -- what the driver heard; '' is silence, and is a fact

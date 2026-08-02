@@ -108,7 +108,9 @@ class SceneContext:
         Grows with the table, not with the number of keys — perception is append-only, and at
         10 Hz that is 36,000 rows an hour. Measured at 1.26 ms there, against 8 µs for a
         single-key `get` on its index. Three query shapes were tried and all three are O(rows),
-        so the answer is retention on `perception` rather than a cleverer read.
+        so the answer was retention on `perception` rather than a cleverer read: the store
+        compacts away rows no read can return, which holds this near the `get` figure. The
+        table it walks is small because something empties it, not because this query is smart.
         """
         beliefs = (_observation(row) for row in self._store.live_perception_keys())
         return {o.key: o for o in beliefs if o.is_live(now)}

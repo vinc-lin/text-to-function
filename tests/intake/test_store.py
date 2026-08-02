@@ -1,14 +1,20 @@
 """Every row in and out, and the one query that must not be optimised."""
 import pytest
 
-from intake.store import Store
+from intake.store import CONTENT_RETENTION, SIGNAL_RETENTION, Store
+from scene.context import SceneContext
 from sim.vehicle import SqliteVehicle
 
 
 @pytest.fixture
-def store():
+def car():
     car = SqliteVehicle(":memory:")
     car.init_schema()
+    return car
+
+
+@pytest.fixture
+def store(car):
     return Store(car.conn)
 
 
@@ -160,10 +166,300 @@ def test_a_swept_raw_row_leaves_its_parsed_rows_behind(store):
     assert store.conn.execute("SELECT COUNT(*) FROM observation_raw").fetchone()[0] == 0
     assert store.conn.execute("SELECT COUNT(*) FROM utterance").fetchone()[0] == 1
     assert store.newest_perception("inside.rear_occupant")["value"] == "child"
+    # The rows survive and their link does not: the raw row they pointed at is gone, and a
+    # NULL is the honest thing to say about a parent that no longer exists.
+    for table in ("utterance", "perception"):
+        assert store.conn.execute(f"SELECT raw_id FROM {table}").fetchone()[0] is None
 
 
-def test_a_row_with_no_expiry_is_never_swept(store):
+def test_a_swept_raw_row_takes_the_turn_it_produced_with_it(store):
+    """The bug version 3 of the schema exists for. `turn.raw_id` was a plain reference, so any
+    raw row that reached a handler was PINNED — and `ingest` opens a turn for every utterance
+    and every percept. The sweep did not under-delete, it raised."""
+    rid = store.put_raw("mic", 100.0, "开车窗", expires_at=200.0)
+    tid = store.open_turn(rid, 100.0, "route")
+    store.put_decision(tid, "开车窗", "high", "open_window")
+    store.close_turn(tid, "已为您打开车窗。")
+    assert store.sweep(now=201.0) == 1
+    row = store.conn.execute("SELECT raw_id, reply FROM turn").fetchone()
+    assert row["raw_id"] is None and row["reply"] == "已为您打开车窗。"
+
+
+def test_the_sweep_takes_every_copy_of_the_words(store):
+    """Three columns hold verbatim speech, and retention that cleared one of them would be
+    theatre: the payload, the transcript `_route` writes a second time, and the clause a route
+    decision names. What survives is what was DECIDED — band, function, reply."""
+    rid = store.put_raw("mic", 100.0, "开车窗", expires_at=200.0)
+    store.put_utterance(rid, 100.0, "开车窗")
+    tid = store.open_turn(rid, 100.0, "route")
+    store.put_decision(tid, "开车窗", "high", "open_window", reason="")
+    store.close_turn(tid, "已为您打开车窗。")
+    store.sweep(now=201.0)
+    assert store.conn.execute("SELECT text FROM utterance").fetchone()[0] is None
+    row = store.conn.execute("SELECT subject, verdict, chosen FROM decision").fetchone()
+    assert row["subject"] == ""
+    assert (row["verdict"], row["chosen"]) == ("high", "open_window")
+
+
+def test_the_sweep_leaves_a_rule_id_alone(store):
+    """A scene decision's subject is a rule id. It is ours, it is not anybody's speech, and
+    blanking it would delete the only thing that says which rule spoke."""
+    rid = store.put_raw("cabin_cam", 100.0, '{"key": "x"}', expires_at=200.0)
+    tid = store.open_turn(rid, 100.0, "scene")
+    store.put_decision(tid, "child_alone", "match", "child_alone", reason="rear_occupant=child")
+    store.close_turn(tid, "")
+    store.sweep(now=201.0)
+    row = store.conn.execute("SELECT subject, reason FROM decision").fetchone()
+    assert row["subject"] == "child_alone" and row["reason"] == "rear_occupant=child"
+
+
+def test_an_unprocessed_row_past_its_window_still_goes(store):
+    """Deliberate. Sweeping only PROCESSED rows would keep an undrained queue on the disk
+    forever, which is the case retention exists for — and an input an hour late is not one
+    worth running, because acting on it commands the car about a world that has moved on."""
+    store.put_raw("mic", 100.0, "开车窗", expires_at=200.0)
+    assert len(store.pending()) == 1
+    assert store.sweep(now=201.0) == 1
+    assert store.pending() == []
+
+
+# --- the retention windows -------------------------------------------------------------------
+
+def test_voice_and_vision_get_the_content_window(store):
+    for source in ("mic", "cabin_cam", "front_cam"):
+        rid = store.put_raw(source, 100.0, "x")
+        row = store.conn.execute("SELECT expires_at FROM observation_raw WHERE id=?",
+                                 (rid,)).fetchone()
+        assert row["expires_at"] == 100.0 + CONTENT_RETENTION
+
+
+def test_a_signal_is_kept_longer_than_a_sentence(store):
+    """Not content, and — unlike a percept or an utterance — it has no parsed layer to fall
+    back on: `signal` is overwritten in place, so `observation_raw` is the only history of what
+    the vehicle was doing."""
+    rid = store.put_raw("can0", 100.0, "45.0")
+    row = store.conn.execute("SELECT expires_at FROM observation_raw WHERE id=?",
+                             (rid,)).fetchone()
+    assert row["expires_at"] == 100.0 + SIGNAL_RETENTION
+    assert SIGNAL_RETENTION > CONTENT_RETENTION
+
+
+def test_an_undeclared_source_is_treated_as_content(store):
+    """A producer wrote rows for a source nobody declared. Nobody has argued it is safe to
+    keep, so it gets the shorter window — the presumption has to run that way round."""
+    rid = store.put_raw("some_new_camera", 100.0, "x")
+    row = store.conn.execute("SELECT expires_at FROM observation_raw WHERE id=?",
+                             (rid,)).fetchone()
+    assert row["expires_at"] == 100.0 + CONTENT_RETENTION
+
+
+def test_the_window_is_configurable(car):
+    store = Store(car.conn, retention={"mic": 5.0})
+    store.put_raw("mic", 100.0, "开车窗")
+    assert store.sweep(now=104.0) == 0
+    assert store.sweep(now=106.0) == 1
+
+
+def test_an_explicit_expiry_beats_the_policy(store):
+    rid = store.put_raw("mic", 100.0, "x", expires_at=101.0)
+    row = store.conn.execute("SELECT expires_at FROM observation_raw WHERE id=?",
+                             (rid,)).fetchone()
+    assert row["expires_at"] == 101.0
+
+
+def test_a_retention_pass_runs_at_most_once_an_interval(store):
+    store.put_raw("mic", 100.0, "a", expires_at=100.0)
+    assert store.apply_retention(1000.0, interval=60.0) == (1, 0)
+    store.put_raw("mic", 100.0, "b", expires_at=100.0)
+    assert store.apply_retention(1030.0, interval=60.0) == (0, 0), "inside the interval"
+    assert store.apply_retention(1061.0, interval=60.0) == (1, 0)
+
+
+def test_a_clock_that_jumps_backwards_still_gets_a_pass(store):
+    """`/clock -3600` is the session lying about the time, not an instruction to stop applying
+    a policy. A plain `now - last < interval` would suppress every pass until it caught up."""
+    store.apply_retention(1000.0, interval=60.0)
+    store.put_raw("mic", 100.0, "a", expires_at=100.0)
+    assert store.apply_retention(400.0, interval=60.0) == (1, 0)
+
+
+# --- the privacy switch ------------------------------------------------------------------------
+
+def test_the_switch_keeps_the_row_and_drops_the_words(car):
+    """A row with an empty payload, NOT no row. The raw row is what says something arrived at
+    all — its source, its instant, the turn it produced — and dropping it would make an input
+    that was heard indistinguishable from one that never happened. The record stays complete
+    and only the content goes."""
+    store = Store(car.conn, raw_capture=False)
+    rid = store.put_raw("mic", 100.0, "开车窗")
+    row = store.conn.execute("SELECT * FROM observation_raw WHERE id=?", (rid,)).fetchone()
+    assert row["payload"] == "" and row["source"] == "mic" and row["at"] == 100.0
+
+
+def test_the_switch_reaches_every_copy_of_the_words(car):
+    """Three columns, one switch. Most utterances are a single clause, so a flag that blanked
+    the payload and left `decision.subject` would drop a copy of the sentence and keep the
+    sentence — wired, and changing nothing."""
+    store = Store(car.conn, raw_capture=False)
+    rid = store.put_raw("mic", 100.0, "开车窗")
+    store.put_utterance(rid, 100.0, "开车窗")
+    tid = store.open_turn(rid, 100.0, "route")
+    store.put_decision(tid, store.spoken("开车窗") or "", "high", "open_window")
+    store.close_turn(tid, "已为您打开车窗。")
+    assert store.conn.execute("SELECT text FROM utterance").fetchone()[0] is None
+    assert store.conn.execute("SELECT subject FROM decision").fetchone()[0] == ""
+    # What survives is everything ABOUT the words rather than the words.
+    assert store.conn.execute("SELECT chosen FROM decision").fetchone()[0] == "open_window"
+    assert store.conn.execute("SELECT reply FROM turn").fetchone()[0] == "已为您打开车窗。"
+
+
+def test_the_switch_leaves_the_parse_alone(car):
+    """`--no-raw-capture` stores the parse and never the payload. A belief IS the parse."""
+    store = Store(car.conn, raw_capture=False)
+    store.put_perception(None, 100.0, "inside.rear_occupant", "child", 0.9, 300.0, "cabin_cam")
+    assert store.newest_perception("inside.rear_occupant")["value"] == "child"
+
+
+def test_capture_on_is_the_default(store):
+    rid = store.put_raw("mic", 100.0, "开车窗")
+    store.put_utterance(rid, 100.0, "开车窗")
+    assert store.conn.execute("SELECT payload FROM observation_raw").fetchone()[0] == "开车窗"
+    assert store.conn.execute("SELECT text FROM utterance").fetchone()[0] == "开车窗"
+
+
+# --- compaction ----------------------------------------------------------------------------
+#
+# The claim being tested is one sentence: a row that is not the newest (at, id) for its key can
+# never be returned again, by any caller, at any `now`. Everything below is that claim under
+# the conditions where it could fail.
+
+def _beliefs(store, keys, nows):
+    """Every answer every read can give, across several `now` values. The snapshot compaction
+    must not change."""
+    ctx = SceneContext(store)
+    return {(k, n): (store.newest_perception(k), ctx.get(k, n),
+                     {kk: v for kk, v in sorted(ctx.live(n).items())})
+            for k in keys for n in nows}
+
+
+def test_compaction_changes_no_read(store):
+    """The important one. Compaction that alters a read is data loss wearing a performance
+    costume."""
+    import random
+    rng = random.Random(20260802)
+    keys = [f"inside.k{i}" for i in range(6)]
+    for _ in range(600):
+        key = rng.choice(keys)
+        # Out-of-order arrivals, duplicate timestamps and a spread of ttls, because those are
+        # the three things that make "the newest row" a question rather than "the last row".
+        store.put_perception(None, at=float(rng.randrange(0, 400)), key=key,
+                             value=rng.choice(["child", "adult", True, False, 3, None]),
+                             confidence=round(rng.random(), 3),
+                             ttl=float(rng.choice([1, 5, 30, 300])),
+                             source=rng.choice(["cabin_cam", "front_cam"]))
+    nows = [0.0, 50.0, 200.0, 399.0, 400.0, 700.0, 1e6]
+    before = _beliefs(store, keys, nows)
+    total = store.conn.execute("SELECT COUNT(*) FROM perception").fetchone()[0]
+
+    # Compacted at several instants, including ones EARLIER than reads that follow: `now` is
+    # not a filter on which row is returned, so no compaction time may change any read time.
+    for now in (100.0, 400.0, 1e6):
+        store.compact_perception(now)
+    assert _beliefs(store, keys, nows) == before
+    assert store.conn.execute("SELECT COUNT(*) FROM perception").fetchone()[0] < total
+
+
+def test_compaction_reduces_the_row_count(store):
+    for i in range(500):
+        store.put_perception(None, at=float(i), key="inside.k", value=i, confidence=0.9,
+                             ttl=10.0, source="cabin_cam")
+    assert store.compact_perception(now=1000.0) == 499
+    assert store.conn.execute("SELECT COUNT(*) FROM perception").fetchone()[0] == 1
+    assert store.newest_perception("inside.k")["value"] == 499
+
+
+def test_compaction_keeps_the_newest_even_when_it_has_expired(store):
+    """The §5 rule, restated as a deletion. Taking the dead newest row would make the older
+    live one the answer — resurrecting a belief `SceneContext.get` reports as gone."""
+    store.put_perception(None, at=100.0, key="k", value="old", confidence=0.9, ttl=1000.0,
+                         source="cabin_cam")
+    store.put_perception(None, at=150.0, key="k", value="new", confidence=0.9, ttl=1.0,
+                         source="cabin_cam")
+    store.compact_perception(now=1e6)
+    assert store.newest_perception("k")["value"] == "new"
+    assert SceneContext(store).get("k", 1e6) is None
+
+
+def test_compaction_keeps_a_superseded_row_that_is_still_live(store):
+    """Not needed for safety — nothing can read it — and kept anyway: a belief from four
+    seconds ago is what you read when a rule fired and you want to know what perception was
+    doing around it."""
+    store.put_perception(None, at=100.0, key="k", value="a", confidence=0.9, ttl=300.0,
+                         source="cabin_cam")
+    store.put_perception(None, at=150.0, key="k", value="b", confidence=0.9, ttl=300.0,
+                         source="cabin_cam")
+    assert store.compact_perception(now=200.0) == 0
+
+
+def test_compaction_is_inclusive_at_the_boundary_like_is_live(store):
+    """`Observation.is_live` is `now <= at + ttl`, so at exactly `at + ttl` the row is still
+    live. This must not be the one place that disagrees."""
+    store.put_perception(None, at=100.0, key="k", value="a", confidence=0.9, ttl=10.0,
+                         source="cabin_cam")
+    store.put_perception(None, at=150.0, key="k", value="b", confidence=0.9, ttl=10.0,
+                         source="cabin_cam")
+    assert store.compact_perception(now=110.0) == 0, "at + ttl exactly: still live"
+    assert store.compact_perception(now=110.001) == 1
+
+
+def test_compaction_survives_out_of_order_arrival(store):
+    """`MAX(id) GROUP BY key` is the obvious predicate and it is wrong here: the late frame has
+    the largest id and is NOT the newest row. That version deletes the belief every rule is
+    reading and leaves a stale one in its place."""
+    store.put_perception(None, at=150.0, key="k", value="new", confidence=0.9, ttl=1.0,
+                         source="cabin_cam")
+    store.put_perception(None, at=100.0, key="k", value="late", confidence=0.9, ttl=1.0,
+                         source="cabin_cam")
+    assert store.compact_perception(now=1e6) == 1
+    assert store.newest_perception("k")["value"] == "new"
+
+
+def test_compaction_breaks_a_tie_the_way_the_read_does(store):
+    """Same `at`, so `id DESC` decides — in both places, or the survivor is not the row the
+    read would have returned."""
+    for value in ("first", "second"):
+        store.put_perception(None, at=100.0, key="k", value=value, confidence=0.9, ttl=1.0,
+                             source="cabin_cam")
+    assert store.compact_perception(now=1e6) == 1
+    assert store.newest_perception("k")["value"] == "second"
+
+
+def test_compaction_never_loses_a_key(store):
+    """`live()` walks `SELECT DISTINCT key`, so a key whose every row went would vanish from
+    the world rather than read as expired."""
+    for i, key in enumerate(("k1", "k2", "k3")):
+        for j in range(4):
+            store.put_perception(None, at=float(i * 10 + j), key=key, value=j, confidence=0.9,
+                                 ttl=1.0, source="cabin_cam")
+    store.compact_perception(now=1e6)
+    assert {r["key"] for r in store.live_perception_keys()} == {"k1", "k2", "k3"}
+
+
+def test_compacting_twice_is_a_no_op(store):
+    for i in range(10):
+        store.put_perception(None, at=float(i), key="k", value=i, confidence=0.9, ttl=1.0,
+                             source="cabin_cam")
+    assert store.compact_perception(now=1e6) == 9
+    assert store.compact_perception(now=1e6) == 0
+
+
+def test_a_row_with_no_expiry_is_never_swept(car):
+    """A NULL `expires_at` now takes SAYING so — a source mapped to None. `expires_at=None` at
+    the call site means "apply the policy", because retention that has to be asked for is
+    retention nobody asks for."""
+    store = Store(car.conn, retention={"can0": None})
     store.put_raw("can0", 100.0, "45.0")
+    assert store.conn.execute("SELECT expires_at FROM observation_raw").fetchone()[0] is None
     assert store.sweep(now=1e9) == 0
 
 

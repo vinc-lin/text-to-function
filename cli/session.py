@@ -101,6 +101,10 @@ class Session:
         self.pipeline, self.car, self.executor = pipeline, car, executor
         self.cards, self.config = cards, config
         self.fake, self.llm, self.gate = fake, llm, gate
+        # Overwritten by `build`. Defaulted here so anything reading it off a session
+        # constructed directly — the display, mode_label — gets the shipped answer rather than
+        # an AttributeError.
+        self.raw_capture = True
         # Everything the scene engine decides is a function of `now`: a TTL, a cooldown, a
         # persistence window. At a terminal those are all measured in minutes, so without a
         # lie to tell about the clock most of the engine is unreachable by hand.
@@ -109,7 +113,8 @@ class Session:
     # --- construction ------------------------------------------------------------------
     @classmethod
     def build(cls, *, fake=False, llm=True, gate="shipped", db=":memory:",
-              catalog="data/catalog", config_path="config.yaml", scene_llm=None):
+              catalog="data/catalog", config_path="config.yaml", scene_llm=None,
+              raw_capture=True):
         cards = load_catalog(catalog)
         config = Config.default() if fake else Config.load(config_path)
         embedder = cls._embedder(config, fake)
@@ -136,7 +141,14 @@ class Session:
         # what `--db` now means — a persisted car is a file that remembers what the cameras
         # said, which is why retention and the privacy switch are part of this work rather than
         # a later thought.
-        store = Store(car.conn)
+        #
+        # `raw_capture` is carried here rather than read from a config, because it is the one
+        # decision in this constructor that is about people rather than about the machine: with
+        # it off nothing this session hears is written down verbatim — not the payload, not the
+        # transcript, not the clause a decision names. Everything else is unchanged, which is
+        # what makes it a switch and not a mode.
+        store = Store(car.conn, raw_capture=raw_capture)
+        session.raw_capture = bool(raw_capture)
         perception = SceneContext(store)
         world = WorldView(perception, car)
         session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
@@ -566,4 +578,9 @@ class Session:
                  "S_llm" if self.scene.llm is not None else "S"]
         if self.fake:
             parts.append("FAKE")
+        if not self.raw_capture:
+            # Only when OFF. The default is not worth a word on every prompt, and a session
+            # that is NOT writing down what it hears is: someone reading the store afterwards
+            # and finding no transcripts needs to know that was a setting and not a fault.
+            parts.append("no-raw")
         return " · ".join(parts)

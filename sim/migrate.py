@@ -31,7 +31,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Callable
 
-CURRENT_VERSION = 2
+CURRENT_VERSION = 3
 
 
 class SchemaError(RuntimeError):
@@ -162,6 +162,51 @@ def _to_2(conn: sqlite3.Connection) -> None:
         conn.execute("PRAGMA foreign_keys = ON")
 
 
+def _to_3(conn: sqlite3.Connection) -> None:
+    """`turn.raw_id` gains ON DELETE SET NULL -- the half of step 2 that was missed.
+
+    Step 2 fixed `perception` and `utterance` and stopped there, and the retention tests of the
+    day only ever swept a raw row that had reached no handler. Every real one has: `ingest`
+    opens a turn for an utterance and for a percept alike, so `turn` pinned the raw row and
+    `sweep` raised `FOREIGN KEY constraint failed` on the first voice input it was ever pointed
+    at. Retention was not slow or partial, it was impossible.
+
+    SET NULL rather than CASCADE for the reason step 2 gives: CASCADE would take the turn -- and
+    through `decision.turn_id`, every reason it recorded -- along with the words. The turn is
+    the belief level the raw/parsed split exists to keep.
+
+    Written as its own step rather than folded into `_to_2`, even though it is the same repair.
+    A step is a historical record: `_to_2` has already run against files this build will be
+    handed, and editing it would mean a store that reports version 2 and does not have what
+    version 2 now claims. Append only, and never renumber.
+    """
+    if not _has_table(conn, "turn"):
+        # Unreachable through `init_schema`, which creates before it migrates, and stated
+        # anyway: skipping the step and writing version 3 would leave a file claiming a shape
+        # it does not have, which is the one failure the version number exists to prevent.
+        raise SchemaError(
+            "migrate() runs after the schema is created: turn is missing, so this step has "
+            "nothing to alter. Call SqliteVehicle.init_schema(), which does both in order.")
+    if _fk_is_set_null(conn, "turn"):
+        return                       # the CREATE pass already built the current definition
+    conn.commit()
+    # Foreign keys OFF for the swap, and this is doing two jobs. It stops the copy tripping the
+    # constraint, and -- the part specific to THIS table -- it stops `ALTER TABLE RENAME` from
+    # helpfully rewriting `decision.turn_id` and `operation_log.turn_id` to point at
+    # `turn_old`, which SQLite does when foreign keys are enabled. Those two would then
+    # reference a table this step is about to drop.
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        columns = "id, raw_id, at, kind, reply"
+        conn.execute("ALTER TABLE turn RENAME TO turn_old")
+        conn.executescript(_REBUILT["turn"])
+        conn.execute(f"INSERT INTO turn ({columns}) SELECT {columns} FROM turn_old")
+        conn.execute("DROP TABLE turn_old")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
 def _fk_is_set_null(conn: sqlite3.Connection, table: str) -> bool:
     """Whether this table's raw_id already nulls itself when the raw row goes."""
     try:
@@ -194,12 +239,22 @@ _REBUILT = {
             text   TEXT
         );
     """,
+    "turn": """
+        CREATE TABLE turn (
+            id      INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id  INTEGER REFERENCES observation_raw(id) ON DELETE SET NULL,
+            at      REAL NOT NULL,
+            kind    TEXT NOT NULL,
+            reply   TEXT NOT NULL DEFAULT ''
+        );
+    """,
 }
 
 
 _STEPS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _to_1),
     (2, _to_2),
+    (3, _to_3),
 ]
 
 

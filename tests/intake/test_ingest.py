@@ -575,3 +575,46 @@ def test_an_operation_from_before_the_turn_is_not_claimed_by_it(car):
     car.log("lock_doors", {}, "executed", None, "")
     _intake(car).ingest(Input("mic", 100.0, Utterance("开车窗")))
     assert _rows(car, "operation_log")[0]["turn_id"] is None
+
+
+# --- retention rides on the calls that already exist -----------------------------------------
+
+def test_the_pump_runs_a_retention_pass(car):
+    """Retention has to be driven from inside `intake`, because `cli/` and `ui/` are not
+    packaged: a sweep called from a dev tool is a sweep the deployment does not have. The pump
+    is the one call every loop already makes on its own clock."""
+    door = _intake(car)
+    door.store.put_raw("mic", 100.0, "开车窗", expires_at=200.0)
+    door.pump(now=201.0)
+    assert _rows(car, "observation_raw") == []
+
+
+def test_process_pending_runs_one_too(car):
+    """A deployment with producers and no bus -- vision and ASR, no CAN -- never pumps."""
+    door = _intake(car)
+    door.store.put_raw("mic", 100.0, "开车窗", expires_at=200.0)
+    door.process_pending(now=201.0)
+    assert _rows(car, "observation_raw") == []
+
+
+def test_a_swept_input_is_not_run_late(car):
+    """Swept BEFORE the drain, deliberately. An input past its window is not one to act on:
+    running it would command the car about a world that has moved on."""
+    pipe = SpyPipeline()
+    door = _intake(car, pipeline=pipe)
+    door.store.put_raw("mic", 100.0, encode_payload(Utterance("开车窗")), expires_at=200.0)
+    door.store.commit()
+    assert door.process_pending(now=201.0) == []
+    assert pipe.routed == []
+
+
+def test_a_pumped_session_does_not_sweep_on_every_call(car):
+    """Both statements are unindexed scans, and at 10 Hz one per frame would cost more than
+    the writes they clean up."""
+    door = _intake(car)
+    door.pump(now=1000.0)
+    door.store.put_raw("mic", 100.0, "开车窗", expires_at=200.0)
+    door.pump(now=1001.0)
+    assert len(_rows(car, "observation_raw")) == 1, "inside the interval"
+    door.pump(now=1200.0)
+    assert _rows(car, "observation_raw") == []

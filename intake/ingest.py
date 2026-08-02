@@ -233,6 +233,12 @@ class Intake:
         different facts here -- when the world produced the input, and when we got to it. The
         gap between them is the only measure of a queue falling behind.
         """
+        # Here as well as in `pump`, because a deployment where producers write rows and
+        # nothing re-stamps a bus -- vision and ASR only, no CAN -- would otherwise never pump
+        # and never age anything out. Before the drain rather than after: a row already past
+        # its window is not one to act on, and running it first would command the car about a
+        # world that has moved on.
+        self.store.apply_retention(now)
         done = []
         for row in self.store.pending(limit):
             raw_id = row["id"]
@@ -297,7 +303,11 @@ class Intake:
                 # Recorded, not computed. The band and the chosen function are what the gate
                 # already decided; this writes them down against the clause they were decided
                 # about.
-                self.store.put_decision(turn_id, clause.clause, clause.decision.band.value,
+                # The clause goes through `spoken` because it IS speech -- a slice of what the
+                # driver said. Most utterances are one clause, so a privacy switch that blanked
+                # the payload and left this would keep the sentence it claimed to drop.
+                self.store.put_decision(turn_id, self.store.spoken(clause.clause) or "",
+                                        clause.decision.band.value,
                                         clause.decision.chosen, _why(clause))
             return result
         finally:
@@ -371,6 +381,12 @@ class Intake:
         raising. Returns how many values were re-stamped, so a caller can tell "the bus is
         stopped" from "the bus is running and there is nothing on it".
         """
+        # Retention rides on the pump because the pump is the one call every loop already
+        # makes on its own clock. A second discipline -- "and also call sweep" -- is a second
+        # thing a new loop can forget, and forgetting this one is silent in the worst
+        # direction: nothing raises, the store simply keeps every word anyone said. At most
+        # one pass a minute of the caller's clock; `Store.apply_retention` owns that.
+        self.store.apply_retention(now)
         written = 0
         for source, held in self._held.items():
             if not self._publishing.get(source):

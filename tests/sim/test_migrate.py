@@ -385,4 +385,77 @@ def test_migrating_to_2_twice_is_a_no_op(tmp_path):
     SqliteVehicle(path).init_schema()
     car = SqliteVehicle(path)
     car.init_schema()
-    assert car.conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 2
+    # CURRENT_VERSION, not the literal 2: a v1 store opened twice must land wherever this build
+    # is, and the point of the test is that the SECOND open changes nothing, not the number.
+    assert (car.conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0]
+            == CURRENT_VERSION)
+
+
+# --- version 3: the half of version 2 that was missed --------------------------------------
+
+def test_version_2_could_not_sweep_a_raw_row_that_produced_a_turn(tmp_path):
+    """The defect step 3 exists for. Step 2 gave `perception` and `utterance` ON DELETE SET
+    NULL and left `turn` with a plain reference -- and `ingest` opens a turn for every utterance
+    and every percept, so the only raw row version 2 could delete was one that reached no
+    handler at all. Retention was not partial; on real data it raised."""
+    import sqlite3
+    path = str(tmp_path / "v2.sqlite")
+    conn = sqlite3.connect(path)
+    conn.executescript("""
+        CREATE TABLE observation_raw (id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL NOT NULL,
+            source TEXT NOT NULL, payload TEXT NOT NULL, processed_at REAL, error TEXT,
+            expires_at REAL);
+        CREATE TABLE turn (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id INTEGER REFERENCES observation_raw(id), at REAL NOT NULL, kind TEXT NOT NULL,
+            reply TEXT NOT NULL DEFAULT '');
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version VALUES (2);
+    """)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("INSERT INTO observation_raw (at, source, payload) VALUES (1.0,'mic','开车窗')")
+    conn.execute("INSERT INTO turn (raw_id, at, kind) VALUES (1, 1.0, 'route')")
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("DELETE FROM observation_raw WHERE id = 1")
+
+
+def test_migrating_to_3_lets_the_turn_outlive_the_words(tmp_path):
+    """After the step the raw row goes and the turn stays, with `raw_id` NULL -- what it decided
+    survives what it heard, which is the whole point of the raw/parsed split."""
+    from sim.vehicle import SqliteVehicle
+    path, conn = _v1_store(tmp_path)
+    conn.close()
+    car = SqliteVehicle(path)
+    car.init_schema()
+    car.conn.execute("INSERT INTO observation_raw (at, source, payload) VALUES (1.0,'mic','开窗')")
+    car.conn.execute("INSERT INTO turn (raw_id, at, kind, reply) VALUES (1, 1.0, 'route', 'ok')")
+    car.conn.execute("INSERT INTO decision (turn_id, subject, verdict) VALUES (1, '开窗', 'high')")
+    car.conn.commit()
+
+    car.conn.execute("DELETE FROM observation_raw WHERE id = 1")
+    car.conn.commit()
+
+    assert car.conn.execute("SELECT raw_id, reply FROM turn").fetchone()["raw_id"] is None
+    assert car.conn.execute("SELECT reply FROM turn").fetchone()["reply"] == "ok"
+    assert car.conn.execute("SELECT COUNT(*) FROM decision").fetchone()[0] == 1
+
+
+def test_the_turn_rebuild_keeps_what_decision_points_at(tmp_path):
+    """`ALTER TABLE RENAME` rewrites other tables' REFERENCES clauses when foreign keys are on,
+    so a careless rebuild leaves `decision.turn_id` and `operation_log.turn_id` pointing at a
+    `turn_old` this step then drops. The symptom would be a decision that can no longer be
+    written at all."""
+    from sim.vehicle import SqliteVehicle
+    path, conn = _v1_store(tmp_path)
+    conn.close()
+    car = SqliteVehicle(path)
+    car.init_schema()
+    car.conn.execute("INSERT INTO turn (at, kind) VALUES (1.0, 'route')")
+    car.conn.execute("INSERT INTO decision (turn_id, subject, verdict) VALUES (1, 'x', 'high')")
+    car.conn.execute("INSERT INTO operation_log (function, parameters, outcome, at, turn_id) "
+                     "VALUES ('open_window', '{}', 'ok', 1.0, 1)")
+    car.conn.commit()
+    assert car.conn.execute("SELECT COUNT(*) FROM decision").fetchone()[0] == 1
+    for table in ("decision", "operation_log"):
+        parents = [r["table"] for r in car.conn.execute(f"PRAGMA foreign_key_list({table})")]
+        assert "turn_old" not in parents and "turn" in parents

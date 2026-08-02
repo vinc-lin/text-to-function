@@ -243,11 +243,18 @@ def main() -> int:
     ap.add_argument("--db", default=":memory:", help="keep the car on disk across runs")
     ap.add_argument("--scene-llm", action="store_true",
                     help="start with the scene fallback attached (loads a second model)")
+    # `--db` means this file remembers what people said in the car; this is how you say no.
+    # The parse is still recorded — the turn, the band, the function, the reply — so the store
+    # still answers "why did it do that". It stops answering "what exactly was said".
+    ap.add_argument("--no-raw-capture", action="store_true",
+                    help="record what was decided, never the words: no payload, no transcript, "
+                         "no clause text")
     args = ap.parse_args()
 
     print("loading models (about a minute on first run) ..." if not args.fake
           else "starting with the fake embedder — routing is not meaningful", flush=True)
-    session = Session.build(fake=args.fake, llm=not args.no_llm, gate=args.gate, db=args.db)
+    session = Session.build(fake=args.fake, llm=not args.no_llm, gate=args.gate, db=args.db,
+                            raw_capture=not args.no_raw_capture)
     if args.scene_llm:
         # Same construction path as /scene-llm on, refusal included: a flag that quietly
         # attached a fake under --fake would be the same lie, told before anyone could see it.
