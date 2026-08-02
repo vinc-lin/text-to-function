@@ -136,7 +136,8 @@ class Session:
         # what `--db` now means — a persisted car is a file that remembers what the cameras
         # said, which is why retention and the privacy switch are part of this work rather than
         # a later thought.
-        perception = SceneContext(Store(car.conn))
+        store = Store(car.conn)
+        perception = SceneContext(store)
         world = WorldView(perception, car)
         session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
                                     world=world, executor=executor,
@@ -147,7 +148,11 @@ class Session:
         # disciplines — and `cli/` is deliberately not packaged, so a real integration would
         # have had to reimplement that wiring. It is `intake`'s now; the three methods below
         # are envelope builders over one door.
-        session.intake = Intake(pipe, session.scene, car, world)
+        # The same store the engine writes beliefs into, handed over rather than left to the
+        # default. The door would build an identical one from `car.conn`, so this is not
+        # correctness — it is the composition root saying out loud that there is one store,
+        # the way it already says there is one car and one world.
+        session.intake = Intake(pipe, session.scene, car, world, store=store)
         session._seeded = session._snapshot()      # baseline for /car
         session._hold_sensed()
         return session

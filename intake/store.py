@@ -5,6 +5,10 @@
 opinions about a transaction. It owns `observation_raw`, `perception`, `utterance`, `turn` and
 `decision`; `signal`, `device` and `precondition` stay with the car.
 
+`operation_log` is the one shared table, and only one column of it: `turn_id`. The car owns
+what it did; a turn owns why, and there is nowhere else that fact could live. See
+`operations_watermark`.
+
 **Liveness is not decided here.** `newest_perception` returns the newest row for a key whether
 or not it has expired, and the caller applies `Observation.is_live`. Filtering in SQL would
 return an older *live* row when the newest has expired — resurrecting a belief that
@@ -104,8 +108,39 @@ class Store:
         self.conn.commit()
         return cur.lastrowid
 
-    def close_turn(self, turn_id: int, reply: str) -> None:
+    def operations_watermark(self) -> int:
+        """The last `operation_log` id before a turn starts. 0 when the car has done nothing.
+
+        Half of how `operation_log.turn_id` gets filled: take this when a turn opens, hand it
+        back to `close_turn`, and every operation logged in between is attributed to that turn.
+        `operation_log` belongs to the car — this module writes exactly one column of it, the
+        one that says *why*, which is a fact about a turn and about nothing else.
+
+        **The alternative was telling the executor which turn it is in, and it is worse.** That
+        needs every caller of `execute` to set and unset an ambient turn id correctly, and a
+        caller that forgets does not leave a NULL — it leaves the PREVIOUS turn's id on rows
+        that belong to this one. A wrong answer in the table you consult to find out what
+        happened is worse than no answer. A watermark needs no cooperation from anything that
+        actuates: it catches the router, the scene engine's consent, and whatever is wired up
+        next, because all three go through `executor.execute` and all three log.
+        """
+        row = self.conn.execute("SELECT MAX(id) AS last FROM operation_log").fetchone()
+        return row["last"] or 0
+
+    def close_turn(self, turn_id: int, reply: str,
+                   since_operation: Optional[int] = None) -> None:
+        """What the driver heard, and — if a watermark was taken — what the car did about it.
+
+        `since_operation=None` means "attribute nothing", so a caller that does not care about
+        operations keeps its two-argument call and gets NULLs. Bounded by the watermark rather
+        than by `turn_id IS NULL` alone: a `--db` file written before turns existed is full of
+        untagged rows, and the first turn of the next session would otherwise claim all of them.
+        """
         self.conn.execute("UPDATE turn SET reply = ? WHERE id = ?", (reply or "", turn_id))
+        if since_operation is not None:
+            self.conn.execute(
+                "UPDATE operation_log SET turn_id = ? WHERE id > ? AND turn_id IS NULL",
+                (turn_id, since_operation))
         self.conn.commit()
 
     def put_decision(self, turn_id: int, subject: str, verdict: str,

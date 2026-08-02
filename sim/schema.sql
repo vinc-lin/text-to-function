@@ -51,9 +51,11 @@ CREATE TABLE IF NOT EXISTS precondition (
 -- Inputs are an interface, outputs are a record. A producer -- the vision process, a CAN
 -- reader, ASR -- writes a row and is done, from another process in another language, with no
 -- binding into our runtime. The reply still comes back synchronously from `route()`; it is
--- ALSO written down, so a run can be asked afterwards why it did what it did. Nothing reads
--- these tables yet; the schema lands first so everything above it is built against one shape
--- rather than each part inventing its own.
+-- ALSO written down, so a run can be asked afterwards why it did what it did.
+--
+-- `intake/store.py` is the only module that reads or writes any of this. `intake/ingest.py`
+-- fills it -- a raw row per input, a turn and its decisions per dispatch -- and drains
+-- `observation_raw` through `process_pending`. `scene/context.py` reads `perception`.
 
 CREATE TABLE IF NOT EXISTS observation_raw (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
