@@ -70,7 +70,10 @@ CREATE INDEX IF NOT EXISTS raw_pending ON observation_raw(processed_at, at, id);
 
 CREATE TABLE IF NOT EXISTS perception (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    raw_id     INTEGER REFERENCES observation_raw(id),
+    -- ON DELETE SET NULL, not a plain reference: retention deletes the raw row and the belief
+    -- has to survive it. A plain FK makes the sweep raise, and CASCADE would take the parsed
+    -- row with it -- both of which forbid the thing the raw/parsed split exists to allow.
+    raw_id     INTEGER REFERENCES observation_raw(id) ON DELETE SET NULL,
     at         REAL NOT NULL,
     key        TEXT NOT NULL,
     value      TEXT NOT NULL,
@@ -86,7 +89,7 @@ CREATE INDEX IF NOT EXISTS perception_newest ON perception(key, at DESC);
 
 CREATE TABLE IF NOT EXISTS utterance (
     id     INTEGER PRIMARY KEY AUTOINCREMENT,
-    raw_id INTEGER REFERENCES observation_raw(id),
+    raw_id INTEGER REFERENCES observation_raw(id) ON DELETE SET NULL,
     at     REAL NOT NULL,
     text   TEXT                      -- nullable: retention clears it, the row survives
 );

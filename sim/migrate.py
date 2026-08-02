@@ -31,7 +31,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Callable
 
-CURRENT_VERSION = 1
+CURRENT_VERSION = 2
 
 
 class SchemaError(RuntimeError):
@@ -129,8 +129,77 @@ def _to_1(conn: sqlite3.Connection) -> None:
 
 # (target version, how to get there). Append only, and never renumber: the numbers are written
 # into files we do not have.
+def _to_2(conn: sqlite3.Connection) -> None:
+    """`perception.raw_id` and `utterance.raw_id` gain ON DELETE SET NULL.
+
+    Version 1 declared them as plain references, which quietly forbids the thing the raw/parsed
+    split exists for: retention deletes a raw row, the foreign key refuses, and the sweep
+    raises. CASCADE is the other obvious answer and is worse -- it takes the belief with the
+    words, so a swept store forgets what it concluded as well as what it heard.
+
+    SQLite cannot alter a constraint, so the tables are rebuilt and copied. Foreign keys are
+    disabled for the swap because the copy briefly has two tables referencing one parent, and
+    re-enabled after: `PRAGMA foreign_keys` is a no-op inside a transaction, which is why this
+    commits first rather than wrapping the whole thing.
+    """
+    if _fk_is_set_null(conn, "perception") and _fk_is_set_null(conn, "utterance"):
+        return                       # the CREATE pass already built the current definition
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        for table, columns in (
+            ("perception", "id, raw_id, at, key, value, confidence, ttl, source"),
+            ("utterance",  "id, raw_id, at, text"),
+        ):
+            if _fk_is_set_null(conn, table):
+                continue
+            conn.execute(f"ALTER TABLE {table} RENAME TO {table}_old")
+            conn.executescript(_REBUILT[table])
+            conn.execute(f"INSERT INTO {table} ({columns}) SELECT {columns} FROM {table}_old")
+            conn.execute(f"DROP TABLE {table}_old")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _fk_is_set_null(conn: sqlite3.Connection, table: str) -> bool:
+    """Whether this table's raw_id already nulls itself when the raw row goes."""
+    try:
+        rows = conn.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+    except sqlite3.OperationalError:
+        return False                 # table absent; the CREATE pass has not run yet
+    return any(r["from"] == "raw_id" and (r["on_delete"] or "").upper() == "SET NULL"
+               for r in rows)
+
+
+_REBUILT = {
+    "perception": """
+        CREATE TABLE perception (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id     INTEGER REFERENCES observation_raw(id) ON DELETE SET NULL,
+            at         REAL NOT NULL,
+            key        TEXT NOT NULL,
+            value      TEXT NOT NULL,
+            confidence REAL NOT NULL,
+            ttl        REAL NOT NULL,
+            source     TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS perception_newest ON perception(key, at DESC);
+    """,
+    "utterance": """
+        CREATE TABLE utterance (
+            id     INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id INTEGER REFERENCES observation_raw(id) ON DELETE SET NULL,
+            at     REAL NOT NULL,
+            text   TEXT
+        );
+    """,
+}
+
+
 _STEPS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _to_1),
+    (2, _to_2),
 ]
 
 

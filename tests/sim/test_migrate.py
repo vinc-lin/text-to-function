@@ -295,3 +295,94 @@ def test_a_newer_row_beside_an_older_one_still_reads_as_newer(tmp_path):
 
     with pytest.raises(SchemaTooNew):
         SqliteVehicle(path).init_schema()
+
+
+# --- version 2: retention was impossible before it -----------------------------------------
+
+def _v1_store(tmp_path):
+    """A store at version 1, with the plain foreign keys that version shipped."""
+    import sqlite3
+    path = str(tmp_path / "v1.sqlite")
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+    conn.executescript("""
+        CREATE TABLE observation_raw (id INTEGER PRIMARY KEY AUTOINCREMENT, at REAL NOT NULL,
+            source TEXT NOT NULL, payload TEXT NOT NULL, processed_at REAL, error TEXT,
+            expires_at REAL);
+        CREATE TABLE perception (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id INTEGER REFERENCES observation_raw(id), at REAL NOT NULL, key TEXT NOT NULL,
+            value TEXT NOT NULL, confidence REAL NOT NULL, ttl REAL NOT NULL,
+            source TEXT NOT NULL);
+        CREATE TABLE utterance (id INTEGER PRIMARY KEY AUTOINCREMENT,
+            raw_id INTEGER REFERENCES observation_raw(id), at REAL NOT NULL, text TEXT);
+        CREATE TABLE schema_version (version INTEGER NOT NULL);
+        INSERT INTO schema_version VALUES (1);
+    """)
+    conn.commit()
+    return path, conn
+
+
+def test_version_1_could_not_delete_a_raw_row_at_all(tmp_path):
+    """The defect step 2 exists for, demonstrated rather than asserted in prose.
+
+    A plain reference means the parsed layer PINS the raw row, so retention -- the whole point
+    of splitting them -- raises instead of running."""
+    import sqlite3
+    path, conn = _v1_store(tmp_path)
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("INSERT INTO observation_raw (at, source, payload) VALUES (1.0,'mic','x')")
+    conn.execute("INSERT INTO utterance (raw_id, at, text) VALUES (1, 1.0, 'x')")
+    conn.commit()
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute("DELETE FROM observation_raw WHERE id = 1")
+
+
+def test_migrating_to_2_makes_retention_possible_without_losing_the_belief(tmp_path):
+    """After the step: the words go, the parsed rows stay, and their raw_id reads NULL --
+    which is exactly what 'the record of what was heard is gone, what we concluded remains'
+    should look like in a row."""
+    from sim.vehicle import SqliteVehicle
+    path, conn = _v1_store(tmp_path)
+    conn.execute("INSERT INTO observation_raw (at, source, payload, expires_at) "
+                 "VALUES (1.0,'mic','开车窗', 5.0)")
+    conn.execute("INSERT INTO utterance (raw_id, at, text) VALUES (1, 1.0, '开车窗')")
+    conn.execute("INSERT INTO perception (raw_id, at, key, value, confidence, ttl, source) "
+                 "VALUES (1, 1.0, 'k', '\"child\"', 0.9, 300.0, 'cabin_cam')")
+    conn.commit()
+    conn.close()
+
+    car = SqliteVehicle(path)
+    car.init_schema()
+    car.conn.execute("DELETE FROM observation_raw WHERE id = 1")
+    car.conn.commit()
+
+    assert car.conn.execute("SELECT COUNT(*) FROM utterance").fetchone()[0] == 1
+    assert car.conn.execute("SELECT COUNT(*) FROM perception").fetchone()[0] == 1
+    assert car.conn.execute("SELECT raw_id FROM utterance").fetchone()[0] is None
+    assert car.conn.execute("SELECT raw_id FROM perception").fetchone()[0] is None
+
+
+def test_the_rebuild_preserves_every_parsed_row(tmp_path):
+    """A table rebuild copies rows by hand, which is exactly where a migration loses data."""
+    from sim.vehicle import SqliteVehicle
+    path, conn = _v1_store(tmp_path)
+    for i in range(5):
+        conn.execute("INSERT INTO perception (raw_id, at, key, value, confidence, ttl, source) "
+                     "VALUES (NULL, ?, ?, '\"v\"', 0.5, 300.0, 'cabin_cam')", (float(i), f"k{i}"))
+    conn.commit(); conn.close()
+
+    car = SqliteVehicle(path)
+    car.init_schema()
+    rows = car.conn.execute("SELECT id, at, key, confidence FROM perception ORDER BY id").fetchall()
+    assert [r["key"] for r in rows] == [f"k{i}" for i in range(5)]
+    assert [r["id"] for r in rows] == [1, 2, 3, 4, 5], "ids must survive a rebuild"
+
+
+def test_migrating_to_2_twice_is_a_no_op(tmp_path):
+    from sim.vehicle import SqliteVehicle
+    path, conn = _v1_store(tmp_path)
+    conn.close()
+    SqliteVehicle(path).init_schema()
+    car = SqliteVehicle(path)
+    car.init_schema()
+    assert car.conn.execute("SELECT MAX(version) FROM schema_version").fetchone()[0] == 2
