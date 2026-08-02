@@ -26,13 +26,28 @@ class Store:
     def __init__(self, conn):
         self.conn = conn
 
+    def commit(self) -> None:
+        """Make everything written since the last commit durable.
+
+        The writers here deliberately do NOT commit. SQLite fsyncs on commit, and a single
+        voice input touches six of them — raw, utterance, open_turn, decision, close_turn,
+        mark_processed — which measured 17.4 ms on a file database against 2.86 ms for one
+        commit. Cost was linear in the number of store CALLS, not in bytes written.
+
+        Nothing is lost by deferring: within one connection an uncommitted write is already
+        visible to every read, and this store has exactly one connection by construction. What
+        changes is only when the data reaches the disk, and the right boundary for that is one
+        input — an input is either recorded or it is not, and half a turn in the record is a
+        worse artifact than none.
+        """
+        self.conn.commit()
+
     # --- the raw layer ------------------------------------------------------------------
     def put_raw(self, source: str, at: float, payload: str,
                 expires_at: Optional[float] = None) -> int:
         cur = self.conn.execute(
             "INSERT INTO observation_raw (at, source, payload, expires_at) VALUES (?,?,?,?)",
             (at, source, payload, expires_at))
-        self.conn.commit()
         return cur.lastrowid
 
     def pending(self, limit: Optional[int] = None) -> list:
@@ -60,7 +75,6 @@ class Store:
         self.conn.execute(
             "UPDATE observation_raw SET processed_at = ?, error = ? WHERE id = ?",
             (at, error, raw_id))
-        self.conn.commit()
 
     def sweep(self, now: float) -> int:
         """Delete raw rows past their expiry. Returns how many went.
@@ -86,13 +100,11 @@ class Store:
             "INSERT INTO perception (raw_id, at, key, value, confidence, ttl, source) "
             "VALUES (?,?,?,?,?,?,?)",
             (raw_id, at, key, json.dumps(value), confidence, ttl, source))
-        self.conn.commit()
         return cur.lastrowid
 
     def put_utterance(self, raw_id: Optional[int], at: float, text: Optional[str]) -> int:
         cur = self.conn.execute(
             "INSERT INTO utterance (raw_id, at, text) VALUES (?,?,?)", (raw_id, at, text))
-        self.conn.commit()
         return cur.lastrowid
 
     # --- the output layer ---------------------------------------------------------------
@@ -105,7 +117,6 @@ class Store:
         """
         cur = self.conn.execute(
             "INSERT INTO turn (raw_id, at, kind) VALUES (?,?,?)", (raw_id, at, kind))
-        self.conn.commit()
         return cur.lastrowid
 
     def operations_watermark(self) -> int:
@@ -141,7 +152,6 @@ class Store:
             self.conn.execute(
                 "UPDATE operation_log SET turn_id = ? WHERE id > ? AND turn_id IS NULL",
                 (turn_id, since_operation))
-        self.conn.commit()
 
     def put_decision(self, turn_id: int, subject: str, verdict: str,
                      chosen: Optional[str] = None, reason: str = "",
@@ -156,7 +166,6 @@ class Store:
             "INSERT INTO decision (turn_id, subject, verdict, chosen, reason, suppressed_by) "
             "VALUES (?,?,?,?,?,?)",
             (turn_id, subject, verdict, chosen, reason or "", suppressed_by or ""))
-        self.conn.commit()
         return cur.lastrowid
 
     # --- reads for Scene Context --------------------------------------------------------
