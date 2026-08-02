@@ -49,7 +49,7 @@ import pytest
 from t2f.cards import load_catalog
 from t2f.config import Config
 from t2f.embed import FakeEmbedder
-from t2f.gate import ConfidenceGate, Thresholds
+from t2f.gate import ConfidenceGate, PERMISSIVE
 from t2f.pipeline import Pipeline, DeterministicResolver
 from t2f.score import Scorer
 
@@ -70,7 +70,7 @@ def _pipeline():
     seed_from_catalog(car, CARDS)
     ex = SqliteExecutor(car, BY)
     cfg = Config.default()
-    cfg.thresholds = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+    cfg.thresholds = PERMISSIVE
     pipe = Pipeline(CARDS, FakeEmbedder(256), Scorer(cfg.weights, cfg.domain_keywords),
                     ConfidenceGate(cfg.thresholds), cfg,
                     resolver=DeterministicResolver(BY, executor=ex))

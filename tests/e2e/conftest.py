@@ -11,7 +11,7 @@ import pytest
 from t2f.cards import load_catalog
 from t2f.config import Config
 from t2f.embed import FakeEmbedder
-from t2f.gate import ConfidenceGate, Thresholds
+from t2f.gate import ConfidenceGate, PERMISSIVE
 from t2f.pipeline import Pipeline, DeterministicResolver, LLMResolver
 from t2f.score import Scorer
 
@@ -24,7 +24,7 @@ def build_pipeline(executor=None, llm_client=None, state=None, thresholds=None):
     """Return (pipeline, executor). `executor` defaults to a fresh RecordingExecutor."""
     cards = load_catalog(FIXTURE_CATALOG)
     cfg = Config.default()
-    cfg.thresholds = thresholds or Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+    cfg.thresholds = thresholds or PERMISSIVE
     executor = executor if executor is not None else RecordingExecutor()
 
     medium = LLMResolver(llm_client) if llm_client is not None else None

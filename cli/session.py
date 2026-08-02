@@ -13,7 +13,7 @@ import time as _time
 from t2f.build import build_pipeline
 from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
-from t2f.gate import Thresholds
+from t2f.gate import PERMISSIVE
 from t2f.types import LLMResult, ToolCall
 from intake.envelope import Input, Percept, SignalWrite, Utterance
 from intake.hub import WorldView
@@ -26,8 +26,6 @@ from sim.executor import SqliteExecutor
 from sim.mapping import resolve_writes
 from sim.seed import seed_from_catalog, sensed_signals
 from sim.vehicle import SqliteVehicle
-
-PERMISSIVE = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
 
 # Which declared source this session speaks for, per payload type. Named once, here, rather
 # than spelled at each call: `Input` refuses a source that does not produce what is being sent,

@@ -40,7 +40,7 @@ import pytest
 from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
 from t2f.embed import FakeEmbedder
-from t2f.gate import ConfidenceGate, Thresholds
+from t2f.gate import ConfidenceGate, PERMISSIVE, Thresholds
 from t2f.llm.client import FakeLLMClient
 from t2f.pipeline import Pipeline, DeterministicResolver, LLMResolver
 from t2f.score import Scorer
@@ -74,7 +74,7 @@ def _pipeline(thresholds=None, llm_client=None):
     seed_from_catalog(car, CARDS)
     ex = SqliteExecutor(car, BY)
     cfg = Config.default()
-    cfg.thresholds = thresholds or Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+    cfg.thresholds = thresholds or PERMISSIVE
     medium = LLMResolver(llm_client) if llm_client is not None else None
     pipe = Pipeline(CARDS, FakeEmbedder(256), Scorer(cfg.weights, cfg.domain_keywords),
                     ConfidenceGate(cfg.thresholds), cfg,

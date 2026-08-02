@@ -3,7 +3,7 @@ import argparse, json
 from pathlib import Path
 from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
-from t2f.gate import Thresholds, ConfidenceGate
+from t2f.gate import PERMISSIVE, ConfidenceGate
 from eval.calibrate import calibrate_gate
 from t2f.embed import FakeEmbedder
 from t2f.types import LLMResult, ToolCall
@@ -44,7 +44,7 @@ def run(arm="C", dataset="data/eval/gold.jsonl", catalog="data/catalog",
         backend="transformers", embedder=None) -> dict:
     cfg = Config.load(config) if not permissive else Config.default()
     if permissive:
-        cfg.thresholds = Thresholds(0.2, 0.0, 0.05)
+        cfg.thresholds = PERMISSIVE
     cards = load_catalog(catalog)
     if embedder is None:
         embedder = _embedder(cfg, fake, backend)

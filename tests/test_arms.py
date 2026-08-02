@@ -2,13 +2,13 @@ from pathlib import Path
 from t2f.cards import load_catalog
 from t2f.embed import FakeEmbedder
 from t2f.config import Config
-from t2f.gate import Thresholds
+from t2f.gate import PERMISSIVE
 from eval.arms import build_arm_c, build_arm_c_baseline, predict
 
 FIX = Path(__file__).parent / "fixtures" / "catalog"
 
 def _cfg():
-    c = Config.default(); c.thresholds = Thresholds(0.2, 0.0, 0.05); return c
+    c = Config.default(); c.thresholds = PERMISSIVE; return c
 
 def test_arm_c_predict_record_shape():
     cards = load_catalog(FIX)
