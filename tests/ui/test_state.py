@@ -228,6 +228,44 @@ def test_a_report_with_no_matching_rule_invents_no_bands(session):
     assert rule["threshold"] is None and rule["observed_keys"] == []
 
 
+def test_every_mode_chip_arrives_with_its_meaning(session):
+    """The header used to split `mode` and print the arm codes raw. `C_llm · shipped · S` is
+    exact and says nothing to anyone who has not read eval/arms.py, so each code now carries a
+    sentence — and a code that gained a piece without gaining an explanation would silently
+    render as a bare word again."""
+    parts = snapshot(session)["mode_parts"]
+    assert [p["code"] for p in parts] == session.mode_label().split(" · ")
+    for part in parts:
+        assert part["detail"], f"{part['code']} has no explanation"
+        assert part["label"] != part["code"], f"{part['code']} was not translated"
+
+
+def test_the_gate_chip_reads_the_gate_rather_than_restating_it(session):
+    """The three thresholds are config.yaml's to own. A copy of them in the page would be a
+    second home for the number, free to drift the day either mode is retuned — so the chip is
+    built from the gate actually in force and moves when it does."""
+    def gate_detail(s):
+        return next(p["detail"] for p in snapshot(s)["mode_parts"] if p["code"] == s.gate)
+
+    from t2f.gate import ConfidenceGate, Thresholds
+    assert "0.2" in gate_detail(session)                  # this session is permissive
+    session.pipeline.gate = ConfidenceGate(Thresholds(high_top1=0.99, high_margin=0.5,
+                                                      low_top1=0.4))
+    assert "0.99" in gate_detail(session) and "0.5" in gate_detail(session)
+
+
+def test_the_gate_constant_cannot_be_retuned_by_one_session(session):
+    """`ConfidenceGate` keeps the Thresholds it is handed, and PERMISSIVE is one shared object,
+    so `gate.t.high_top1 = x` used to reach into the module constant and retune every session in
+    the process — including ones built afterwards. Found by a test that did exactly that and
+    made an unrelated file fail two tests later."""
+    import t2f.gate as gate_module
+    assert session.pipeline.gate.t is gate_module.PERMISSIVE      # still shared, deliberately
+    with pytest.raises(Exception):
+        session.pipeline.gate.t.high_top1 = 0.99
+    assert gate_module.PERMISSIVE.high_top1 == 0.2
+
+
 def test_the_scene_fallback_flag_is_structured_not_parsed(session):
     """`mode` joins its parts with ' · ', so a page testing it for 'S_llm' also matches 'S'
     — the toggle would read as on at exactly the moment the fallback is off."""

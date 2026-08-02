@@ -4,7 +4,11 @@ from .types import Candidate, Decision, Band, LexFeatures
 from .retrieve import OOD_MARKER
 
 
-@dataclass
+# Frozen because it is a value, and because PERMISSIVE below is now shared. `ConfidenceGate`
+# keeps the Thresholds it is handed by reference, so before this a single `gate.t.high_top1 = x`
+# anywhere reached into the module constant and retuned the gate for every session in the
+# process — including ones built afterwards. Nothing in the tree does that, and now nothing can.
+@dataclass(frozen=True)
 class Thresholds:
     high_top1: float = 0.60
     high_margin: float = 0.08
