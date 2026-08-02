@@ -489,3 +489,60 @@ def test_live_keys_and_newest_agree_by_construction(store):
                          source="cabin_cam")
     assert [r["value"] for r in store.live_perception_keys()] == \
            [store.newest_perception("k")["value"]] == ["new"]
+
+
+# --- bounding the audit trail ----------------------------------------------------------------
+
+def test_a_swept_turn_takes_its_decisions_with_it(store):
+    """A reason with no turn is an orphan record of something that did not happen."""
+    old = store.open_turn(None, at=100.0, kind="route")
+    store.put_decision(old, subject="开车窗", verdict="high", chosen="open_window")
+    keep = store.open_turn(None, at=900.0, kind="route")
+    store.put_decision(keep, subject="关车窗", verdict="high", chosen="open_window")
+    store.commit()
+
+    assert store.sweep_turns(before=500.0) == 1
+    rows = store.conn.execute("SELECT turn_id FROM decision").fetchall()
+    assert [r[0] for r in rows] == [keep]
+
+
+def test_a_swept_turn_does_not_take_what_the_car_did(store):
+    """The asymmetry that matters. An operation must outlive the explanation of why it
+    happened: a gap in the reasoning is a cost, a gap in what the vehicle did is the one thing
+    this store exists never to have."""
+    tid = store.open_turn(None, at=100.0, kind="route")
+    store.conn.execute(
+        "INSERT INTO operation_log (function, parameters, outcome, error, detail, at, turn_id)"
+        " VALUES ('open_window', '{}', 'executed', NULL, '', 100.0, ?)", (tid,))
+    store.commit()
+
+    store.sweep_turns(before=500.0)
+    row = store.conn.execute("SELECT function, outcome, turn_id FROM operation_log").fetchone()
+    assert row["function"] == "open_window" and row["outcome"] == "executed"
+    assert row["turn_id"] is None, "the link goes; the record of the act does not"
+
+
+def test_sweeping_turns_twice_is_a_no_op(store):
+    store.open_turn(None, at=100.0, kind="scene")
+    store.commit()
+    assert store.sweep_turns(before=500.0) == 1
+    assert store.sweep_turns(before=500.0) == 0
+
+
+def test_a_recent_turn_is_never_swept(store):
+    tid = store.open_turn(None, at=900.0, kind="scene")
+    store.commit()
+    assert store.sweep_turns(before=500.0) == 0
+    assert store.conn.execute("SELECT COUNT(*) FROM turn WHERE id=?", (tid,)).fetchone()[0] == 1
+
+
+def test_retention_bounds_the_audit_trail_too(store):
+    """Wired into the pass that already runs, not left as a method somebody must remember.
+    Task 8 found this was the only thing in the store nothing bounded."""
+    from intake.store import TURN_RETENTION
+    now = 10 * TURN_RETENTION
+    store.open_turn(None, at=now - TURN_RETENTION - 1.0, kind="route")   # past the window
+    keep = store.open_turn(None, at=now - 60.0, kind="route")            # inside it
+    store.commit()
+    store.apply_retention(now)
+    assert [r[0] for r in store.conn.execute("SELECT id FROM turn")] == [keep]

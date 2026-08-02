@@ -9,6 +9,8 @@ database at all.
 import json
 import sqlite3
 
+import re
+
 import pytest
 
 from sim.migrate import (CURRENT_VERSION, SchemaError, SchemaTooNew, migrate,
@@ -174,7 +176,14 @@ def test_a_migrated_store_and_a_fresh_one_have_the_same_shape(old_car):
     fresh.init_schema()
 
     def shape(conn):
-        return {r[0]: " ".join(r[1].split()) for r in conn.execute(
+        # Comments stripped before comparing. Shape is what SQLite enforces, and the two files
+        # legitimately explain themselves differently -- schema.sql annotates every column,
+        # migrate.py's rebuild carries its argument in the step's docstring instead. Comparing
+        # prose would make this guard fail on an edit that changed nothing and, worse, invite
+        # someone to keep it green by copying comments around.
+        def bare(sql: str) -> str:
+            return " ".join(re.sub(r"--[^\n]*", "", sql).split())
+        return {r[0]: bare(r[1]) for r in conn.execute(
             "SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL")}
 
     a, b = shape(migrated.conn), shape(fresh.conn)

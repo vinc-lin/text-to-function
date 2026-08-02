@@ -73,6 +73,12 @@ def default_retention() -> dict:
             for name, src in SOURCES.items()}
 
 
+# How long the audit trail is kept. Longer than the content windows on purpose: a turn and its
+# decisions are what let somebody ask why the car did something, and that question outlives the
+# words that prompted it. Long enough to investigate yesterday, short enough to be a bound.
+TURN_RETENTION = 24 * 3600.0
+
+
 class Store:
     def __init__(self, conn, *, retention: Optional[dict] = None, raw_capture: bool = True):
         """`retention` maps a source to how long its raw payload is kept; `raw_capture=False`
@@ -248,7 +254,32 @@ class Store:
         if self._retained_at is not None and 0 <= now - self._retained_at < interval:
             return (0, 0)
         self._retained_at = now
+        # Turns go with the same pass. Task 8 found the audit trail was the only thing in the
+        # store that nothing bounded — 6.8 GB per thousand hours at 10 Hz, most of it frames in
+        # which nothing happened — and a bound that needs a second call is a bound a new loop
+        # can forget.
+        self.sweep_turns(now - TURN_RETENTION)
         return (self.sweep(now), self.compact_perception(now))
+
+    def sweep_turns(self, before: float) -> int:
+        """Delete turns older than `before`. Decisions cascade; operations keep their row.
+
+        Task 8 measured the reason this exists, and it was the one number in the whole
+        measurement that argued against the vehicle path: nothing ever deleted a turn or a
+        decision, so the audit trail grew at 188 B per input forever — 6.8 MB an hour at 10 Hz,
+        6.8 GB per thousand hours — and most of those rows record a frame in which nothing
+        happened. The cost was never latency.
+
+        The two directions differ on purpose, and the schema enforces it rather than this
+        method remembering to. A `decision` CASCADEs, because a reason with no turn is an
+        orphan record of something that did not happen. An `operation_log` row SET NULLs,
+        because the car really did that: an operation must outlive the explanation of why it
+        happened. A gap in the reasoning is a cost; a gap in what the vehicle did is the one
+        thing this store exists never to have.
+        """
+        cur = self.conn.execute("DELETE FROM turn WHERE at < ?", (before,))
+        self.conn.commit()
+        return cur.rowcount
 
     # --- the parsed layer ---------------------------------------------------------------
     def put_perception(self, raw_id: Optional[int], at: float, key: str, value: Any,

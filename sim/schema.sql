@@ -31,7 +31,10 @@ CREATE TABLE IF NOT EXISTS operation_log (
     -- `turn` is declared further down this file and that is fine: SQLite resolves a foreign
     -- key's parent when a statement is PREPARED, not when the table is created, and by then
     -- the whole script has run. It is NOT fine outside this file -- see sim/migrate.py.
-    turn_id    INTEGER REFERENCES turn(id)
+    -- SET NULL, not CASCADE: retention bounds the audit trail, and an operation the
+    -- car really performed must outlive the explanation of why. Losing the link is a
+    -- gap in the reasoning; losing the row would be a gap in what the vehicle did.
+    turn_id    INTEGER REFERENCES turn(id) ON DELETE SET NULL
 );
 CREATE TABLE IF NOT EXISTS device (
     entity    TEXT PRIMARY KEY,
@@ -118,7 +121,9 @@ CREATE TABLE IF NOT EXISTS turn (
 -- unqueryable, and being able to ask *why* is the entire point of writing this down.
 CREATE TABLE IF NOT EXISTS decision (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
-    turn_id       INTEGER NOT NULL REFERENCES turn(id),
+    -- CASCADE: a decision is a reason for a turn, and a reason with no turn is an
+    -- orphan record of something that did not happen. They expire together.
+    turn_id       INTEGER NOT NULL REFERENCES turn(id) ON DELETE CASCADE,
     subject       TEXT NOT NULL,     -- the clause text, or the rule id
     verdict       TEXT NOT NULL,     -- band for routing; Verdict for a rule
     chosen        TEXT,              -- function name, or scene id

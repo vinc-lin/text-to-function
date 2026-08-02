@@ -31,7 +31,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Callable
 
-CURRENT_VERSION = 3
+CURRENT_VERSION = 4
 
 
 class SchemaError(RuntimeError):
@@ -251,10 +251,77 @@ _REBUILT = {
 }
 
 
+def _to_4(conn: sqlite3.Connection) -> None:
+    """`turn` becomes deletable: decisions cascade with it, operations keep their row.
+
+    Task 8 measured the reason. Nothing ever deleted a turn or a decision, so the audit trail
+    grew at 188 B per input forever -- 6.8 MB an hour at 10 Hz, 6.8 GB per thousand hours --
+    and most of those rows record a frame in which nothing happened. That was the one number
+    in the whole measurement that argued against the vehicle path, and it is a retention gap
+    rather than a latency one.
+
+    The two directions differ on purpose. A `decision` CASCADEs: it is a reason for a turn, and
+    a reason with no turn is an orphan record of something that did not happen. An
+    `operation_log` row SET NULLs: the car really did that, and an operation must outlive the
+    explanation of why it happened. Losing the link leaves a gap in the reasoning; losing the
+    row would leave a gap in what the vehicle did, which is the one thing this store exists to
+    never do.
+    """
+    if _fk_action(conn, "decision", "turn_id") == "CASCADE" and \
+            _fk_action(conn, "operation_log", "turn_id") == "SET NULL":
+        return
+    conn.commit()
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        _rebuild(conn, "decision",
+                 "id, turn_id, subject, verdict, chosen, reason, suppressed_by",
+                 """CREATE TABLE decision (
+                        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                        turn_id       INTEGER NOT NULL REFERENCES turn(id) ON DELETE CASCADE,
+                        subject       TEXT NOT NULL,
+                        verdict       TEXT NOT NULL,
+                        chosen        TEXT,
+                        reason        TEXT NOT NULL DEFAULT '',
+                        suppressed_by TEXT NOT NULL DEFAULT ''
+                    );""")
+        _rebuild(conn, "operation_log",
+                 "id, function, parameters, outcome, error, detail, at, turn_id",
+                 """CREATE TABLE operation_log (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        function   TEXT NOT NULL,
+                        parameters TEXT NOT NULL,
+                        outcome    TEXT NOT NULL,
+                        error      TEXT,
+                        detail     TEXT,
+                        at         REAL NOT NULL,
+                        turn_id    INTEGER REFERENCES turn(id) ON DELETE SET NULL
+                    );""")
+        conn.commit()
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+
+
+def _fk_action(conn: sqlite3.Connection, table: str, column: str) -> str:
+    try:
+        rows = conn.execute(f"PRAGMA foreign_key_list({table})").fetchall()
+    except sqlite3.OperationalError:
+        return ""
+    return next((r["on_delete"] or "" for r in rows if r["from"] == column), "")
+
+
+def _rebuild(conn: sqlite3.Connection, table: str, columns: str, create: str) -> None:
+    """Rename, recreate, copy, drop. SQLite cannot alter a constraint any other way."""
+    conn.execute(f"ALTER TABLE {table} RENAME TO {table}_old")
+    conn.executescript(create)
+    conn.execute(f"INSERT INTO {table} ({columns}) SELECT {columns} FROM {table}_old")
+    conn.execute(f"DROP TABLE {table}_old")
+
+
 _STEPS: list[tuple[int, Callable[[sqlite3.Connection], None]]] = [
     (1, _to_1),
     (2, _to_2),
     (3, _to_3),
+    (4, _to_4),
 ]
 
 
