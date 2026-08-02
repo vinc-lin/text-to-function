@@ -19,19 +19,37 @@ directions are asserted — see `test_the_operation_log_separates_a_bad_value_fr
 
 Like tests/e2e/test_s5_simulator.py this file uses the REAL 92-card catalog against a
 SQLite-simulated car, because a failure that only exists on a 3-card fixture proves nothing
-about the shipped vocabulary. `FakeEmbedder` is a hashed-n-gram stand-in with NO semantics, so
-every utterance here was probed against the full catalog first and kept only because it reaches
-the intended function; not one assertion was relaxed to fit whatever routing happened to do.
-Every literal is measured, never guessed.
+about the shipped vocabulary. Under the `fake` profile the router is a hashed-n-gram stand-in
+with NO semantics, so every utterance here was probed against the full catalog first and kept
+only because it reaches the intended function; not one assertion was relaxed to fit whatever
+routing happened to do. Every literal is measured, never guessed.
 
-FINDINGS pinned by this file (current behavior, deliberately asserted so a fix is visible):
-  * `type_mismatch` on a STRING parameter has no driver-facing wording (`type_phrase` returns ""
-    for `string`), so the specific cause collapses into the generic line —
-    test_a_string_parameter_type_mismatch_falls_back_to_the_generic_line.
-  * In MULTI-INTENT the validation cause is lost: `Pipeline._route_plan` never populates
-    `ClauseResult.validation_errors`, so the sentence a single-intent utterance gets
-    (风速档位只能设置在1到7档之间) degrades to the span echoed back with a generic ask —
-    test_in_a_mixed_utterance_a_bad_value_loses_its_cause.
+That probing is a selection, and a selection cannot be its own evidence. Under `-m model` the
+same bodies run again on the real embedder and the shipped embedding-dominant weights (the
+`profile` fixture in conftest.py), which had no hand in the picking — and one case does not
+survive the second witness, recorded below rather than tuned away.
+
+FINDINGS pinned by this file — asserted so that a fix is visible, and kept with their
+resolution once fixed, because what a case used to do is why it is worded as it is:
+  * RESOLVED. A STRING `type_mismatch` once had no driver-facing wording (`type_phrase`
+    returns "" for `string`) and collapsed into the generic line. The deterministic string
+    extractor now declines a one-character remainder outright, so that cause is unreachable
+    from this path and the driver is asked instead —
+    test_a_number_where_text_belongs_is_asked_about_not_guessed asserts 请告诉我目的地名称或地址。
+  * RESOLVED. In MULTI-INTENT the validation cause used to be lost: `Pipeline._route_plan`
+    never populated `ClauseResult.validation_errors`, the only channel `t2f/reply.py` reads,
+    so the sentence a single-intent utterance gets (风速档位只能设置在1到7档之间) degraded to
+    the span echoed back with a generic ask. The barrier now keeps the ValidationError objects
+    and the plan path forwards them — test_in_a_mixed_utterance_a_bad_value_keeps_its_cause.
+  * OPEN, and only under the real profile. For 「空调模式调到3」 the shipped embedding-dominant
+    weights rank `set_temperature` (0.6760) a hair above `set_ac_mode` (0.6709) — a top-two
+    margin of 0.0051 in a three-way cluster (`set_fan_speed` 0.6634). It is a near-tie lost by
+    a coin flip, not a confident misreading, and config.yaml's own gate does NOT act on it: at
+    `high_margin: 0.12` that margin lands in MEDIUM and defers to the LLM tier. It reaches HIGH
+    here only because this harness runs PERMISSIVE, which zeroes the margin requirement. A real
+    ranking weakness that the fake profile's lexical-heavier weights were hiding, contained in
+    the shipped product by the very constraint config.yaml:12-13 says it exists for. Pinned as
+    a strict xfail on the real profile of test_an_unusable_value_is_named.
 """
 from __future__ import annotations
 
@@ -39,7 +57,6 @@ import pytest
 
 from t2f.cards import load_catalog, load_ood_prototypes
 from t2f.config import Config
-from t2f.embed import FakeEmbedder
 from t2f.gate import ConfidenceGate, PERMISSIVE, Thresholds
 from t2f.llm.client import FakeLLMClient
 from t2f.pipeline import Pipeline, DeterministicResolver, LLMResolver
@@ -52,9 +69,9 @@ from sim.vehicle import SqliteVehicle
 
 CARDS = load_catalog("data/catalog")
 BY = {c.name: c for c in CARDS}
-# The shipped chitchat prototypes. Without them nothing reaches the LOW band under FakeEmbedder
-# (every hashed-n-gram query scores above the loosened floor), so branch 1 would be untestable.
-# Probed: adding them changes none of the other cases in this file.
+# The shipped chitchat prototypes. Without them nothing reaches the LOW band under the fake
+# profile (every hashed-n-gram query scores above the loosened floor), so branch 1 would be
+# untestable. Probed: adding them changes none of the other cases in this file.
 OOD = load_ood_prototypes(Config.default().ood_prototypes)
 
 GENERIC = "抱歉，这个操作没能完成。"                 # t2f/reply.py::_FAILURE — the thing 4b exists to replace
@@ -62,12 +79,13 @@ NO_UNDERSTAND = "抱歉，我不太确定您的意思，可以换个说法吗？
 AC_OFF = "空调尚未开启。"                            # sim/seed.py::_PRECONDITIONS
 
 
-def _pipeline(thresholds=None, llm_client=None):
-    """(pipeline, executor) over a freshly seeded car.
-
-    Thresholds are loosened exactly as in tests/e2e/test_s5_simulator.py so FakeEmbedder reaches
-    the HIGH band; nothing else is tuned. `thresholds`/`llm_client` are overridden by exactly one
-    case, the numeric type_mismatch, which no deterministic extractor can produce.
+def _pipeline(profile, thresholds=None, llm_client=None):
+    """(pipeline, executor) over a freshly seeded car, at the permissive gate — the shipped
+    mode of tests/e2e/conftest.py and tests/e2e/test_s5_simulator.py, not a threshold invented
+    here. Nothing else is tuned. The embedder and the fusion weights both come from the
+    fixture, and come together: see `Profile` in conftest.py for why they cannot be chosen
+    apart. `thresholds`/`llm_client` are overridden by exactly one case, the numeric
+    type_mismatch, which no deterministic extractor can produce.
     """
     car = SqliteVehicle(":memory:")
     car.init_schema()
@@ -75,8 +93,11 @@ def _pipeline(thresholds=None, llm_client=None):
     ex = SqliteExecutor(car, BY)
     cfg = Config.default()
     cfg.thresholds = thresholds or PERMISSIVE
+    cfg.weights = dict(profile.weights)           # copied: the profile is session-scoped, and
+                                                  # one shared dict would let a debugging edit
+                                                  # here leak into every later test in the run
     medium = LLMResolver(llm_client) if llm_client is not None else None
-    pipe = Pipeline(CARDS, FakeEmbedder(256), Scorer(cfg.weights, cfg.domain_keywords),
+    pipe = Pipeline(CARDS, profile.embedder, Scorer(cfg.weights, cfg.domain_keywords),
                     ConfidenceGate(cfg.thresholds), cfg,
                     resolver=DeterministicResolver(BY, executor=ex, medium_resolver=medium),
                     ood_texts=OOD)
@@ -127,33 +148,87 @@ UNUSABLE_VALUE = [
      "氛围灯颜色支持红色/蓝色/绿色/白色/紫色/橙色/青色，您想设置成哪个？", ("light.all", "ambient_light_color")),
 ]
 
+# The one row above whose REPLY the real profile cannot produce, and the sentence saying why.
+# MISROUTE_REASON is what a failure report prints years from now with none of this file around
+# it, so it carries the measurements and the limits of what they show, not just the verdict.
+MISROUTED_UNDER_SHIPPED_WEIGHTS = "bad_enum · climate"
+MISROUTE_REASON = (
+    "FINDING about the shipped WEIGHTS — not about the vehicle, and not about what the "
+    "shipped product does. Measured with the real embedder under config.yaml's "
+    "embedding-dominant fusion, 「空调模式调到3」 produces a near-tie at the top of a "
+    "three-way cluster: set_temperature 0.6760, set_ac_mode 0.6709, set_fan_speed 0.6634. The "
+    "wrong card wins by a margin of 0.0051 — a coin flip on a confusable pair, not a confident "
+    "misreading of 模式 as 温度. Under Config.default()'s lexical-heavier weights the same "
+    "embedder ranks set_ac_mode first by 0.0385: the lexical signals are what separate the two, "
+    "and config.yaml shrinks them deliberately. "
+    "This is visible here ONLY because the harness runs the PERMISSIVE gate, which zeroes "
+    "high_margin. Under config.yaml's own gate (high_margin: 0.12) a 0.0051 margin lands in "
+    "MEDIUM, so the shipped product does not act on this — it defers to the LLM tier, which is "
+    "exactly the confusable-cluster case config.yaml:12-13 says the margin requirement exists "
+    "to catch. So: a real weakness in ranking, correctly contained by the shipped gate, that "
+    "the fake profile's weights were hiding. Only the driver-facing explanation is wrong here; "
+    "nothing is dispatched and the car does not move, which "
+    "test_an_unusable_value_never_reaches_the_car asserts unconditionally for this row in both "
+    "profiles. strict=True: if ranking improves, this XPASSes and asks to be retired rather "
+    "than going quietly green.")
+
 
 @pytest.mark.parametrize("case,utterance,expected,signal", UNUSABLE_VALUE,
                          ids=[c[0] for c in UNUSABLE_VALUE])
-def test_an_unusable_value_is_named_and_never_reaches_the_car(case, utterance, expected, signal):
-    """All three obligations for one bad value, in one case.
+def test_an_unusable_value_never_reaches_the_car(profile, case, utterance, expected, signal):
+    """GREEN — the safety half, kept OUT of the xfail body, as
+    tests/e2e/test_s4b_failure_cause.py:73-79 does for the same hazard and for the same reason.
 
-    The reply is asserted WHOLE, not `!= GENERIC`: "not the generic line" is satisfied by any
-    other wrong sentence, including the confirmation of an operation that never happened. And
-    the empty operation log is the strong claim — a value the catalog rejects is not merely
+    An assertion inside an xfail is unguarded: `xfail(strict=True)` reports the same result
+    whichever line trips, so if these two claims shared a body with the reply assertion that
+    one row xfails under the real profile, a car that had started moving would be absorbed by
+    the expected failure and read as green. They therefore live here, unconditionally, for all
+    ten rows in both profiles.
+
+    The empty operation log is the strong claim — a value the catalog rejects is not merely
     un-actuated, the vehicle is never asked about it at all.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     before = ex.car.get_signal(*signal)
 
-    result = pipe.route(utterance)
+    pipe.route(utterance)
 
-    assert result.reply == expected
     assert ex.car.recent_operations() == []                 # never dispatched
     assert ex.car.get_signal(*signal) == before             # car untouched
 
 
-def test_the_bad_value_case_would_have_hit_a_real_signal():
+@pytest.mark.parametrize("case,utterance,expected,signal", UNUSABLE_VALUE,
+                         ids=[c[0] for c in UNUSABLE_VALUE])
+def test_an_unusable_value_is_named(request, profile, case, utterance, expected, signal):
+    """The explanation half: the driver is told what went wrong *in particular*.
+
+    The reply is asserted WHOLE, not `!= GENERIC`: "not the generic line" is satisfied by any
+    other wrong sentence, including the confirmation of an operation that never happened.
+
+    One row is xfailed under the real profile — see MISROUTE_REASON. The marker has to be
+    applied from inside the body because the profile is a fixture parameter and a static
+    `xfail(condition=...)` cannot see fixture values; a strict marker that ignored the profile
+    would XPASS-fail the fake one, which routes this row correctly. Nothing safety-bearing
+    rides on that, because the safety half is a separate test above: the worst a pytest that
+    stopped honouring dynamically added markers could do here is report this known gap as a
+    plain failure instead of an xfail — loudly, and in the file that explains it.
+    """
+    if profile.name == "real" and case == MISROUTED_UNDER_SHIPPED_WEIGHTS:
+        request.node.add_marker(pytest.mark.xfail(strict=True, reason=MISROUTE_REASON))
+
+    pipe, _ = _pipeline(profile)
+
+    result = pipe.route(utterance)
+
+    assert result.reply == expected
+
+
+def test_the_bad_value_case_would_have_hit_a_real_signal(profile):
     """Control for the table above: an empty log and an unchanged signal are only evidence if
     the same words CAN move that signal. The identical function and signal, given a value the
-    card accepts, executes and writes — so the eight silent rows above are the validator's doing,
+    card accepts, executes and writes — so the ten silent rows above are the validator's doing,
     not a routing accident that would have written nothing anyway."""
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     assert ex.car.get_signal("climate.all", "fan_speed") != 3
 
     assert pipe.route("风速调到3档").reply == "已将当前区域风速设置为3档。"
@@ -163,7 +238,7 @@ def test_the_bad_value_case_would_have_hit_a_real_signal():
            [("set_fan_speed", "executed")]
 
 
-def test_a_numeric_parameter_given_a_word_is_told_it_needs_a_number():
+def test_a_numeric_parameter_given_a_word_is_told_it_needs_a_number(profile):
     """`type_mismatch` on a numeric parameter — the one cause no deterministic extractor can
     produce (they only ever emit numbers for numeric specs), so it is driven from the MEDIUM band
     with a scripted client, as tests/e2e/test_s4b_failure_cause.py established.
@@ -172,7 +247,17 @@ def test_a_numeric_parameter_given_a_word_is_told_it_needs_a_number():
     """
     llm = FakeLLMClient(default=LLMResult(
         tool_call=ToolCall("set_temperature", {"temperature": "暖一点"})))
-    pipe, ex = _pipeline(Thresholds(high_top1=0.6, high_margin=0.0, low_top1=0.05), llm_client=llm)
+    # 2.0 is not a calibration and must not be read as one. It is a bar unreachable by
+    # ARITHMETIC, which is the entire point: MEDIUM is forced by construction rather than by a
+    # fact about some embedder. `Thresholds` does no bounds checking, and a fused score cannot
+    # exceed 1.0 while the weights sum to 1.0 and every component signal is ≤ 1.0 — so no
+    # embedder clears it, present or future. The bar used to be 0.6, set just above what the
+    # fake profile happens to score on 「空调温度调一下」 (0.4979): a mechanism that silently
+    # depended on the embedder. The real profile scores 0.8087 on the same words, sailed into
+    # HIGH, and took the deterministic path along with this test's whole premise. low_top1
+    # stays at PERMISSIVE's 0.05 so no embedder drops out of the bottom into LOW instead.
+    pipe, ex = _pipeline(profile, Thresholds(high_top1=2.0, high_margin=0.0, low_top1=0.05),
+                         llm_client=llm)
     before = ex.car.get_signal("climate.all", "temperature")
 
     result = pipe.route("空调温度调一下")
@@ -182,7 +267,7 @@ def test_a_numeric_parameter_given_a_word_is_told_it_needs_a_number():
     assert ex.car.get_signal("climate.all", "temperature") == before
 
 
-def test_a_number_where_text_belongs_is_asked_about_not_guessed():
+def test_a_number_where_text_belongs_is_asked_about_not_guessed(profile):
     """导航到3 puts a number where `navigate_to` wants a destination.
 
     Twice improved. It first spoke the generic line, because `type_phrase` had no wording for
@@ -191,7 +276,7 @@ def test_a_number_where_text_belongs_is_asked_about_not_guessed():
     cannot produce a string type_mismatch at all — it asks instead, which a driver can answer.
     Note 导航到3号楼 DOES extract, so the guard is length-based, not digit-phobic.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
 
     result = pipe.route("导航到3")
 
@@ -207,9 +292,9 @@ def test_a_number_where_text_belongs_is_asked_about_not_guessed():
 # Branch 2b — the parameter is missing rather than wrong: ASK, do not state
 # ==========================================================================================
 
-def test_a_missing_parameter_in_the_handwritten_bank_is_asked_for_by_name():
+def test_a_missing_parameter_in_the_handwritten_bank_is_asked_for_by_name(profile):
     """`temperature` is one of the three names in `t2f/respond.py::_CLARIFY`."""
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     before = ex.car.get_signal("climate.all", "temperature")
 
     result = pipe.route("空调温度调一下")
@@ -219,10 +304,10 @@ def test_a_missing_parameter_in_the_handwritten_bank_is_asked_for_by_name():
     assert ex.car.get_signal("climate.all", "temperature") == before
 
 
-def test_a_missing_boolean_parameter_outside_the_bank_gets_a_generated_question():
+def test_a_missing_boolean_parameter_outside_the_bank_gets_a_generated_question(profile):
     """`is_open` is NOT in `_CLARIFY` — this question is built from the card by `missing_phrase`,
     and it is a question a driver can actually answer, not 请补充更多信息。"""
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     before = ex.car.get_signal("window.all", "window_position")
 
     result = pipe.route("车窗")
@@ -232,10 +317,10 @@ def test_a_missing_boolean_parameter_outside_the_bank_gets_a_generated_question(
     assert ex.car.get_signal("window.all", "window_position") == before
 
 
-def test_a_missing_numeric_parameter_outside_the_bank_gets_a_generated_question():
+def test_a_missing_numeric_parameter_outside_the_bank_gets_a_generated_question(profile):
     """`percent` is not in `_CLARIFY` either, and the generated question names the quantity in
     the driver's words (屏幕亮度), never the parameter name."""
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     before = ex.car.get_signal("display.all", "screen_brightness")
 
     result = pipe.route("屏幕亮度调一下")
@@ -251,7 +336,7 @@ def test_a_missing_numeric_parameter_outside_the_bank_gets_a_generated_question(
 # ==========================================================================================
 
 @pytest.mark.parametrize("utterance", ["明天天气好不好", "帮我算一下房贷"])
-def test_an_out_of_scope_request_is_refused_and_nothing_is_attempted(utterance):
+def test_an_out_of_scope_request_is_refused_and_nothing_is_attempted(profile, utterance):
     """Neither utterance is a prototype — they are novel chitchat that must nonetheless land on
     the OOD marker, so the gate returns LOW with no function chosen.
 
@@ -259,7 +344,7 @@ def test_an_out_of_scope_request_is_refused_and_nothing_is_attempted(utterance):
     out-of-scope request is not a bad value and not a refusal, and saying so wrongly would send
     the driver looking for a limit or a switch that has nothing to do with it.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
 
     result = pipe.route(utterance)
 
@@ -278,11 +363,12 @@ def test_an_out_of_scope_request_is_refused_and_nothing_is_attempted(utterance):
     ("precondition_failed · A/C off blocks fan speed", "风速调到3档",
      ("climate.all", "fan_speed")),
 ], ids=["precondition_failed · temperature", "precondition_failed · fan speed"])
-def test_the_vehicle_refuses_and_the_driver_hears_the_vehicles_reason(case, utterance, signal):
+def test_the_vehicle_refuses_and_the_driver_hears_the_vehicles_reason(
+        profile, case, utterance, signal):
     """25°C and 3档 are both perfectly legal values — no validation could object. Only the car
     knows the A/C is off, so this cause can only come back from the executor, and it must arrive
     as the vehicle's own sentence rather than a guess made upstream."""
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     ex.car.set_signal("climate.all", "ac_power", False)
     before = ex.car.get_signal(*signal)
 
@@ -296,11 +382,11 @@ def test_the_vehicle_refuses_and_the_driver_hears_the_vehicles_reason(case, utte
            [("refused", "precondition_failed", "空调尚未开启")]
 
 
-def test_an_unavailable_device_reports_the_devices_own_reason():
+def test_an_unavailable_device_reports_the_devices_own_reason(profile):
     """`device_unavailable` is checked first in `SqliteExecutor.execute`, before preconditions and
     limits, and the reason stored with the device is what the driver hears — a broken A/C module
     and an A/C that is merely switched off must not sound the same."""
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     ex.car.set_device("climate.driver", False, "空调控制模块离线")
     before = ex.car.get_signal("climate.driver", "temperature")
 
@@ -313,7 +399,7 @@ def test_an_unavailable_device_reports_the_devices_own_reason():
            [("refused", "device_unavailable")]
 
 
-def test_a_physical_limit_tighter_than_the_card_is_the_case_validation_cannot_see():
+def test_a_physical_limit_tighter_than_the_card_is_the_case_validation_cannot_see(profile):
     """The third branch's reason for existing.
 
     80% is inside the card's 0-100, so `validate.py` passes it and the call is dispatched. The
@@ -321,7 +407,7 @@ def test_a_physical_limit_tighter_than_the_card_is_the_case_validation_cannot_se
     the range the catalog has. The control below is what makes this a limit and not a fluke: the
     identical utterance against a healthy actuator succeeds and writes 80.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     _jam(ex.car, "display.all", "screen_brightness", 60)
     before = ex.car.get_signal("display.all", "screen_brightness")
 
@@ -334,7 +420,7 @@ def test_a_physical_limit_tighter_than_the_card_is_the_case_validation_cannot_se
            [("refused", "out_of_range")]
 
     # control: same words, same value, healthy actuator — validation never had an opinion here
-    healthy_pipe, healthy = _pipeline()
+    healthy_pipe, healthy = _pipeline(profile)
     assert healthy_pipe.route("屏幕亮度调到80%").reply == "已将屏幕亮度调整到80%。"
     assert healthy.car.get_signal("display.all", "screen_brightness") == 80
 
@@ -343,7 +429,7 @@ def test_a_physical_limit_tighter_than_the_card_is_the_case_validation_cannot_se
 # The distinction that has to hold: a bad value never reaches the car, a refusal always does
 # ==========================================================================================
 
-def test_the_operation_log_separates_a_bad_value_from_a_refusal():
+def test_the_operation_log_separates_a_bad_value_from_a_refusal(profile):
     """Two failures of the SAME function on the SAME car, and the log tells them apart.
 
     20档 is rejected upstream and leaves no trace — the vehicle was never asked. 3档 with the
@@ -351,7 +437,7 @@ def test_the_operation_log_separates_a_bad_value_from_a_refusal():
     first and asking later, or a refusal stopped being logged, this is the case that notices;
     neither an assertion on the reply nor one on the signal would.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     ex.car.set_signal("climate.all", "ac_power", False)
     before = ex.car.get_signal("climate.all", "fan_speed")
 
@@ -369,13 +455,13 @@ def test_the_operation_log_separates_a_bad_value_from_a_refusal():
 # Mixed multi-intent: one action lands, the other does not — and BOTH are reported
 # ==========================================================================================
 
-def test_in_a_mixed_utterance_the_success_is_confirmed_and_the_refusal_explained():
+def test_in_a_mixed_utterance_the_success_is_confirmed_and_the_refusal_explained(profile):
     """The window opens, the temperature is refused, and the driver hears both in that order.
 
     Order is the assertion that matters: confirmation first, cause second. A reply that led with
     空调尚未开启 would leave a driver believing nothing happened while the window is wide open.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     ex.car.set_signal("climate.all", "ac_power", False)
     temp_before = ex.car.get_signal("climate.driver", "temperature")
 
@@ -388,7 +474,7 @@ def test_in_a_mixed_utterance_the_success_is_confirmed_and_the_refusal_explained
            [("set_temperature", "refused"), ("open_window", "executed")]   # newest first
 
 
-def test_in_a_mixed_utterance_a_bad_value_keeps_its_cause():
+def test_in_a_mixed_utterance_a_bad_value_keeps_its_cause(profile):
     """FINDING, pinned rather than papered over.
 
     Alone and inside a multi-intent utterance, the identical span now gets the identical
@@ -402,7 +488,7 @@ def test_in_a_mixed_utterance_a_bad_value_keeps_its_cause():
     Safety was never the issue: only the valid action was ever dispatched. This is the
     explanation half of 4b, which used to regress the moment an utterance had two clauses.
     """
-    pipe, ex = _pipeline()
+    pipe, ex = _pipeline(profile)
     fan_before = ex.car.get_signal("climate.all", "fan_speed")
 
     result = pipe.route("开车窗,风速调到20档")
@@ -415,8 +501,8 @@ def test_in_a_mixed_utterance_a_bad_value_keeps_its_cause():
            [("open_window", "executed")]                      # only the valid action was dispatched
 
 
-def test_the_single_intent_path_does_speak_that_same_cause():
+def test_the_single_intent_path_does_speak_that_same_cause(profile):
     """Control for the finding above: the identical span, alone, gets the specific sentence. The
     loss is multi-intent's, not the validator's."""
-    pipe, _ = _pipeline()
+    pipe, _ = _pipeline(profile)
     assert pipe.route("风速调到20档").reply == "风速档位只能设置在1到7档之间。"
