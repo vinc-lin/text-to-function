@@ -3,12 +3,14 @@
 **Date:** 2026-07-28
 **Scope:** the 131 end-to-end cases covering the Central Model's business workflow
 **Suite when this was written:** 456 passed · 1 xfailed · 3 deselected. **The current figure lives in
-the newest update section and nowhere else — §13.**
+the newest update section and nowhere else — §15.**
 **Updated 2026-07-29** after the extractor and negation fixes — see §8.
 **Updated 2026-07-30** with the Scene Engine and the last red case — see §10.
 **Updated 2026-08-01** with sensed signals, staleness, a second rule, and intake — see §11.
 **Updated 2026-08-01, later** with the scene gold catching up with the rules — see §12.
 **Updated 2026-08-02** with what the store costs, and the judgement §9 of its design waits on — see §13.
+**Updated 2026-08-02, later** with the retention condition §13 attached — see §14.
+**Updated 2026-08-02, later still** with the model tier: the e2e suite gets a second witness — see §15.
 **Evaluation:** arm C (deterministic, zero LLM), real embedder, gold test split n=192
 
 > **This document is the home of the repository's current measured numbers.** `README.md` summarises
@@ -879,3 +881,211 @@ six tasks of building the store did not surface this and twenty minutes of `/sto
 **Suite at this point: 1105 passed, 1 skipped, 5 deselected, 0 xfailed.** Both proof obligations
 byte-identical throughout: `run_eval --arm C` and `run_scene_eval --arm S` unmoved except arm C's
 two latency lines, which are wall-clock jitter on this host.
+
+---
+
+## 15. Update — 2026-08-02, later still: the model tier, and the circularity it removes
+
+Everything above was measured with `FakeEmbedder` — md5-hashed character 3-grams into 256 buckets,
+L2-normalised, **no semantics**. `tests/e2e/` had 120 cases and not one of them had ever seen the
+embedding model.
+
+For most of them that is fine. They run on a 3-card fixture catalog and are about reply
+composition, refusal causes and the contract sweep — mechanism no embedder decides. For the three
+files that route over the real **92-card** catalog it was a circularity, and their own docstrings
+said so:
+
+> Every utterance below was therefore probed against the full catalog first and kept only because
+> it reached the function it names.
+
+§7 already recorded that no assertion was ever relaxed to fit, and that is still true. The problem
+is the other end: the **inputs were selected until they passed**. A suite whose stimuli are chosen
+by the system under test measures the selection, not the system, and cannot fail for the reason it
+exists to catch.
+
+### What the tier is
+
+`tests/e2e/conftest.py` gains a session-scoped `profile` fixture. A profile is an embedder
+**together with the fusion weights under which it means something** — the two are one object
+because they are not independently choosable, for the reason the mutation section below makes
+measurable:
+
+| profile | embedder | fusion weights | runs |
+|---|---|---|---|
+| `fake` | `FakeEmbedder(256)` | `Config.default()` | always — the fast, offline, GPU-free suite |
+| `real` | `Qwen3-Embedding-0.6B` at `mrl_dim=512`, loaded once per session and memoised | `config.yaml` | `-m model` only |
+
+`test_s5_simulator.py`, `test_s6_success_matrix.py` and `test_s7_failure_matrix.py` take it, so
+**65 test bodies run a second time** (7 + 22 + 36) against a router that had no hand in picking
+their utterances. The bodies themselves are unchanged; the gate stays `PERMISSIVE`, as it already
+was. A new `test_s9_shipped_gate_cost.py` adds 4 more, and is a different measurement — see
+finding 2.
+
+Two things keep the tier from quietly costing the default run. A `pytest_collection_modifyitems`
+guard fails collection if any test declares the `real_embedder` fixture without the `model` marker
+— a GPU model load in the default suite reads as "the suite got slow", not as a mistake. And the
+`profile` fixture resolves its embedder lazily rather than declaring it as a parameter, because a
+fixture argument is resolved before the body runs and would load the model for the `fake` param
+too.
+
+### The counts
+
+| command | result |
+|---|---|
+| `python3 -m pytest -q` | **1135 passed, 1 skipped, 74 deselected** — 45 s |
+| `python3 -m pytest -m model -q` | **73 passed, 1136 deselected, 1 xfailed** — 45 s |
+| `python3 -m pytest -m model tests/e2e/ -q` | **68 passed, 130 deselected, 1 xfailed** — 13 s |
+| `python3 -m pytest -q tests/e2e/` | **130 passed, 69 deselected** — 4 s |
+
+1210 tests in total, against 1131 immediately before this work — and every one of the 79 is in
+`tests/e2e/`, which went 120 → 199. The model-marked tier went **5 → 74**.
+
+The default run went **1125 → 1135 passed** (not from §14's 1105 — the trace work landed on main
+in between and is counted in both). Those ten are not new coverage of the router; that is entirely
+in the deselected 74. They are the ten rows of S7's bad-value table whose *safety* half had to be
+split into its own always-green test, because one of them now xfails under the real profile (see
+finding 1) and an assertion inside an `xfail` body is unguarded. The deselected 5 → 74 is exactly
+the 65 second-witness bodies plus S9's 4.
+
+### Why the tier is worth its cost — measured by mutation, not by a green run
+
+A profile that silently degraded would produce a green run indistinguishable from a real one: a
+fixture falling back to `FakeEmbedder` on a load error, or a memo cache handing back the wrong
+vector. That is the same failure this repo hit twice with contract sweeps that shrank to fit, so
+the tier is verified the way §4 verifies the invariants — by mutation. Zero the real embedder's
+output and see what still passes. On the 29 real-profile cases that existed when the profile was
+designed (s5's 7 + s6's 22):
+
+| configuration | with the embedder's output zeroed |
+|---|---|
+| real profile, `Config.default()` weights | **10 of 29 still pass** |
+| real profile, shipped `config.yaml` weights | **1 of 29 still passes** |
+
+The arithmetic behind that. `Scorer` fuses the embedding score with three lexical signals, and
+`PERMISSIVE.high_top1` is 0.2:
+
+| | `keyword_alias` | `param_compat` | `domain_prior` | sum | clears 0.2? |
+|---|---|---|---|---|---|
+| `Config.default()` | 0.15 | 0.25 | 0.05 | **0.45** | yes |
+| `config.yaml` (shipped) | 0.04 | 0.05 | 0.03 | **0.12** | no |
+
+`config.yaml:9` carries a fifth non-embedding weight, `classifier_prob: 0.15`, which is left out
+of that sum deliberately and must not be left out silently: it contributes nothing **on this
+path**, because `t2f/build.py` wires no classifier source, so `t2f/score.py:29` reads `cp` as 0.0
+for every card. Only `eval/arms.py::build_arm_d` supplies one, and it builds its `Pipeline`
+directly rather than through the factory. Wire a classifier into `build_pipeline` and the shipped
+row becomes 0.27, which clears
+0.2, and the paragraph below stops being true; `config.yaml:24` says `classifier: {enabled: true}`
+and both `.joblib` files are on disk, so this is a live premise rather than a hypothetical one. It
+is stated here because the mutation was a measurement, not a standing test — nothing fails the day
+it stops holding.
+
+Under the default weights a clause can be dispatched **with no embedding signal at all** — all
+seven of s5's real-profile cases pass with the embedder dead, which is to say they were never
+about routing. Under the shipped weights nothing can. That is why the real profile carries the
+shipped weights: `config.yaml` is embedding-dominant on purpose (a dev-set sweep found the lexical
+signals do not improve ranking over the embedder alone), which is exactly the configuration a tier
+meant to witness routing needs.
+
+The single survivor under the shipped weights is `test_a_refusal_leaves_the_car_untouched[real]`,
+and it survives for a reason worth stating: it asserts an **absence**. A dead router also leaves
+the car untouched.
+
+The `fake` profile keeps `Config.default()` because it needs the opposite. Hashed n-grams under
+embedding-dominant weights misroute badly — measured, 「打开主驾车门」 reaches `open_charge_port`
+and the driver is told 已为您打开充电口盖 — so the lexical signals are what keep those cases about
+execution and replies rather than about the stand-in. Each profile runs the configuration under
+which it proves something.
+
+### Finding 1 — a ranking weakness the fake embedder was hiding
+
+「空调模式调到3」 (*set the AC **mode** to 3*) is a bad-enum case in S7: the right answer names the
+five valid modes and dispatches nothing. Under the real embedder it depends entirely on the
+weights:
+
+| configuration | winner | runner-up | reply |
+|---|---|---|---|
+| fake + `Config.default()` | `set_ac_mode` 0.3979 | — | names the modes — correct |
+| real + `Config.default()` | `set_ac_mode` 0.4610 | `set_temperature` 0.4225 | correct, by 0.0385 |
+| **real + shipped weights** | **`set_temperature` 0.6760** | `set_ac_mode` **0.6709** | 您想设置到多少度？ |
+
+**The margin is 0.0051**, in a three-way cluster with `set_fan_speed` at 0.6634. That number is
+what makes this reportable rather than alarming: a coin flip on a confusable pair, not a confident
+misreading of 模式 as 温度. The lexical signals are what separate the two, and `config.yaml`
+shrinks them deliberately.
+
+It is visible at all only because the harness runs `PERMISSIVE`, which zeroes `high_margin`. Under
+`config.yaml`'s own `high_margin: 0.12` a 0.0051 margin lands in **MEDIUM** and defers to the LLM
+tier — precisely the confusable-cluster case the shipped gate says it exists to catch. So: a real
+weakness in ranking, correctly contained by the shipped gate, that the fake profile's weights were
+hiding.
+
+Recorded as `xfail(strict=True)` on the real profile alone, so an improvement in ranking makes the
+suite say so instead of going quietly green. Only the driver-facing explanation is wrong: nothing
+is dispatched and the car does not move, asserted unconditionally for all ten rows in both
+profiles by a separate always-green test.
+
+### Finding 2 — what the shipped gate costs, now asserted in CI
+
+Every other file in `tests/e2e/` runs at `PERMISSIVE`, a real shipped mode but not the default one.
+`test_s9_shipped_gate_cost.py` runs S6's same 22 utterances through the genuine product assembly —
+`t2f.build.build_pipeline`, `Config.load("config.yaml")` with no override of any kind, the real
+embedder, a seeded `SqliteExecutor`; what `python3 -m cli --no-llm` builds. Which parts of the
+config that actually reaches: its weights, its thresholds and its domain keywords. Not its
+`classifier:` block — `build_pipeline` never reads it, which is the premise the weights table
+above depends on.
+
+```
+correct function reached        22 / 22
+clears the gate and executes    10 / 22
+```
+
+**Recognition is not the problem.** The lowest top1 across all 22 is **0.7545** (打开玻璃水喷水)
+against a `high_top1` of 0.35, so the score floor rejects *nothing* on this matrix — asserted, not
+narrated. The entire twelve-case cost is `high_margin` alone, exactly as `config.yaml` describes
+itself.
+
+The boundary is thin in both directions: the thinnest clearance is `misc-washer` at margin 0.1298
+(**+0.0098**) and the closest miss is `display-hud` at 0.1187 (**−0.0013**). This set is decided at
+the third decimal place on both sides, which is why the test asserts the **set of case ids** rather
+than the count — a bare `len(...) == 10` stays green through a change that promotes one case and
+demotes another, which is the shape of the "sweep silently shrank to fit" failure this repo has hit
+twice.
+
+**This is not a defect.** It is §8 finding 2, and `config.yaml` states it at the point of decision
+as a deliberate precision-over-coverage choice for zero-LLM safety, with MEDIUM reserved for the
+Spec-2 LLM. A test demanding the shipped gate execute these twelve would be a test against the
+design. What was missing was any record **in CI** of the price — it lived in §8, where it could go
+stale without a single test noticing. It no longer can.
+
+### What this update does NOT establish
+
+- **The other five e2e files are untouched, and stay on `FakeEmbedder`.** `s2`, `s3`, `s4a`, `s4b`
+  and `s8` — 63 tests — run on a 3-card fixture catalog. With three cards there is no confusion for
+  a better embedder to resolve; what they test is reply composition, refusal causes and the
+  contract sweep, which are catalog- and embedder-independent. Giving them the real embedder would
+  mean rewriting 63 utterances against 92 cards to buy nothing. **A scope decision, not an
+  omission** — but it does mean "the e2e suite has a second witness" is true of 65 of its 130
+  cases, not all of them.
+- **The `fake` profile still runs under `Config.default()` weights**, where the lexical signals sum
+  to 0.45 and clear the permissive floor alone. Its cases remain evidence about execution,
+  confirmations and refusals — not about routing. Nothing here upgrades them.
+- **74 of 1210 tests do not run on a normal `pytest` invocation.** The tier needs the model and a
+  GPU to be tolerable, so it is deselected by default. A contributor without either gets a fully
+  green suite in which nothing has ranked one card against another on meaning, and CI gets the same
+  unless it is given a GPU. That is the cost of keeping the default run offline and instant, stated
+  rather than hidden.
+- **It is still not an accuracy measurement.** 22 utterances and 29 mutation cases are not the
+  gold set; `recall@1`, `param_exact_match` and the rest come from `eval/`, on the test split, and
+  §9's summary of what this suite is for is unchanged. What the tier buys is that the *mechanism*
+  claims are now made about the shipped router rather than about a stand-in.
+- **The memoised embedder is not quite the shipped one.** `MemoEmbedder` caches `encode` by
+  `(text, is_query)` — correct for a deterministic encoder, and what makes 69 tests take 13 s
+  instead of minutes. If the encoder ever becomes context-dependent, the cache lies silently. It is
+  built in one place so there is one thing to delete.
+
+**Both proof obligations hold across the whole branch**, checked against the commit it was cut
+from: `run_scene_eval --arm S` byte-identical, and `run_eval --arm C --fake --permissive`
+identical but for `p50_latency_ms` and `p95_latency_ms`, which are wall-clock jitter. The only
+non-test change was moving the `PERMISSIVE` constant into `t2f/gate.py`; the eleven files that had
+re-typed the same triple twelve times between them now import it.

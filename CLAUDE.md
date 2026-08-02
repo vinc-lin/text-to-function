@@ -6,8 +6,9 @@ fallback, never the primary router. A proactive Scene Engine sits beside it.
 ## Commands
 
 ```bash
-python3 -m pytest -q          # ~40s, 1105 tests. Model tests deselected by default.
-python3 -m pytest -m model -q # 5 tests, loads Qwen3 models, needs GPU
+python3 -m pytest -q          # ~45s, 1135 tests. Model tests deselected by default.
+python3 -m pytest -m model -q # ~45s, 74 tests, needs GPU. Mostly the e2e suite re-run on the
+                              # real embedder — end-to-end routing is witnessed there, nowhere else.
 python3 -m cli                # hand-testing session against a simulated car
 python3 -m ui                 # the same session in a browser, :8770
 ```
@@ -71,6 +72,12 @@ recorded so the silence can explain itself.
 - **Contract sweeps have silently shrunk to fit twice.** Both times a new condition type or
   rule made properties skip themselves or pass vacuously while staying green. After adding
   either, verify the sweep by mutation rather than trusting a green run.
+- **An assertion inside an `xfail` body is unguarded** — the same shape as the sweep above, in a
+  different mechanism, and it has now come up twice. `xfail(strict=True)` reports the same result
+  whichever line trips, so a safety check sitting after a failing one is absorbed and the report
+  reads green. `tests/e2e/test_s4b_failure_cause.py:73-79` found it first; s7 and s9 follow that
+  pattern. The "nothing was dispatched, the car did not move" half goes in its own unconditional
+  test, never beside an assertion that is expected to fail.
 - **`sim/schema.sql` cannot change a table that already exists.** Every statement is
   `CREATE TABLE IF NOT EXISTS`, so a column added there is a silent no-op on every `--db` file
   written before it — fresh databases pass the whole suite while every persisted car lacks it.

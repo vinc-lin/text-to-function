@@ -4,7 +4,7 @@ from t2f.cards import load_catalog
 from t2f.embed import FakeEmbedder
 from t2f.retrieve import PrototypeStore, Retriever
 from t2f.score import Scorer
-from t2f.gate import ConfidenceGate, Thresholds
+from t2f.gate import ConfidenceGate, PERMISSIVE
 from t2f.pipeline import Pipeline
 from t2f.config import Config
 
@@ -14,7 +14,7 @@ def _pipeline():
     cards = load_catalog(FIX)
     emb = FakeEmbedder(256)
     cfg = Config.default()
-    cfg.thresholds = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)  # permissive for fake emb
+    cfg.thresholds = PERMISSIVE  # permissive for fake emb
     return Pipeline(cards, emb, Scorer(cfg.weights, cfg.domain_keywords),
                     ConfidenceGate(cfg.thresholds), cfg)
 

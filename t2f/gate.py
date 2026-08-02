@@ -11,6 +11,15 @@ class Thresholds:
     low_top1: float = 0.35
 
 
+# The gate behind `--gate permissive` / `/gate permissive` (see cli/__main__.py): zeros
+# high_margin, the shipped gate's binding constraint (config.yaml) — recognition usually finds
+# the right function, but a close runner-up keeps it out of HIGH, and this stops blocking it.
+# The two floors drop with it, which guts LOW and trades refusal for coverage (see
+# docs/TRYING_IT.md). A shipped product mode, not a test fixture, so it lives beside Thresholds
+# rather than in cli/session.py or scattered across test files.
+PERMISSIVE = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+
+
 class ConfidenceGate:
     def __init__(self, thresholds: Thresholds | None = None):
         self.t = thresholds or Thresholds()

@@ -5,7 +5,7 @@ from t2f.build import build_pipeline
 from t2f.cards import load_catalog
 from t2f.config import Config
 from t2f.embed import FakeEmbedder
-from t2f.gate import Thresholds
+from t2f.gate import PERMISSIVE
 from t2f.execute import MockExecutor
 from t2f.llm.client import FakeLLMClient
 from t2f.pipeline import NullMediumResolver, LLMResolver
@@ -37,12 +37,12 @@ def test_executor_is_injectable():
 
 
 def test_thresholds_override_the_config():
-    loose = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+    loose = PERMISSIVE
     pipe = build_pipeline(CARDS, FakeEmbedder(256), Config.default(), thresholds=loose)
     assert pipe.gate.t is loose
 
 
 def test_it_routes_end_to_end():
     pipe = build_pipeline(CARDS, FakeEmbedder(256), Config.default(),
-                          thresholds=Thresholds(0.2, 0.0, 0.05))
+                          thresholds=PERMISSIVE)
     assert pipe.route("把空调调到25度").reply == "已将当前区域温度设置为25°C。"

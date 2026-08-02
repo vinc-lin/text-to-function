@@ -5,7 +5,7 @@ from pathlib import Path
 from t2f.cards import load_catalog
 from t2f.embed import FakeEmbedder
 from t2f.score import Scorer
-from t2f.gate import ConfidenceGate, Thresholds
+from t2f.gate import ConfidenceGate, PERMISSIVE, Thresholds
 from t2f.pipeline import Pipeline
 from t2f.config import Config
 
@@ -19,7 +19,7 @@ REJECT = "抱歉，我不太确定您的意思，可以换个说法吗？"
 def _pipeline():
     cards = load_catalog(FIX)
     cfg = Config.default()
-    cfg.thresholds = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
+    cfg.thresholds = PERMISSIVE
     return Pipeline(cards, FakeEmbedder(256), Scorer(cfg.weights, cfg.domain_keywords),
                     ConfidenceGate(cfg.thresholds), cfg)
 
