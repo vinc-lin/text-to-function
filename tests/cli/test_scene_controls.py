@@ -178,3 +178,20 @@ def test_a_stale_signal_reads_as_absent_through_the_world(session):
     assert world.signal("vehicle.all", "speed_kph", session._now()) is None
     status, why = world.signal_status("vehicle.all", "speed_kph", session._now())
     assert status == "stale" and "2.0" in why
+
+
+def test_the_camera_comes_from_the_namespace(session):
+    """A single default made every outside.* observation claim the cabin camera saw the road
+    — which is precisely the decorative `source` that declaring sources was meant to end. All
+    six front_object rows in the scene gold say exactly that."""
+    session.observe("outside.front_object", "animal", 0.9)
+    session.observe("rear_occupant", "child", 0.9)
+    by_key = {r.key: r.source for r in session.context_rows()}
+    assert by_key["outside.front_object"] == "front_cam"
+    assert by_key["inside.rear_occupant"] == "cabin_cam"
+
+
+def test_an_explicit_source_still_wins(session):
+    """The derivation is a default, not a policy. A caller that knows better says so."""
+    session.observe("outside.front_object", "animal", 0.9, source="cabin_cam")
+    assert session.context_rows()[0].source == "cabin_cam"

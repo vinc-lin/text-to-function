@@ -16,6 +16,10 @@ from scene.speech import speech_for
 
 LOG_LIMIT = 20
 CONVERSATION_LIMIT = 60
+# Fewer than the log and the transcript keep, and deliberately. A record entry is four lines
+# and the pane is the page's history, not its scrollback — the question it answers is "why did
+# it just do that", which the last few turns answer and forty do not.
+STORE_LIMIT = 8
 
 
 def _pane(empty):
@@ -192,6 +196,23 @@ def _log(session) -> list:
             for r in session.car.recent_operations(LOG_LIMIT)]
 
 
+@_pane(list)
+def _store(session) -> list:
+    """What the store wrote down — the history behind every other pane.
+
+    Every other pane is the system NOW: what perception believes, what the car holds, what the
+    last observation decided. `explain()` is cleared by the next event and the transcript is
+    presentation history that nothing may consult. This is the only pane reading the thing that
+    survives the session, and it is the only one that can answer a question about a turn that
+    has already scrolled past.
+
+    `Session.recent_turns` exactly as the terminal's `/store` prints it, unreshaped: two doors
+    onto one session must not be able to show two histories of it. Read-only, and there is no
+    action or control behind it — the record is written by the door, never by the page.
+    """
+    return session.recent_turns(STORE_LIMIT)
+
+
 def snapshot(session) -> dict:
     return {
         "mode": _mode(session),
@@ -211,4 +232,7 @@ def snapshot(session) -> dict:
         "pending": _pending(session),
         "conversation": _conversation(session),
         "log": _log(session),
+        # Last, because it is the only key that is not a fact about now. Everything above is
+        # the state of the running system; this is what it recorded on the way here.
+        "store": _store(session),
     }

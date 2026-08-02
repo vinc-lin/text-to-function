@@ -126,9 +126,9 @@ def test_a_real_signal_goes_stale_through_the_world(car):
     """The whole chain: the car stamps, `signal_age` reads the stamp, `sensed_max_age` says how
     long that is good for, and the hub turns the two into an absence."""
     from intake.hub import WorldView
-    from scene.context import SceneContext
+    from tests.perception import perception_store
 
-    world = WorldView(SceneContext(), car)
+    world = WorldView(perception_store(), car)
     car.set_signal("vehicle.all", "speed_kph", 45.0)
     now = time.time()
     assert world.signal("vehicle.all", "speed_kph", now) == 45.0
@@ -145,9 +145,9 @@ def test_a_real_actuated_signal_never_goes_stale_through_the_world(car):
     """Ten minutes of silence, and the child lock still reads False rather than absent. If it
     did not, `open_window`'s precondition would start passing on an unknown lock."""
     from intake.hub import WorldView
-    from scene.context import SceneContext
+    from tests.perception import perception_store
 
-    world = WorldView(SceneContext(), car)
+    world = WorldView(perception_store(), car)
     later = time.time() + 600.0
     assert world.signal_status("window.all", "window_child_lock", later)[0] == "live"
     assert world.signal("window.all", "window_child_lock", later) is False

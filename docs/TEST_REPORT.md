@@ -3,10 +3,12 @@
 **Date:** 2026-07-28
 **Scope:** the 131 end-to-end cases covering the Central Model's business workflow
 **Suite when this was written:** 456 passed · 1 xfailed · 3 deselected. **The current figure lives in
-the newest update section and nowhere else — §11.**
+the newest update section and nowhere else — §13.**
 **Updated 2026-07-29** after the extractor and negation fixes — see §8.
 **Updated 2026-07-30** with the Scene Engine and the last red case — see §10.
 **Updated 2026-08-01** with sensed signals, staleness, a second rule, and intake — see §11.
+**Updated 2026-08-01, later** with the scene gold catching up with the rules — see §12.
+**Updated 2026-08-02** with what the store costs, and the judgement §9 of its design waits on — see §13.
 **Evaluation:** arm C (deterministic, zero LLM), real embedder, gold test split n=192
 
 > **This document is the home of the repository's current measured numbers.** `README.md` summarises
@@ -545,3 +547,335 @@ Two things this buys that the previous 13 rows could not:
 **What has not changed:** the gold is still hand-authored, so `scene_recall 1.000` is still agreement
 with what we decided two cameras would report, not evidence about perception. Seven more rows of our
 own beliefs are seven more beliefs. Arm S_llm still dates from 2026-07-30 and one rule.
+
+---
+
+## 13. Update — 2026-08-02: what the store costs
+
+**Suite:** 1074 passed · 1 skipped · 5 deselected · 0 xfailed. This is the current figure; §11's
+is superseded.
+
+The Store (`docs/superpowers/specs/2026-08-02-the-store-design.md`) is **built and measured
+before the vehicle path adopts it**. §9 of that design names four numbers and says a bad one
+stops the work rather than being optimised around. This section is those four numbers, two
+levers that were left open, and the recommendation they add up to. The harness is
+`eval/measure_store.py`; every figure below is reproducible from it.
+
+### The machine, and what it is not
+
+An x86 dev box: **WSL2 (Linux 6.6.87.2-microsoft-standard-WSL2), 24 logical CPUs, Python
+3.10.12, SQLite 3.37.2**, GPU RTX 4060 Ti for the embedder. Two filesystems, and the difference
+between them is larger than any change measured here:
+
+| label | what it is | why it appears |
+|---|---|---|
+| **repo (9p)** | `/mnt/x`, a Windows drive through WSL2's passthrough | where the repository lives, so `--db ./car.db` lands here |
+| **tmp (ext4)** | a Linux virtual disk | the closest thing here to a normal Linux disk |
+
+**None of this is SA8797.** There is no automotive SoC, no eMMC and no UFS anywhere near this
+repository. What transfers is the *shape* of the cost — that it is linear in commits rather
+than in bytes, that it scales with rows until something deletes them, that WAL moves it by a
+large factor. The absolute milliseconds do not transfer and should not be quoted as if they
+did.
+
+**Medians, over stated repetitions.** In-memory figures are the median of 9 trials of 2,000
+operations; file-database figures the median of 7 trials of 100. End-to-end figures are p50/p95
+over 60 gold test-split utterances. **The shipped default is `:memory:`** — only `--db` pays a
+disk cost at all today.
+
+### 1. Write cost per perception frame
+
+"Before" is not an estimate. It comes from running the same script in a worktree at `0368ba5`,
+the last commit before the store existed, where `SceneContext()` still takes no argument.
+
+| operation | backing | median |
+|---|---|---:|
+| `SceneContext.update` | **dict, pre-store** | **0.001 ms** |
+| `SceneContext.update` | row, `:memory:`, no commit | 0.004 ms |
+| `SceneContext.update` | row, `:memory:`, commit per frame | 0.007 ms |
+| `SceneContext.update` | row, file on ext4, no commit | 0.004 ms |
+| `SceneContext.update` | row, file on ext4, **commit per frame** | **2.976 ms** |
+| `SceneContext.update` | row, file on 9p, **commit per frame** | **11.255 ms** |
+| `Intake.ingest(Percept)` — the whole frame | **pre-store, `:memory:`** | **0.034 ms** |
+| `Intake.ingest(Percept)` | store, `:memory:` | **0.104 ms** |
+| `Intake.ingest(Percept)` | store, file on ext4 | 3.303 ms |
+| `Intake.ingest(Percept)` | store, file on 9p | 14.598 ms |
+
+**The belief write is 4 µs and the fsync is 3,000.** A dict assignment became a row at a cost of
+3 µs; committing that row costs a thousand times more. Every conclusion below follows from that
+one ratio: the store's cost is not the SQL, it is the number of times something calls `commit`.
+
+At the input level — the number that matters, since the frame also writes a raw row, a turn and
+a decision per rule — a perception frame went from **0.034 ms to 0.104 ms in memory**, and to
+**3.3 ms on a file database**. At 10 Hz the in-memory figure is 0.1% of a frame interval and the
+file figure is 3.3%.
+
+### 2. Rule evaluation: N queries versus N dict reads
+
+**N was counted, not assumed, and it is not what the rule set looks like it is.**
+`evaluate_explained` checks signal conditions *first*, so a rule the car has already settled
+never reads perception:
+
+| state | `get` per event | `live` per event |
+|---|---:|---:|
+| arm S, car parked (as seeded) | 1 | 0 |
+| arm S, car moving at 45 kph | 2 | 0 |
+| arm S_llm, moving, nothing matched | 2 | 1 |
+
+**`live()` is called zero times per event on the shipped arm.** `_fallback` returns before
+touching it when no scene model is attached, and arm S is the shipped arm. The O(rows) scan the
+design worried about is on arm S_llm's path and on both display panes' — not on arm S's.
+
+| operation | perception rows | dict (pre-store) | rows (store) |
+|---|---:|---:|---:|
+| `get(key, now)` × 1 | 0 | 0.1 µs | 2.8 µs |
+| `get(key, now)` × 2 — one event, both rules | 0 | 0.5 µs | 6.0 µs |
+| `get(key, now)` × 1 | 100 | 0.2 µs | 8.0 µs |
+| `get(key, now)` × 2 | 100 | 0.7 µs | 17.2 µs |
+| `get(key, now)` × 1 | 36,000 | 0.2 µs | 8.5 µs |
+| `get(key, now)` × 2 | 36,000 | 0.7 µs | **18.2 µs** |
+| `live(now)` | 36,000 | 0.4 µs | **1,006 µs** |
+| `live(now)`, after `compact_perception` | 36,000 | — | **20.6 µs** |
+
+In the pre-store column "36,000 rows" means 36,000 updates applied to a dict that only ever
+holds two keys — which is the whole difference. **A rule evaluation costs 26× what it did (0.7 µs
+→ 18.2 µs) and is flat in table size**, because `perception_newest` is an index. `live()` is not
+flat: at one hour of 10 Hz with no compaction it is 1 ms, and `compact_perception` takes it to
+20.6 µs, a 49× recovery. The table is small because something empties it, not because the query
+is clever.
+
+### 3. End-to-end against the 50–85 ms baseline
+
+Real embedder, arm C, no LLM, 60 gold test-split utterances through `Intake.ingest(Utterance)`
+— which routes, executes against the car, and writes the turn.
+
+| path | database | p50 | p95 |
+|---|---|---:|---:|
+| `pipeline.route` — no store in the path | `:memory:` | 51.8 ms | 120.2 ms |
+| `Intake.ingest(Utterance)` — **pre-store tree** | `:memory:` | 54.2 ms | 106.6 ms |
+| `Intake.ingest(Utterance)` — store, as shipped | `:memory:` | **62.2 ms** | 120.7 ms |
+| `Intake.ingest(Utterance)` — store, as shipped | file on ext4 | 78.2 ms | 136.5 ms |
+| `Intake.ingest(Utterance)` — store, as shipped | file on 9p | 93.8 ms | 160.2 ms |
+| `Intake.ingest(Utterance)` — WAL + `NORMAL`, car commits deferred | file on ext4 | 66.9 ms | 136.6 ms |
+| `Intake.ingest(Utterance)` — WAL + `NORMAL`, car commits deferred | file on 9p | 83.2 ms | 151.1 ms |
+| `pipeline.route` — **re-measured last, same session** | `:memory:` | 65.7 ms | 130.7 ms |
+
+**Read the last row before any of the others.** It is the *same operation* as the first row,
+measured again at the end of the same process: 51.8 ms became 65.7 ms. Across four runs of this
+section `pipeline.route`'s p50 ranged 50.6–65.7 ms. **The machine's run-to-run noise on the
+router is larger than everything the store adds in memory**, so the real-embedder table can
+support only one claim: with `:memory:`, the shipped default, the store is inside the noise and
+the 50–85 ms figure stands.
+
+To get a number rather than a noise band, the same measurement under `--fake` — a hashed-ngram
+embedder with no semantics, useless for behaviour and exactly right for plumbing:
+
+| path | database | p50 | over `route` |
+|---|---|---:|---:|
+| `pipeline.route` | `:memory:` | 0.416 ms | — |
+| `Intake.ingest(Utterance)` — pre-store | `:memory:` | 0.398 ms | +0.008 ms |
+| `Intake.ingest(Utterance)` — store | `:memory:` | 0.514 ms | **+0.098 ms** |
+| `Intake.ingest(Utterance)` — store, as shipped | file on ext4 | 3.790 ms | **+3.374 ms** |
+| `Intake.ingest(Utterance)` — store, as shipped | file on 9p | 14.871 ms | +14.455 ms |
+| `Intake.ingest(Utterance)` — WAL + `NORMAL`, deferred | file on ext4 | 0.576 ms | **+0.160 ms** |
+| `Intake.ingest(Utterance)` — WAL + `NORMAL`, deferred | file on 9p | 3.981 ms | +3.565 ms |
+
+**The store costs 0.098 ms on a voice turn in memory** — 0.2% of a 50 ms turn — **and 3.4 ms on
+a file database as shipped**, which is 4–7% and visible. Tuned, the file database costs 0.16 ms.
+
+### 4. Write volume at 10 Hz
+
+6,000 frames — ten simulated minutes, on the caller's clock, never a sleep — then the clock
+moved past both retention windows to find the plateau rather than the growth. Bytes are
+`page_count × page_size`, so they do not depend on the filesystem. `bytes/frame` agreed within
+2% between a 700-frame and a 6,000-frame run, which is what justifies the extrapolation.
+
+| producer | retention | bytes/frame | **extrapolated bytes/hour** |
+|---|---|---:|---:|
+| `SignalWrite` (can0) | off | 138 | **5.0 MB** |
+| `SignalWrite` (can0) | on | 138 | 5.0 MB |
+| `Percept` (cabin_cam) | off | 488 | **17.6 MB** |
+| `Percept` (cabin_cam) | on | 362 | 13.0 MB |
+
+Where those bytes sit, and what survives the clock being moved past both windows:
+
+| producer | retention | `decision` | `turn` | `perception` | `observation_raw` |
+|---|---|---:|---:|---:|---:|
+| `SignalWrite` | off | — | — | — | 6,001 rows, 792 KiB |
+| `SignalWrite` | **on, settled** | — | — | — | **1 row** |
+| `Percept` | off | 12,000 rows, 964 KiB | 6,000 rows, 152 KiB | 6,000 rows, 612 KiB | 6,001 rows, 912 KiB |
+| `Percept` | **on, settled** | **12,000 rows, 964 KiB** | **6,000 rows, 140 KiB** | 1 row | 1 row |
+
+Raw rows surviving each horizon, which is the two windows doing what they were declared to do:
+
+| producer | end of run | +2 h | +2 days |
+|---|---:|---:|---:|
+| `SignalWrite` (24 h window — a number about the machine) | 6,001 | 6,001 | 1 |
+| `Percept` (1 h window — what a camera saw) | 6,001 | 1 | 1 |
+
+**Retention and compaction work, and they do not bound the thing that grows.** `observation_raw`
+plateaus — 4.9 MB/h × 24 h ≈ **117 MB** for the CAN reader, 5.6 MB/h × 1 h ≈ **5.6 MB** for the
+camera — and `perception` compacts from 6,000 rows to one. But **nothing deletes a `turn` or a
+`decision`.** At 10 Hz vision that is 188 bytes per frame that is never reclaimed:
+
+> **6.8 MB per hour, forever. 6.8 GB per thousand hours of driving.**
+
+Every one of those rows is a perception frame in which *nothing happened*: a turn with an empty
+reply and one `NOT_APPLICABLE` decision per rule. `Intake._write` already declines to open a
+turn for a signal frame — "a turn per frame would also put a row on the bus at 10 Hz for a turn
+in which nothing happened" — and the measurement says that argument applies just as well to a
+`Percept` that decided nothing.
+
+### The two levers
+
+**Commits per input, counted** — because the cost is per commit, this table is the map of it:
+
+| input | commits, as shipped | of those, the car's | left if the car defers |
+|---|---:|---:|---:|
+| `SignalWrite` (can0), the 10 Hz input | 2 | 1 | 1 |
+| `Percept` (cabin_cam), no action | 1 | 0 | 1 |
+| an utterance answered as consent, which actuates | 4 | 3 | 1 |
+
+Task 4 batched the store's own writes to one commit per input. **`SqliteVehicle.set_signal`,
+`write_many` and `log` each still commit separately, outside `Store`**, so the boundary does not
+actually hold for any input that touches the car — and on the actuating path three of the four
+fsyncs are the car's. Deferring them to the door's existing commit changes nothing about when
+data becomes durable relative to the input it belongs to.
+
+`Intake.ingest(SignalWrite)` — the 10 Hz input — median of 100 × 7:
+
+| disk | journal mode | car's commits | median | fsyncs/input |
+|---|---|---|---:|---:|
+| ext4 | default (`delete`, `synchronous=FULL`) | as shipped | **6.590 ms** | 2 |
+| ext4 | default | deferred to the door | 3.353 ms | 1 |
+| ext4 | **WAL + `synchronous=FULL`** | as shipped | 1.496 ms | 2 |
+| ext4 | **WAL + `synchronous=FULL`** | deferred to the door | **0.839 ms** | 1 |
+| ext4 | WAL + `synchronous=NORMAL` | as shipped | 0.138 ms | 2 |
+| ext4 | WAL + `synchronous=NORMAL` | deferred to the door | **0.092 ms** | 1 |
+| 9p | default | as shipped | **23.170 ms** | 2 |
+| 9p | default | deferred to the door | 13.759 ms | 1 |
+| 9p | WAL + `synchronous=FULL` | as shipped | 8.039 ms | 2 |
+| 9p | WAL + `synchronous=FULL` | deferred to the door | 4.501 ms | 1 |
+| 9p | WAL + `synchronous=NORMAL` | as shipped | 4.803 ms | 2 |
+| 9p | WAL + `synchronous=NORMAL` | deferred to the door | **2.891 ms** | 1 |
+
+**Deferring the car's commits is very nearly a factor of two, everywhere**, which is exactly
+what a cost linear in commits predicts when you remove one of two. It is free: no durability
+semantics change, because the door already commits once per input and half a turn in the record
+was never reachable.
+
+**WAL is the larger lever and it is not free.** WAL with `synchronous=FULL` is 4.4× on ext4 and
+2.9× on 9p **at unchanged durability** — a returned commit is still on the platter. Going on to
+`synchronous=NORMAL` buys another 11× on ext4 and 1.7× on 9p, and changes what a power cut
+costs: a commit survives a process crash, but the last transactions can be lost to an OS crash
+or an abrupt power-off. On a vehicle that is a statement about the record — the last frames of
+`observation_raw`, possibly the last `operation_log` row — and it is a decision to argue, not a
+knob to turn. WAL was **not refused on either filesystem**, including the Windows passthrough.
+
+**Nothing here was adopted.** `t2f/` is untouched, `sim/vehicle.py` still commits exactly as it
+did, and no pragma changed. These are measurements of proposed changes, made with the shipped
+statements running under a proxy that counts and optionally withholds the commit.
+
+### The recommendation §9 was waiting for
+
+**Yes for `:memory:`, which is the shipped default and is already live. Yes for the vehicle
+path, conditional on three things, one of which is a design decision and not a tuning knob.**
+
+1. **Adopt the deferral of the car's commits first.** It halves the fsyncs on the 10 Hz path for
+   nothing — no durability change, no new dependency, no API change. On the evidence it is the
+   only change here that has no argument against it.
+2. **Adopt WAL with `synchronous=FULL` as the default.** 4.4× on the 10 Hz input with the
+   durability guarantee unchanged. Keep `synchronous=NORMAL` available and require a written
+   argument per vehicle programme, because it trades the last few transactions against a power
+   cut and that is a property of the record, not of the runtime.
+3. **Do not flip the perception path onto per-frame writes until `turn` and `decision` are
+   bounded.** This is the bad number, and it is not a latency one. 6.8 MB/hour that no policy
+   ever reclaims, on a device where flash wear is the constraint the design named, is not
+   adoptable — and the rows in question record that nothing happened. Either they get a
+   retention policy of their own or a perception event that produced `no_action` stops opening a
+   turn. Both are design decisions and belong to whoever writes phase 3.
+
+With (1) and (2) in place a voice turn on a file database costs +0.16 ms against a 50–85 ms
+baseline and a 10 Hz signal frame costs 0.84 ms of a 100 ms interval. Neither is a reason to
+stop. (3) is.
+
+**A fourth condition, weaker but worth stating:** `compact_perception` must actually be running
+before anything calls `live()` at frame rate. It is not on arm S's hot path today, so the
+1 ms-at-36,000-rows figure is currently paid only by arm S_llm and by the two display panes —
+but a third rule with a fallback attached would put it on the hot path without anyone deciding
+to.
+
+### What this update does NOT establish
+
+- **Nothing about SA8797.** No automotive SoC, no eMMC, no UFS. The two filesystems measured are
+  a Windows-drive passthrough and a Linux virtual disk on an NVMe host; a car's flash behaves
+  differently from both.
+- **Nothing about flash *wear*.** Bytes per hour is the input to a wear calculation, not the
+  answer. Erase-block size, over-provisioning and the controller's write amplification all sit
+  between 6.8 MB/hour and a lifetime, and none of them is visible from here.
+- **Nothing about concurrency.** One process, one connection. Producers writing rows from other
+  processes is the design's central claim, and WAL's reader/writer behaviour under that load is
+  untested — which matters because WAL is exactly the mode whose behaviour changes under it.
+- **Nothing about power loss.** WAL + `synchronous=NORMAL`'s durability claim is from SQLite's
+  documentation, not from pulling the plug on this box.
+- **No sustained hour.** The volume figures are 6,000 frames extrapolated, after a 36,000-frame
+  run was started and abandoned at roughly 10,000 frames as costing more than it would settle.
+  `bytes/frame` held to within 2% across a 10× range of run lengths, which is the evidence the
+  extrapolation rests on and is weaker than a full hour would be.
+- **The real-embedder end-to-end table is a noise band, not a measurement.** 50.6–65.7 ms p50
+  for the identical `pipeline.route` call across four runs. It is enough to say the store does
+  not move the 50–85 ms figure in memory; it is not enough to say by how much, and the `--fake`
+  table is what carries that.
+
+### Both proof obligations
+
+`python3 -m eval.run_eval --arm C --dataset data/eval/gold.jsonl --fake --permissive` and
+`python3 -m eval.run_scene_eval --arm S` were captured before this task and re-run after it.
+Arm S is **byte-identical**, report and stdout. Arm C is byte-identical apart from
+`p50_latency_ms` 0.2708 → 0.2719 and `p95_latency_ms` 0.3060 → 0.3090 — wall-clock jitter of
+0.4% and 1%, on a measurement this section has just spent several pages establishing has a much
+wider noise band than that. Nothing in this task touches a code path either arm executes: it
+adds `eval/measure_store.py` and this section, and changes nothing else.
+
+---
+
+## 14. Update — 2026-08-02, later: the condition §13 attached has been met
+
+§13 recommended the vehicle path adopt the store under three conditions, and named the third as
+the one that was not a latency problem:
+
+> Do not flip the perception path until `turn` and `decision` are bounded.
+
+**That is now done** (`13f9586`). Nothing had ever deleted a turn or a decision, so the audit
+trail grew at 188 B per input forever — 6.8 MB an hour at 10 Hz, 6.8 GB per thousand hours — and
+most of those rows recorded a frame in which nothing happened.
+
+Turns now expire on the retention pass that already runs, at a 24-hour window. **The trail
+plateaus at roughly 162 MB** rather than growing without limit. The window is deliberately longer
+than the one-hour content window: a turn and its decisions are what let somebody ask why the car
+did something, and that question outlives the words that prompted it.
+
+The two directions differ, and the schema enforces it rather than the sweep remembering to:
+
+| | on a turn being deleted | why |
+|---|---|---|
+| `decision` | **CASCADE** | a reason with no turn is an orphan record of something that did not happen |
+| `operation_log` | **SET NULL** | the car really did that. An operation must outlive the explanation of why — a gap in the reasoning is a cost, a gap in what the vehicle did is the one thing this store exists never to have |
+
+That asymmetry is schema version 4, and both halves have a test.
+
+**The other two conditions stand unchanged**, and neither has been adopted here: deferring the
+car's own commits (free, halves the fsyncs) and WAL with `synchronous=FULL`. Both were measured in
+§13 and left un-adopted on purpose — changing durability semantics on a vehicle is a decision to
+state, not a knob to turn while passing.
+
+**One further fix, found by reading the record rather than testing it.** A consent turn writes no
+`utterance` row, so once its raw payload expired, `decision.subject` held the last verbatim copy of
+what the driver said — and `Store.sweep` scrubbed only `kind = 'route'`. An hour past retention the
+record still read `decided 好`. Now `kind IN ('route', 'consent')`, with a test. The completeness
+test asserts every path *leaves* rows; it never *reads* them the way a person does, which is why
+six tasks of building the store did not surface this and twenty minutes of `/store` did.
+
+**Suite at this point: 1105 passed, 1 skipped, 5 deselected, 0 xfailed.** Both proof obligations
+byte-identical throughout: `run_eval --arm C` and `run_scene_eval --arm S` unmoved except arm C's
+two latency lines, which are wall-clock jitter on this host.

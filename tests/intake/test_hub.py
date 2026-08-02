@@ -2,7 +2,8 @@
 import pytest
 
 from intake.hub import WorldView
-from scene.context import Observation, SceneContext
+from scene.context import Observation
+from tests.perception import perception_store
 
 
 class SpyCar:
@@ -23,7 +24,7 @@ class SpyCar:
 
 
 def _ctx(**kw):
-    ctx = SceneContext()
+    ctx = perception_store()
     ctx.update(Observation(kw.get("key", "inside.rear_occupant"), kw.get("value", "child"),
                            kw.get("confidence", 0.9), "cabin_cam",
                            kw.get("at", 100.0), kw.get("ttl", 300.0)))
@@ -41,12 +42,12 @@ def test_a_stale_observation_reads_as_absent():
 
 
 def test_a_signal_reads_through_to_the_car():
-    world = WorldView(SceneContext(), SpyCar({("vehicle.all", "speed_kph"): 45.0}))
+    world = WorldView(perception_store(), SpyCar({("vehicle.all", "speed_kph"): 45.0}))
     assert world.signal("vehicle.all", "speed_kph", now=100.0) == 45.0
 
 
 def test_a_missing_signal_reads_as_absent():
-    assert WorldView(SceneContext(), SpyCar()).signal("no.such", "thing", now=100.0) is None
+    assert WorldView(perception_store(), SpyCar()).signal("no.such", "thing", now=100.0) is None
 
 
 def test_live_facts_covers_both_stores():
@@ -65,7 +66,7 @@ def test_the_hub_holds_nothing_writable():
     """`read-through` in a docstring is not an enforcement mechanism. VehicleFacts carried this
     property and WorldView absorbs it: a hub that could write would be a second route to the
     car with none of the executor's checks."""
-    world = WorldView(SceneContext(), SpyCar())
+    world = WorldView(perception_store(), SpyCar())
     reachable = [v for v in vars(world).values() if hasattr(v, "set_signal")]
     assert reachable == []
 
@@ -118,13 +119,13 @@ class AgelessCar(SpyCar):
 
 
 def test_a_fresh_signal_reports_itself_live():
-    world = WorldView(SceneContext(), SpyCar({("vehicle.all", "speed_kph"): 45.0}))
+    world = WorldView(perception_store(), SpyCar({("vehicle.all", "speed_kph"): 45.0}))
     status, _ = world.signal_status("vehicle.all", "speed_kph", now=100.0)
     assert status == "live"
 
 
 def test_a_signal_the_car_does_not_hold_reports_itself_missing():
-    world = WorldView(SceneContext(), SpyCar())
+    world = WorldView(perception_store(), SpyCar())
     status, detail = world.signal_status("no.such", "thing", now=100.0)
     assert status == "missing"
     assert "no.such/thing" in detail
@@ -139,7 +140,7 @@ def test_a_stale_signal_names_both_ages():
     the wiring, and the wiring is a guarded lazy import that fails silently, so a test that
     supplies its own max age would keep passing over a hub that reads nothing at all.
     """
-    world = WorldView(SceneContext(), AgedCar(4.2, {("vehicle.all", "speed_kph"): 45.0}))
+    world = WorldView(perception_store(), AgedCar(4.2, {("vehicle.all", "speed_kph"): 45.0}))
     status, detail = world.signal_status("vehicle.all", "speed_kph", now=500.0)
     assert status == "stale"
     assert detail == "vehicle.all/speed_kph is stale (4.2s > 2.0s)"
@@ -148,7 +149,7 @@ def test_a_stale_signal_names_both_ages():
 def test_a_stale_signal_reads_as_absent():
     """Identical to a signal the car does not hold, so every condition on it rejects and the
     engine falls silent rather than acting on a value from ten minutes ago."""
-    world = WorldView(SceneContext(), AgedCar(4.2, {("vehicle.all", "speed_kph"): 45.0}))
+    world = WorldView(perception_store(), AgedCar(4.2, {("vehicle.all", "speed_kph"): 45.0}))
     assert world.signal("vehicle.all", "speed_kph", now=500.0) is None
     assert world.live_facts(now=500.0) == {}
 
@@ -160,7 +161,7 @@ def test_a_signal_with_no_declared_decay_never_goes_stale():
     Ten minutes of silence and it still reads live, from the real declaration: `sim/seed.py`
     puts `max_age` on the sensed rows only, and a window position is not one of them.
     """
-    world = WorldView(SceneContext(), AgedCar(600.0, {("window.all", "window_position"): 0}))
+    world = WorldView(perception_store(), AgedCar(600.0, {("window.all", "window_position"): 0}))
     assert world.signal_status("window.all", "window_position", now=1000.0)[0] == "live"
 
 
@@ -168,7 +169,7 @@ def test_a_car_that_cannot_report_age_reads_as_live():
     """A signal with no known age is not a stale signal. Treating it as one would silence every
     rule the moment staleness landed, and `SqliteVehicle` is not the only thing that can be
     passed here — the sweep's spies and any future car port are cars too."""
-    world = WorldView(SceneContext(), AgelessCar({("vehicle.all", "speed_kph"): 45.0}))
+    world = WorldView(perception_store(), AgelessCar({("vehicle.all", "speed_kph"): 45.0}))
     assert world.signal_status("vehicle.all", "speed_kph", now=1e9)[0] == "live"
     assert world.signal("vehicle.all", "speed_kph", now=1e9) == 45.0
 

@@ -17,7 +17,9 @@ from t2f.gate import Thresholds
 from t2f.types import LLMResult, ToolCall
 from intake.envelope import Input, Percept, SignalWrite, Utterance
 from intake.hub import WorldView
-from intake.ingest import Intake
+from intake.ingest import Intake, encode_payload
+from intake.store import Store
+from scene.consent import Answer
 from scene.context import SceneContext
 from scene.engine import SceneEngine
 from sim.executor import SqliteExecutor
@@ -37,7 +39,19 @@ PERMISSIVE = Thresholds(high_top1=0.2, high_margin=0.0, low_top1=0.05)
 # an instruction to the car. Sending it under any other name would put a measurement into the
 # system with provenance that is not true.
 UTTERANCE_SOURCE = "mic"
+# Which camera saw it, from the namespace the key names. A single default made every
+# `outside.*` observation claim the cabin camera saw the road -- all six front_object rows in
+# the scene gold say exactly that -- which is the decorative `source` that intake/sources.py
+# was declared to end. An unknown namespace falls to the cabin because that is where an
+# unprefixed key already lands.
 PERCEPT_SOURCE = "cabin_cam"
+_PERCEPT_SOURCE_BY_NAMESPACE = {"inside": "cabin_cam", "outside": "front_cam"}
+
+
+def percept_source(key: str) -> str:
+    """The declared source a key of this namespace comes from."""
+    namespace, _, _ = key.partition(".")
+    return _PERCEPT_SOURCE_BY_NAMESPACE.get(namespace, PERCEPT_SOURCE)
 SIGNAL_SOURCE = "can0"
 
 
@@ -100,6 +114,10 @@ class Session:
         self.pipeline, self.car, self.executor = pipeline, car, executor
         self.cards, self.config = cards, config
         self.fake, self.llm, self.gate = fake, llm, gate
+        # Overwritten by `build`. Defaulted here so anything reading it off a session
+        # constructed directly — the display, mode_label — gets the shipped answer rather than
+        # an AttributeError.
+        self.raw_capture = True
         # Everything the scene engine decides is a function of `now`: a TTL, a cooldown, a
         # persistence window. At a terminal those are all measured in minutes, so without a
         # lie to tell about the clock most of the engine is unreachable by hand.
@@ -108,7 +126,8 @@ class Session:
     # --- construction ------------------------------------------------------------------
     @classmethod
     def build(cls, *, fake=False, llm=True, gate="shipped", db=":memory:",
-              catalog="data/catalog", config_path="config.yaml", scene_llm=None):
+              catalog="data/catalog", config_path="config.yaml", scene_llm=None,
+              raw_capture=True):
         cards = load_catalog(catalog)
         config = Config.default() if fake else Config.load(config_path)
         embedder = cls._embedder(config, fake)
@@ -129,7 +148,21 @@ class Session:
         # Perception is built HERE rather than inside the engine, because the world is a view
         # over it and has to exist first. Both objects are over the one store, which the engine
         # checks: a second SceneContext would be written by the engine and read by nobody.
-        perception = SceneContext()
+        #
+        # The car's own connection, not a second one to the same file: two connections are two
+        # opinions about a transaction, and the car already owns the only one. It also decides
+        # what `--db` now means — a persisted car is a file that remembers what the cameras
+        # said, which is why retention and the privacy switch are part of this work rather than
+        # a later thought.
+        #
+        # `raw_capture` is carried here rather than read from a config, because it is the one
+        # decision in this constructor that is about people rather than about the machine: with
+        # it off nothing this session hears is written down verbatim — not the payload, not the
+        # transcript, not the clause a decision names. Everything else is unchanged, which is
+        # what makes it a switch and not a mode.
+        store = Store(car.conn, raw_capture=raw_capture)
+        session.raw_capture = bool(raw_capture)
+        perception = SceneContext(store)
         world = WorldView(perception, car)
         session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
                                     world=world, executor=executor,
@@ -140,7 +173,11 @@ class Session:
         # disciplines — and `cli/` is deliberately not packaged, so a real integration would
         # have had to reimplement that wiring. It is `intake`'s now; the three methods below
         # are envelope builders over one door.
-        session.intake = Intake(pipe, session.scene, car, world)
+        # The same store the engine writes beliefs into, handed over rather than left to the
+        # default. The door would build an identical one from `car.conn`, so this is not
+        # correctness — it is the composition root saying out loud that there is one store,
+        # the way it already says there is one car and one world.
+        session.intake = Intake(pipe, session.scene, car, world, store=store)
         session._seeded = session._snapshot()      # baseline for /car
         session._hold_sensed()
         return session
@@ -280,7 +317,7 @@ class Session:
     OBSERVATION_TTL = 300.0
 
     def observe(self, key: str, value, confidence: float = 0.9,
-                source: str = "cabin_cam", ttl: Optional[float] = None) -> Turn:
+                source: Optional[str] = None, ttl: Optional[float] = None) -> Turn:
         """One perception event in, one Turn out — the scene analogue of handle().
 
         Validated here rather than in each caller, because the terminal and the browser are
@@ -311,7 +348,7 @@ class Session:
         # and `intake` is what turns them into perception's own shape. This method's job is now
         # the validation above and nothing else.
         outcome = self.intake.ingest(
-            Input(source=source, at=now,
+            Input(source=source or percept_source(full_key), at=now,
                   payload=Percept(full_key, value, confidence,
                                   self.OBSERVATION_TTL if ttl is None else ttl)))
         return Turn(utterance=f"[scene] {key}={value}", reply=outcome.speech,
@@ -323,6 +360,11 @@ class Session:
         self.pump(now)
         before = self._snapshot()
         try:
+            # Taken before `resolve`, because `resolve` is a path that ACTUATES: a watermark
+            # read afterwards sits above the operations it is meant to claim and attributes
+            # nothing. Discarded when the words turn out not to be an answer — `Intake._route`
+            # takes its own for the routing turn that follows.
+            since = self.intake.store.operations_watermark()
             # Consent stays here, ahead of the door, and §11 says why it is deferred: a pending
             # question is not a fact about the world, and putting it in intake is how intake
             # becomes the thing every module imports. 好 is only an answer because this session
@@ -331,6 +373,7 @@ class Session:
             if consent.answered:
                 # The driver was answering the car, not commanding it. Routing these words
                 # would treat 好 as an utterance to match against 92 functions.
+                self._record_consent(utterance, consent, now, since)
                 return Turn(utterance=utterance, reply=consent.speech, scene="consent",
                             deltas=self._deltas_since(before))
             result = self.intake.ingest(
@@ -340,6 +383,58 @@ class Session:
         deltas = self._deltas_since(before)
         return Turn(utterance=utterance, reply=result.reply,
                     spans=[self._span(cl, deltas) for cl in result.clauses])
+
+    def _record_consent(self, utterance: str, consent, now: float, since: int) -> None:
+        """Write the consent turn down, because nothing else will.
+
+        **This is the only path to the car that does not go through the door**, so it is the
+        only one whose record the door cannot write. Without these five statements an action
+        the driver authorised lands in `operation_log` with a NULL `turn_id` — an execution
+        with nothing in the store saying who asked for it, which is precisely what
+        `tests/intake/test_completeness.py` exists to make impossible. It was NULL until this
+        method existed; the negative test there is what keeps it filled.
+
+        Written here rather than moved into `intake` because this is where the decision is
+        made, and the reason it is made here has not changed: 好 is only an answer because this
+        session is holding a question, and nothing in an envelope can know that. **The residual
+        gap is worth stating rather than leaving to be discovered** — `cli/` is not packaged,
+        so a consumer that assembled its own composition and called `SceneEngine.resolve`
+        itself would get no record. There is no such consumer: `resolve` has exactly one caller
+        in the repo, above. A second one is the thing to notice.
+
+        Opened AFTER the work, which is the opposite of `_route` and needs its reason said out
+        loud: `SceneEngine.resolve` is documented never to raise — it catches everything and
+        returns a failure result — so there is no mid-way death for an early row to survive.
+        What genuinely has to happen first is the watermark, and it does.
+        """
+        store = self.intake.store
+        # One raw row, and only now that the words have turned out to be an answer. An
+        # utterance that is NOT an answer goes on to the door, which writes its own raw row —
+        # writing one here as well would put the same sentence in the record twice and read as
+        # the driver having said it twice.
+        raw_id = store.put_raw(UTTERANCE_SOURCE, now, encode_payload(Utterance(utterance)))
+        turn_id = store.open_turn(raw_id, now, "consent")
+        store.put_decision(
+            turn_id,
+            # Through `spoken`, because 好 IS speech: the privacy switch has to reach the answer
+            # the same way it reaches a routed clause, or it keeps the words it claims to drop.
+            store.spoken(utterance) or "",
+            # The classification, not the outcome. "yes, and the car refused" and "no" are
+            # different facts and both end up answered-but-not-executed; a verdict derived from
+            # `executed` alone would file the first as the second. "" only when `resolve` caught
+            # an infrastructure fault before it classified anything.
+            consent.answer or "unclassified",
+            consent.tool_call.name if consent.tool_call else None,
+            # Why nothing happened, when nothing did. Empty for the two cases that need no
+            # explanation: it worked, or the driver said no.
+            "" if consent.executed or consent.answer == Answer.NO.value else consent.speech)
+        store.close_turn(turn_id, consent.speech, since_operation=since)
+        # Marked processed for the reason `ingest` marks its own: this row was handled
+        # synchronously, and one left pending is one `process_pending` would run a second time.
+        store.mark_processed(raw_id, now)
+        # One commit per input, the boundary `Intake.ingest` uses. Half a consent turn in the
+        # record is a worse artifact than none.
+        store.commit()
 
     def _deltas_since(self, before: dict) -> list:
         return [Delta(e, a, before.get((e, a)), v) for (e, a), v in self._snapshot().items()
@@ -430,6 +525,34 @@ class Session:
                         age=now - o.at, expires_in=o.at + o.ttl - now)
              for o in self.scene.context.live(now).values()),
             key=lambda r: r.key)
+
+    # How many turns a hand tool shows by default. Small on purpose: this is the answer to
+    # "why did it just do that", and a screen of history is a worse answer than four turns.
+    STORE_TURNS = 6
+
+    def recent_turns(self, limit: int = STORE_TURNS) -> list[dict]:
+        """What the store recorded, newest first — heard, decided, did, said.
+
+        The whole of `/store` and of the browser's record pane, in one place, because the two
+        doors must not be able to show different histories of one session.
+
+        This is where the two halves of the record are joined. `intake.store` owns the turn and
+        its decisions; `sim` owns `operation_log` and therefore what the car actually did. Both
+        are asked here, by the object that already holds both, so neither module has to reach
+        into the other's tables. See `Store.recent_turns` and `SqliteVehicle.operations_for_turn`.
+
+        Plain dicts rather than a dataclass, unlike `ContextRow`: every field goes to the page
+        as JSON unchanged, and a display type would have to be flattened again on the way out.
+        Nothing here derives anything from the session's clock either — these are rows as
+        written, and the stamps are the stamps.
+        """
+        turns = self.intake.store.recent_turns(limit)
+        for turn in turns:
+            turn["operations"] = [
+                {"function": op["function"], "outcome": op["outcome"],
+                 "error": op["error"], "detail": op["detail"]}
+                for op in self.car.operations_for_turn(turn["id"])]
+        return turns
 
     # --- the world, not the car ----------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value):
@@ -554,4 +677,9 @@ class Session:
                  "S_llm" if self.scene.llm is not None else "S"]
         if self.fake:
             parts.append("FAKE")
+        if not self.raw_capture:
+            # Only when OFF. The default is not worth a word on every prompt, and a session
+            # that is NOT writing down what it hears is: someone reading the store afterwards
+            # and finding no transcripts needs to know that was a setting and not a fault.
+            parts.append("no-raw")
         return " · ".join(parts)

@@ -9,6 +9,8 @@ import json, sqlite3, time
 from pathlib import Path
 from typing import Any, Optional
 
+from sim.migrate import migrate, refuse_if_newer
+
 SCHEMA = Path(__file__).parent / "schema.sql"
 
 
@@ -19,8 +21,16 @@ class SqliteVehicle:
         self.conn.execute("PRAGMA foreign_keys = ON")
 
     def init_schema(self) -> None:
+        """Create what is absent, then change what has changed shape. Both, in that order.
+
+        The order is required rather than tidy, and the refusal comes first because it is a
+        read: a store from a newer build must not be written to by the CREATE pass on its way
+        to being refused. sim/migrate.py holds the whole argument for both.
+        """
+        refuse_if_newer(self.conn)
         self.conn.executescript(SCHEMA.read_text(encoding="utf-8"))
         self.conn.commit()
+        migrate(self.conn)
 
     # --- signals ---------------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value: Any,
@@ -152,6 +162,22 @@ class SqliteVehicle:
     def recent_operations(self, limit: int = 20) -> list[dict]:
         rows = self.conn.execute(
             "SELECT * FROM operation_log ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [dict(r) for r in rows]
+
+    def operations_for_turn(self, turn_id: int) -> list[dict]:
+        """What the car did in one turn, oldest first.
+
+        Asked of the car rather than of `intake.store`, because the car owns this table and a
+        turn owns only the column that says why — `Store.operations_watermark` writes that one
+        column and reads nothing else of it. Keeping the read on this side means the join
+        between "what we decided" and "what the vehicle did" is made by whoever holds both,
+        and neither module has to know the other's tables.
+
+        Oldest first, unlike `recent_operations`: within one turn this is the order the car
+        did things in, and a multi-intent utterance reads backwards otherwise.
+        """
+        rows = self.conn.execute(
+            "SELECT * FROM operation_log WHERE turn_id = ? ORDER BY id", (turn_id,)).fetchall()
         return [dict(r) for r in rows]
 
     def close(self) -> None:

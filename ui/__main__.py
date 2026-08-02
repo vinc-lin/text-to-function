@@ -21,13 +21,17 @@ def main() -> int:
     ap.add_argument("--gate", default="shipped", choices=["shipped", "permissive"])
     ap.add_argument("--port", type=int, default=8770)
     ap.add_argument("--db", default=":memory:", help="keep the car on disk across runs")
+    ap.add_argument("--no-raw-capture", action="store_true",
+                    help="record what was decided, never the words: no payload, no transcript, "
+                         "no clause text")
     args = ap.parse_args()
 
     print("loading models (about a minute on first run) ..." if not args.fake
           else "starting with the fake embedder — routing is not meaningful", flush=True)
     # Built on this thread, served on this thread: sim/vehicle.py opens SQLite with default
     # thread affinity, so the connection may only be used where it was created.
-    session = Session.build(fake=args.fake, llm=not args.no_llm, gate=args.gate, db=args.db)
+    session = Session.build(fake=args.fake, llm=not args.no_llm, gate=args.gate, db=args.db,
+                            raw_capture=not args.no_raw_capture)
     server = make_server(session, args.port)
     print(f"\nready — {session.mode_label()}.  http://127.0.0.1:{args.port}  (ctrl-c to stop)\n",
           flush=True)

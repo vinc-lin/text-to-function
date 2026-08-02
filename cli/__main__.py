@@ -5,6 +5,7 @@ Deliberately thin: everything worth testing lives in session.py and render.py.
 from __future__ import annotations
 import argparse
 import sys
+import time
 
 from .render import render
 from .session import Session
@@ -14,6 +15,8 @@ HELP = """
   /gate shipped|permissive   switch the confidence thresholds
   /car                       signals that differ from the seeded car
   /log                       recent operations, and what the car said
+  /store [n]                 the last n turns as the store holds them —
+                             what it heard, decided, did and said
   /scene <key>=<value> [conf=] [ttl=]   one perception event, as if the cabin camera saw it
   /signal <entity>/<attr>=<value>       what the car is doing: a signal it senses, not a command
   /bus on|off                stop or start the sensed-signal publisher — a stopped bus goes stale
@@ -37,6 +40,93 @@ def _print_log(session):
     for row in reversed(session.car.recent_operations(15)):
         cause = f" · {row['error']} · {row['detail']}" if row["error"] else ""
         print(f"  {row['function']:24s} {row['outcome']}{cause}")
+
+
+_STORE_USAGE = "  usage: /store [6]   (how many turns, newest first)"
+
+
+def _at(stamp: float) -> str:
+    """The wall-clock time a row was stamped with, as a person reads one.
+
+    Local time and no date: this is a session's own history, and every turn in it happened in
+    the last few minutes. A stamp shifted by /clock prints shifted, which is correct — the
+    store holds the clock the session was lying about, not the one the machine keeps.
+    """
+    return time.strftime("%H:%M:%S", time.localtime(stamp))
+
+
+def _decision_line(decision: dict) -> str:
+    """One row of `decision`: what was judged, how, and what came of it.
+
+    The verdict is padded and the subject is not, which is the opposite of `_rule_line` and
+    has a reason: a subject here is a rule id on a scene turn but a CLAUSE on a voice one —
+    Chinese, so a fixed width in characters is not a fixed width on screen, and padding it
+    would misalign every line it was meant to align. `not_applicable` sets the verdict column.
+
+    An empty subject is a swept one: retention blanks the clause text on a route turn and
+    leaves the decision. `—` says the judgement survived its subject rather than printing a
+    hole where the words were.
+    """
+    chosen = f" → {decision['chosen']}" if decision["chosen"] else ""
+    reason = f" · {decision['reason']}" if decision["reason"] else ""
+    stopped = f" · suppressed: {decision['suppressed_by']}" if decision["suppressed_by"] else ""
+    return (f"    decided  {decision['subject'] or '—'}  "
+            f"{decision['verdict']:14s}{chosen}{reason}{stopped}")
+
+
+def _print_turn(turn: dict) -> None:
+    """One turn, as the four things the store records: heard, decided, did, said.
+
+    `heard` is printed verbatim — a scene turn's payload is the JSON that arrived, and this
+    command exists to show what is in the column rather than a prettier account of it.
+
+    `heard` and `said` are always printed and the other lines only when they have something.
+    Those two are the ones whose ABSENCE is a fact: silence is a decision and the commonest
+    correct one on this subsystem, and words that were never written down are the privacy
+    switch working. A turn that decided nothing, or caused nothing, simply has no such line.
+    `—  (nothing spoken)` is cli/render.py's phrasing for the same state, so one session's two
+    ways of looking at a turn cannot describe it differently.
+    """
+    print(f"  #{turn['id']}  {turn['kind']:8s} {_at(turn['at'])}")
+    heard = turn["heard"]
+    # None is a fact and not a gap: `--no-raw-capture` never wrote the words, and retention
+    # deletes them an hour later while the turn stays. A blank line here would read as a bug.
+    print(f"    heard    {heard if heard is not None else '—  (not recorded)'}")
+    if turn["error"]:
+        # The input raised. Written on the raw row by `Intake._dispatch` so it cannot vanish,
+        # and this is the only place a person sees it — the turn itself just looks quiet.
+        print(f"    failed   {turn['error']}")
+    for decision in turn["decisions"]:
+        print(_decision_line(decision))
+    for op in turn["operations"]:
+        cause = f" · {op['error']} · {op['detail']}" if op["error"] else ""
+        print(f"    did      {op['function']}  {op['outcome']}{cause}")
+    print(f"    said     {turn['reply'] or '—  (nothing spoken)'}")
+
+
+def _print_store(session, arg: str) -> None:
+    """The store, by hand: the last few turns and why each of them went the way it did."""
+    try:
+        limit = int(arg) if arg else session.STORE_TURNS
+    except ValueError:
+        # A typo must not raise out of the loop, for the reason /scene and /clock give: the
+        # session holds the car and the models, and losing it costs a 60-second reload.
+        print(_STORE_USAGE)
+        return
+    if limit <= 0:
+        # Refused rather than run: `LIMIT 0` prints the same nothing an empty store does, and
+        # a command that answers "there is no history" to a typo is worse than one that
+        # cannot do the thing.
+        print(_STORE_USAGE)
+        return
+    turns = session.recent_turns(limit)
+    if not turns:
+        # Never a blank, for the reason /context is never one: an empty store and a broken
+        # command must not look the same. A signal frame is the honest case — it writes a raw
+        # row and opens no turn — so a session that has only moved the bus lands here.
+        print("  (nothing recorded yet — a turn is a voice, scene or consent input)")
+    for turn in turns:
+        _print_turn(turn)
 
 
 _SCENE_USAGE = "  usage: /scene <key>=<value> [conf=0.9] [ttl=300]"
@@ -214,6 +304,8 @@ def _command(session, line: str) -> bool:
         _print_car(session)
     elif name == "/log":
         _print_log(session)
+    elif name == "/store":
+        _print_store(session, arg)
     elif name == "/scene":
         _scene(session, parts[1:])
     elif name == "/signal":
@@ -243,11 +335,18 @@ def main() -> int:
     ap.add_argument("--db", default=":memory:", help="keep the car on disk across runs")
     ap.add_argument("--scene-llm", action="store_true",
                     help="start with the scene fallback attached (loads a second model)")
+    # `--db` means this file remembers what people said in the car; this is how you say no.
+    # The parse is still recorded — the turn, the band, the function, the reply — so the store
+    # still answers "why did it do that". It stops answering "what exactly was said".
+    ap.add_argument("--no-raw-capture", action="store_true",
+                    help="record what was decided, never the words: no payload, no transcript, "
+                         "no clause text")
     args = ap.parse_args()
 
     print("loading models (about a minute on first run) ..." if not args.fake
           else "starting with the fake embedder — routing is not meaningful", flush=True)
-    session = Session.build(fake=args.fake, llm=not args.no_llm, gate=args.gate, db=args.db)
+    session = Session.build(fake=args.fake, llm=not args.no_llm, gate=args.gate, db=args.db,
+                            raw_capture=not args.no_raw_capture)
     if args.scene_llm:
         # Same construction path as /scene-llm on, refusal included: a flag that quietly
         # attached a fake under --fake would be the same lie, told before anyone could see it.

@@ -93,3 +93,58 @@ def test_escalated_means_a_model_actually_saw_it():
     session = Session.build(fake=True, llm=False, gate="shipped", catalog=FIX)
     turn = session.handle("温度调高一点")
     assert all(not span.escalated for span in turn.spans)
+
+
+# --- the privacy switch, end to end ----------------------------------------------------------
+
+def _rows(session, sql):
+    return session.car.conn.execute(sql).fetchall()
+
+
+def test_no_raw_capture_records_the_decision_and_never_the_words():
+    """The whole switch, through the real door. What was decided survives; what was said does
+    not exist anywhere in the file."""
+    session = Session.build(fake=True, llm=False, gate="permissive", catalog=FIX,
+                            raw_capture=False)
+    turn = session.handle("把空调调到25度")
+    assert turn.reply == "已将当前区域温度设置为25°C。"       # the car still answers
+
+    raw = _rows(session, "SELECT * FROM observation_raw WHERE source='mic'")
+    assert len(raw) == 1, "the fact that something arrived is still a fact"
+    assert raw[0]["payload"] == ""
+    assert _rows(session, "SELECT text FROM utterance")[0]["text"] is None
+    decisions = _rows(session, "SELECT * FROM decision d JOIN turn t ON t.id = d.turn_id "
+                               "WHERE t.kind = 'route'")
+    assert decisions and all(d["subject"] == "" for d in decisions)
+    # And the parse is all still there: which function, at what band, and what was said back.
+    assert {d["chosen"] for d in decisions} == {"set_temperature"}
+    assert _rows(session, "SELECT reply FROM turn")[0]["reply"] == "已将当前区域温度设置为25°C。"
+    # No column anywhere holds the sentence.
+    for table, column in (("observation_raw", "payload"), ("utterance", "text"),
+                          ("decision", "subject"), ("turn", "reply")):
+        found = _rows(session, f"SELECT {column} AS c FROM {table}")
+        assert not any((r["c"] or "").startswith("把空调") for r in found), f"{table}.{column}"
+
+
+def test_capture_on_writes_the_words_down():
+    """The other half: the default is a store that CAN answer what was said."""
+    session = Session.build(fake=True, llm=False, gate="permissive", catalog=FIX)
+    session.handle("把空调调到25度")
+    assert _rows(session, "SELECT payload FROM observation_raw WHERE source='mic'"
+                 )[0]["payload"] == '{"text": "把空调调到25度"}'
+    assert _rows(session, "SELECT text FROM utterance")[0]["text"] == "把空调调到25度"
+
+
+def test_the_switch_is_on_the_prompt_when_it_is_off():
+    """A store with no transcripts in it must be explicable as a setting rather than a fault."""
+    off = Session.build(fake=True, llm=False, gate="permissive", catalog=FIX, raw_capture=False)
+    on = Session.build(fake=True, llm=False, gate="permissive", catalog=FIX)
+    assert "no-raw" in off.mode_label() and "no-raw" not in on.mode_label()
+
+
+def test_a_perception_survives_a_session_with_no_raw_capture():
+    """The parse is stored. A belief is the parse."""
+    session = Session.build(fake=True, llm=False, gate="permissive", catalog=FIX,
+                            raw_capture=False)
+    session.observe("rear_occupant", "child")
+    assert session.scene.context.get("inside.rear_occupant", session._now()).value == "child"

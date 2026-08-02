@@ -6,7 +6,7 @@ fallback, never the primary router. A proactive Scene Engine sits beside it.
 ## Commands
 
 ```bash
-python3 -m pytest -q          # ~35s, 871 tests. Model tests deselected by default.
+python3 -m pytest -q          # ~40s, 1105 tests. Model tests deselected by default.
 python3 -m pytest -m model -q # 5 tests, loads Qwen3 models, needs GPU
 python3 -m cli                # hand-testing session against a simulated car
 python3 -m ui                 # the same session in a browser, :8770
@@ -71,6 +71,16 @@ recorded so the silence can explain itself.
 - **Contract sweeps have silently shrunk to fit twice.** Both times a new condition type or
   rule made properties skip themselves or pass vacuously while staying green. After adding
   either, verify the sweep by mutation rather than trusting a green run.
+- **`sim/schema.sql` cannot change a table that already exists.** Every statement is
+  `CREATE TABLE IF NOT EXISTS`, so a column added there is a silent no-op on every `--db` file
+  written before it — fresh databases pass the whole suite while every persisted car lacks it.
+  Shape changes go in `sim/migrate.py`, versioned, which also refuses a database from the future
+  rather than misreading rows it does not understand.
+- **Newest row first, liveness second — never both in the `WHERE`.** `Store.newest_perception`
+  returns the newest row for a key expired or not, and `Observation.is_live` decides in Python.
+  Filtering in SQL looks like the same query and is not: with the newest row expired it returns
+  an OLDER live one, resurrecting a belief `SceneContext.get` reports as gone, and rules start
+  deciding on it. One test pins this; it is worth knowing before you edit the test to match.
 - **The session clock is wall time, not monotonic**, because the car stamps `time.time()` and
   `--db` persists it. Mixing the two once produced an age of minus 1.78 billion seconds, which
   read as *fresh* — staleness failed open and looked wired.

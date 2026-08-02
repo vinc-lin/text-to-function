@@ -162,6 +162,33 @@ def test_the_log_carries_the_cause_of_a_refusal(session):
     assert refused and refused[0]["detail"] == "车窗儿童锁已开启"
 
 
+def test_the_record_pane_is_the_history_the_terminal_prints(session):
+    """One session, two doors, one history. The pane is `Session.recent_turns` unreshaped —
+    a page that re-derived it could show a different account of the same run."""
+    session.observe("rear_occupant", "child", 0.9)
+    session.handle("好")
+    assert snapshot(session)["store"] == session.recent_turns()
+
+
+def test_the_record_carries_the_four_things_it_draws(session):
+    """heard · decided · did · said. A field named something else renders an empty line
+    forever and nothing raises — the pane swallows its own exceptions."""
+    session.observe("rear_occupant", "child", 0.9)
+    session.handle("好")
+    consent = next(t for t in snapshot(session)["store"] if t["kind"] == "consent")
+    assert set(consent) == {"id", "at", "kind", "reply", "source", "error", "heard",
+                            "decisions", "operations"}
+    assert consent["reply"] == "已为您打开车窗儿童锁。"
+    assert [op["function"] for op in consent["operations"]] == ["set_window_child_lock"]
+
+
+def test_the_record_pane_is_read_only(session):
+    """It has no entry in either table, and that is the point: the record is written by the
+    door as each input goes through it, never by the page."""
+    from ui.actions import ACTIONS, CONTROLS
+    assert not [name for name in list(ACTIONS) + list(CONTROLS) if "store" in name]
+
+
 def test_the_clock_offset_is_reported(session):
     session.advance_clock(45.0)
     assert snapshot(session)["clock_offset"] == 45.0

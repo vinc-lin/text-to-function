@@ -2,11 +2,12 @@
 import pytest
 
 from intake.hub import WorldView
-from scene.context import Observation, SceneContext
+from scene.context import Observation
 from scene.engine import SceneEngine, NO_ACTION
 from scene.rules import RULES
 from t2f.cards import load_catalog
 from t2f.types import ExecResult, ToolCall
+from tests.perception import perception_store
 
 
 class SpyCar:
@@ -54,7 +55,7 @@ def _engine(cards, *, lock=False, world=None, executor=None, rules=RULES, llm=No
     every rule would read the other, empty — so the engine refuses the pairing instead, and
     this helper is the one place the pairing is made.
     """
-    perception = SceneContext()
+    perception = perception_store()
     return SceneEngine(cards_by_name=cards,
                        world=WorldView(perception, SpyCar(lock)) if world is None else world,
                        executor=executor or RecordingExecutor(), rules=rules, llm=llm,
@@ -505,8 +506,8 @@ def test_an_engine_refuses_a_world_over_a_different_store(cards):
     one, and the system is merely quiet with nothing raising. Refused at construction instead,
     which is the only moment the mistake is still visible."""
     with pytest.raises(ValueError, match="perception"):
-        SceneEngine(cards_by_name=cards, world=WorldView(SceneContext(), SpyCar()),
-                    executor=RecordingExecutor(), perception=SceneContext())
+        SceneEngine(cards_by_name=cards, world=WorldView(perception_store(), SpyCar()),
+                    executor=RecordingExecutor(), perception=perception_store())
 
 
 def test_a_world_that_cannot_answer_the_question_is_still_allowed(cards):
