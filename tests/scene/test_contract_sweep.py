@@ -23,7 +23,7 @@ import re
 import pytest
 
 from intake.hub import WorldView
-from scene.context import Observation, SceneContext
+from scene.context import Observation
 from scene.engine import SceneEngine, NO_ACTION
 from scene.rules import RULES, Observed, Signal, SignalAbove
 from scene.speech import speech_for
@@ -32,6 +32,7 @@ from sim.vehicle import SqliteVehicle
 from t2f.cards import load_catalog
 from t2f.types import ExecResult
 from t2f.validate import validate_tool_call
+from tests.perception import perception_store
 
 ANCIENT = 10 * 60.0        # ten minutes without a write, in seconds
 
@@ -116,7 +117,7 @@ def _engine(cards, rule, signals, *, executor=None, age=0.0):
     empty, and every property below would pass on a rule that never evaluated anything — so
     the engine refuses that pairing and this helper is the only place the pairing is made.
     """
-    perception = SceneContext()
+    perception = perception_store()
     return SceneEngine(cards, WorldView(perception, _Car(signals, age)),
                        executor or _Executor(), rules=(rule,), perception=perception)
 

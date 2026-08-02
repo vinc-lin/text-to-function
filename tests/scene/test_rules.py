@@ -7,10 +7,11 @@ conditions on both reads them the same way.
 import pytest
 
 from intake.hub import WorldView
-from scene.context import Observation, SceneContext
+from scene.context import Observation
 from scene.rules import (Observed, Rule, Signal, SignalAbove, Verdict, evaluate,
                          evaluate_explained, RULES)
 from t2f.types import ToolCall
+from tests.perception import perception_store
 
 RULE = Rule(
     id="r", description="d",
@@ -55,7 +56,7 @@ class AgedCar(SpyCar):
 
 
 def _ctx(confidence=0.9, value="child", at=100.0, ttl=300.0):
-    ctx = SceneContext()
+    ctx = perception_store()
     ctx.update(Observation("inside.rear_occupant", value, confidence, "cabin_cam", at, ttl))
     return ctx
 
@@ -140,7 +141,7 @@ def test_a_below_floor_observation_says_it_was_below_the_floor():
 
 
 def test_a_missing_observation_says_which_key_is_missing():
-    world = WorldView(SceneContext(), SpyCar({("window.all", "window_child_lock"): False}))
+    world = WorldView(perception_store(), SpyCar({("window.all", "window_child_lock"): False}))
     verdict, why = evaluate_explained(RULE, world, now=100.0)
     assert verdict is Verdict.NOT_APPLICABLE
     assert "inside.rear_occupant" in why
@@ -183,7 +184,7 @@ ANIMAL = Rule(
 
 
 def _animal_ctx(confidence=0.9, at=100.0):
-    ctx = SceneContext()
+    ctx = perception_store()
     ctx.update(Observation("outside.front_object", "animal", confidence, "front_cam", at, 300.0))
     return ctx
 

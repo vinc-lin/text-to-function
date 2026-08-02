@@ -16,7 +16,6 @@ from t2f.types import ToolCall
 from t2f.validate import validate_tool_call
 
 from .consent import Answer, PendingConsent, classify
-from .context import SceneContext
 from .llm import UNMATCHED
 from .rules import RULES, Verdict, evaluate_explained
 from .speech import SPEECH, speech_for
@@ -74,7 +73,7 @@ def _decision_note(decision) -> str:
 
 class SceneEngine:
     def __init__(self, cards_by_name, world, executor, rules=RULES, llm=None,
-                 consent_ttl: float = CONSENT_TTL, *, perception=None):
+                 consent_ttl: float = CONSENT_TTL, *, perception):
         """`world` is everything the rules READ; `perception` is the one store this engine
         WRITES, and the world must be a view over it.
 
@@ -89,6 +88,11 @@ class SceneEngine:
         empty context, and the system is merely quiet — so it is checked below rather than
         documented. The check is duck-typed: a test may pass any object that answers `signal`,
         `signal_status` and `observation`, and only a real `WorldView` can answer `reads`.
+
+        Required, with no default, since perception became a store: a `SceneContext` needs one,
+        the schema for it lives in `sim` and the queries in `intake`, and both sit above `scene`
+        in the layering — so there is no context this constructor could honestly build for a
+        caller who forgot. A refusal at the door beats a store nobody else can reach.
         """
         self.cards = cards_by_name
         self.world = world
@@ -96,7 +100,7 @@ class SceneEngine:
         self.rules = tuple(rules)
         self.llm = llm
         self.consent_ttl = consent_ttl
-        self.context = SceneContext() if perception is None else perception
+        self.context = perception
         if hasattr(world, "reads") and not world.reads(self.context):
             raise ValueError(
                 "the world must read the perception store this engine writes — pass "

@@ -18,6 +18,7 @@ from t2f.types import LLMResult, ToolCall
 from intake.envelope import Input, Percept, SignalWrite, Utterance
 from intake.hub import WorldView
 from intake.ingest import Intake
+from intake.store import Store
 from scene.context import SceneContext
 from scene.engine import SceneEngine
 from sim.executor import SqliteExecutor
@@ -129,7 +130,13 @@ class Session:
         # Perception is built HERE rather than inside the engine, because the world is a view
         # over it and has to exist first. Both objects are over the one store, which the engine
         # checks: a second SceneContext would be written by the engine and read by nobody.
-        perception = SceneContext()
+        #
+        # The car's own connection, not a second one to the same file: two connections are two
+        # opinions about a transaction, and the car already owns the only one. It also decides
+        # what `--db` now means — a persisted car is a file that remembers what the cameras
+        # said, which is why retention and the privacy switch are part of this work rather than
+        # a later thought.
+        perception = SceneContext(Store(car.conn))
         world = WorldView(perception, car)
         session.scene = SceneEngine(cards_by_name={c.name: c for c in cards},
                                     world=world, executor=executor,
