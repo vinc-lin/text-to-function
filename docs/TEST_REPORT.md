@@ -836,3 +836,46 @@ Arm S is **byte-identical**, report and stdout. Arm C is byte-identical apart fr
 0.4% and 1%, on a measurement this section has just spent several pages establishing has a much
 wider noise band than that. Nothing in this task touches a code path either arm executes: it
 adds `eval/measure_store.py` and this section, and changes nothing else.
+
+---
+
+## 14. Update — 2026-08-02, later: the condition §13 attached has been met
+
+§13 recommended the vehicle path adopt the store under three conditions, and named the third as
+the one that was not a latency problem:
+
+> Do not flip the perception path until `turn` and `decision` are bounded.
+
+**That is now done** (`13f9586`). Nothing had ever deleted a turn or a decision, so the audit
+trail grew at 188 B per input forever — 6.8 MB an hour at 10 Hz, 6.8 GB per thousand hours — and
+most of those rows recorded a frame in which nothing happened.
+
+Turns now expire on the retention pass that already runs, at a 24-hour window. **The trail
+plateaus at roughly 162 MB** rather than growing without limit. The window is deliberately longer
+than the one-hour content window: a turn and its decisions are what let somebody ask why the car
+did something, and that question outlives the words that prompted it.
+
+The two directions differ, and the schema enforces it rather than the sweep remembering to:
+
+| | on a turn being deleted | why |
+|---|---|---|
+| `decision` | **CASCADE** | a reason with no turn is an orphan record of something that did not happen |
+| `operation_log` | **SET NULL** | the car really did that. An operation must outlive the explanation of why — a gap in the reasoning is a cost, a gap in what the vehicle did is the one thing this store exists never to have |
+
+That asymmetry is schema version 4, and both halves have a test.
+
+**The other two conditions stand unchanged**, and neither has been adopted here: deferring the
+car's own commits (free, halves the fsyncs) and WAL with `synchronous=FULL`. Both were measured in
+§13 and left un-adopted on purpose — changing durability semantics on a vehicle is a decision to
+state, not a knob to turn while passing.
+
+**One further fix, found by reading the record rather than testing it.** A consent turn writes no
+`utterance` row, so once its raw payload expired, `decision.subject` held the last verbatim copy of
+what the driver said — and `Store.sweep` scrubbed only `kind = 'route'`. An hour past retention the
+record still read `decided 好`. Now `kind IN ('route', 'consent')`, with a test. The completeness
+test asserts every path *leaves* rows; it never *reads* them the way a person does, which is why
+six tasks of building the store did not surface this and twenty minutes of `/store` did.
+
+**Suite at this point: 1105 passed, 1 skipped, 5 deselected, 0 xfailed.** Both proof obligations
+byte-identical throughout: `run_eval --arm C` and `run_scene_eval --arm S` unmoved except arm C's
+two latency lines, which are wall-clock jitter on this host.
