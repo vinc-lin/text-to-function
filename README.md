@@ -7,8 +7,8 @@ router. Targets on-device deployment (Qualcomm SA8797 / "87 platform", Qwen3-Emb
 Qwen3-0.6B).
 
 > **Status:** Specs 1–9 complete, plus work that came after and is deliberately **not** a numbered
-> spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`
-> ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **860 automated tests + 5
+> spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`, then **the
+> store** ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1105 automated tests + 5
 > model-backed**, and **no red cases left**: the count went 11 → 9 → 1 → 0, and because every red
 > case was `xfail(strict=True)`, closing a gap made the suite say so rather than waiting to be asked.
 > No performance number has been measured on the 87 platform. Start with **[the Central Model system
@@ -23,8 +23,10 @@ python3 -m cli
 
 Type Chinese, watch the workflow run against a simulated car — what it recognised, the row that
 moved in the vehicle database, and what the driver would hear. Switch the LLM and the confidence
-gate mid-session to compare the two candidate builds against the same car. `python3 -m ui` is the
-same session in a browser, on :8770. **[Guide →](docs/TRYING_IT.md)**
+gate mid-session to compare the two candidate builds against the same car. `/store` prints what the
+system recorded on the way — what it heard, decided, did and said — which is how you ask why it did
+something several turns ago. `python3 -m ui` is the same session in a browser, on :8770.
+**[Guide →](docs/TRYING_IT.md)**
 
 ## The business workflow
 
@@ -148,8 +150,8 @@ spec shipped and left as written; each feature's design reasoning lives under
 
 ## After Spec 9: what the numbered specs do not cover
 
-Two pieces of work landed after Spec 9. Neither is a numbered spec — they change how facts reach the
-system rather than adding a capability to the router — and both carry the same proof obligation:
+Three pieces of work landed after Spec 9. None is a numbered spec — they change how facts reach the
+system rather than adding a capability to the router — and all three carry the same proof obligation:
 `run_eval --arm C` and `run_scene_eval --arm S` come back **byte-identical**, so no routing decision
 and no rule outcome moved.
 
@@ -182,8 +184,27 @@ measurement whose absence means the bus stopped. The bus is **pumped, not thread
 affinity forces it), so a live bus is fresh whenever you look and `/bus off` is what makes age
 accumulate.
 
+**The store — the database is the record.** The account of a run used to sit in three places and two
+of them died with the process: perception was an in-memory dict, voice was a return value, and *why*
+— the bands, the rule verdicts, what suppressed what — was a field the next event cleared. So there
+was nothing to replay, audit or generate from, and no way to ask an hour later why the car did
+something. Now every input is written to `observation_raw` as it arrives and what the owning module
+decided lands beside it in `turn` and `decision`, with `operation_log` carrying the turn that caused
+each operation — so an execution cannot be untraceable, and a test asserts it. Two things follow.
+**Inputs become an interface:** a vision process on another accelerator, a CAN reader in C++ or an
+ASR service integrates by writing a row and calling nothing, and `process_pending(now)` runs it
+through the identical dispatch. **And a run can be asked why** — `/store` in the terminal, a pane in
+the browser, or SQL. Outputs stay synchronous returns *as well as* rows, so the reply the driver is
+waiting for keeps its latency. Persisting voice on a vehicle is a data-protection decision as much as
+an engineering one, so raw payloads carry a retention window and `--no-raw-capture` never writes them
+at all; the parsed layer survives both, which keeps a drive replayable at the belief level after the
+words are gone. This is **built and measured before the shipped runtime adopts it** — the vehicle
+path still keeps perception in memory, and what the store costs, on what machine, and what would have
+to be true to flip it are in [TEST_REPORT §13](docs/TEST_REPORT.md).
+
 Design and reasoning: **[sensed signals](docs/superpowers/specs/2026-07-31-sensed-signals-design.md)** ·
-**[intake and WorldView](docs/superpowers/specs/2026-08-01-intake-and-worldview-design.md)**.
+**[intake and WorldView](docs/superpowers/specs/2026-08-01-intake-and-worldview-design.md)** ·
+**[the store](docs/superpowers/specs/2026-08-02-the-store-design.md)**.
 
 ## Layout
 
@@ -200,6 +221,12 @@ sim/          # the simulated vehicle — the thing on the FAR side of the execu
   schema.sql · vehicle.py · mapping.py · seed.py · executor.py
               # rows are signals: those the 92 cards can write, PLUS the declared sensed ones the
               # car knows and nothing commands (speed), which carry a max_age and can go stale
+              # the same database holds the store: observation_raw · perception · utterance ·
+              # turn · decision, plus turn_id on operation_log and a schema_version
+  migrate.py  # schema.sql is CREATE TABLE IF NOT EXISTS, so it cannot CHANGE an existing table
+              # — every shape change to a --db file that already exists goes through here
+  environment.py  # scenarios that write observation_raw rows and let process_pending do the
+              # rest, so generated and real inputs travel exactly the same path
 scene/        # the proactive Scene Engine (Spec 9) — a SECOND top-level entry, packaged like t2f/
   context.py · rules.py · engine.py · consent.py · llm.py · speech.py
               # perception in, at most a question out; consent is the only path to the car, and
@@ -211,6 +238,9 @@ intake/       # one door in, one view out — packaged, and the composition root
               # that owns the decision; WorldView is the single read-through view over perception
               # AND the car, which is what lets a sensed signal go stale instead of being believed
               # forever. Assembling router + scene engine + car used to live only in cli/session.py
+  store.py    # the ONLY module that reads or writes the store's tables. Every input recorded,
+              # every decision written down, retention and the --no-raw-capture switch, and the
+              # read behind /store. Liveness is NOT decided here — see its docstring
 cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/TRYING_IT.md
   __main__.py · session.py · render.py    # loop · utterance→Turn · pure Turn→text
               # a dev tool: run from the repo, NOT packaged

@@ -379,6 +379,44 @@
   .compose { display: flex; gap: 7px; padding: 0 12px 12px; }
   .compose input { flex: 1; font: 13px/1 var(--sans); padding: 8px 10px; min-width: 0; }
 
+  /* ------------------------------------------------------------- the record */
+  /* Every other pane is the system NOW. This one is what it wrote down, so it is deliberately
+     the quietest thing on the page — no colour of its own, no animation, nothing that moves.
+     A history that competed for attention with a draining TTL bar would be reporting urgency
+     it does not have. */
+  .rec {
+    border: 1px solid var(--line); border-left: 2px solid var(--line-2); border-radius: 4px;
+    background: var(--panel-2); padding: 7px 10px 6px; margin-bottom: 7px;
+  }
+  .rec:last-child { margin-bottom: 0; }
+  .rec.k-consent { border-left-color: var(--ok); }
+  .rec.k-scene   { border-left-color: var(--warn); }
+  .rec.k-route   { border-left-color: var(--live); }
+  .rec-head { display: flex; align-items: baseline; gap: 8px; font: 10px/1.4 var(--mono); }
+  .rec-head .kind { letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+  .rec-head .id { color: var(--faint); }
+  .rec-head .at { margin-left: auto; color: var(--faint); }
+  .rec-line {
+    display: flex; gap: 8px; font: 11px/1.5 var(--mono); margin-top: 3px;
+    overflow-wrap: anywhere;
+  }
+  .rec-line b {
+    flex: none; width: 52px; font: 9px/1.6 var(--sans); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--faint); font-weight: 600;
+  }
+  .rec-line i { font-style: normal; color: var(--ink); }
+  /* The judgement, dimmer than what was judged: the verdict is the column your eye should be
+     able to run down, and the reason behind it is a sentence you read only when it stops. */
+  .rec-line .verdict { color: var(--dim); }
+  .rec-line .why { color: var(--faint); }
+  .rec-line.said i { color: var(--ink); }
+  .rec-line.quiet i { color: var(--faint); }
+  .rec-line.gone i { color: var(--faint); font-style: italic; }
+  .rec-line.failed i { color: var(--bad); }
+  .rec-line.did i { color: var(--dim); }
+  .rec-line.did .outcome.executed { color: var(--ok); }
+  .rec-line.did .outcome.refused { color: var(--bad); }
+
   body.stale main { opacity: .55; filter: saturate(.5); }
 
   @media (max-width: 900px) {
@@ -466,6 +504,18 @@
       <button type="submit">send</button>
     </form>
   </section>
+
+  <!--
+    The store, which is the history behind every pane above. Read-only: it has no entry in
+    ACTIONS and none in CONTROLS, because nothing here asks the system for anything — the
+    record is written by the door as each input goes through it. It is last on the page for
+    the same reason it is last in the snapshot: everything above is the system now.
+  -->
+  <section class="pane">
+    <h2>The record <span class="hint">heard · decided · did · said</span>
+        <span class="count" id="scount"></span></h2>
+    <div class="body" id="store"></div>
+  </section>
 </main>
 
 <script>
@@ -517,6 +567,7 @@ const ruleRows = new Map();   // rule_id -> row record
 let pending = null;           // {scene, anchor, expiresIn, max}
 let lastTalk = "";
 let lastLog = "";
+let lastStore = "";
 
 // ---------------------------------------------------------------- transport
 function fail(msg) {
@@ -1039,6 +1090,90 @@ function renderPending(p) {
   bar.classList.add("show");
 }
 
+// --------------------------------------------------------------- the record
+// Hand-built rather than rebuilt from a diff, and redrawn only when the JSON changes — the
+// same treatment renderLog gets, for the same reason: this is history, nothing in it animates,
+// and a turn already written can never change.
+function at(stamp) {
+  const d = new Date(Number(stamp) * 1000);
+  // Fixed hh:mm:ss rather than toLocaleTimeString, so the page and the terminal's /store print
+  // one stamp the same way. A stamp shifted by the clock control prints shifted: the store
+  // holds the clock the session was lying about, not the one the machine keeps.
+  return [d.getHours(), d.getMinutes(), d.getSeconds()].map(function (n) {
+    return (n < 10 ? "0" : "") + n;
+  }).join(":");
+}
+
+function recLine(cls, label, text) {
+  const line = el("div", "rec-line " + cls);
+  line.appendChild(el("b", null, label));
+  line.appendChild(el("i", null, text));
+  return line;
+}
+
+function decisionLine(d) {
+  const line = el("div", "rec-line");
+  line.appendChild(el("b", null, "decided"));
+  const body = el("i");
+  // An empty subject is a swept one: retention blanks the clause text on a route turn and
+  // keeps the judgement. "—" says the reason outlived the words rather than leaving a hole.
+  body.appendChild(document.createTextNode((d.subject || "—") + "  "));
+  body.appendChild(el("span", "verdict", d.verdict + (d.chosen ? " → " + d.chosen : "")));
+  const why = [d.reason, d.suppressed_by ? "suppressed: " + d.suppressed_by : ""]
+    .filter(Boolean).join(" · ");
+  if (why) body.appendChild(el("span", "why", "  " + why));
+  line.appendChild(body);
+  return line;
+}
+
+function opLine(op) {
+  const line = el("div", "rec-line did");
+  line.appendChild(el("b", null, "did"));
+  const body = el("i");
+  body.appendChild(document.createTextNode(op["function"] + "  "));
+  body.appendChild(el("span", "outcome " + op.outcome, op.outcome));
+  const why = [op.error, op.detail].filter(Boolean).join(" · ");
+  if (why) body.appendChild(el("span", "why", "  " + why));
+  line.appendChild(body);
+  return line;
+}
+
+function renderStore(rows) {
+  const sig = JSON.stringify(rows);
+  if (sig === lastStore) return;
+  lastStore = sig;
+  const box = $("store");
+  box.textContent = "";
+  $("scount").textContent = rows.length ? rows.length + " turns" : "";
+  if (!rows.length) {
+    box.appendChild(el("div", "empty",
+      "nothing recorded yet — a turn is a voice, scene or consent input"));
+    return;
+  }
+  // Newest first, as the snapshot hands them over. Not re-sorted.
+  rows.forEach(function (t) {
+    const node = el("div", "rec k-" + t.kind);
+    const head = el("div", "rec-head");
+    head.appendChild(el("span", "kind", t.kind));
+    head.appendChild(el("span", "id", "#" + t.id));
+    head.appendChild(el("span", "at", at(t.at)));
+    node.appendChild(head);
+    // null is a fact, not a gap. --no-raw-capture never wrote the words down and retention
+    // deletes them an hour later while the turn survives; a blank line would read as a bug.
+    node.appendChild(t.heard === null || t.heard === undefined
+      ? recLine("gone", "heard", "not recorded")
+      : recLine("", "heard", t.heard));
+    if (t.error) node.appendChild(recLine("failed", "failed", t.error));
+    (t.decisions || []).forEach(function (d) { node.appendChild(decisionLine(d)); });
+    (t.operations || []).forEach(function (op) { node.appendChild(opLine(op)); });
+    // Always drawn, even empty: silence is a decision and the commonest correct one here,
+    // and a missing line cannot be told from a turn that has not finished.
+    node.appendChild(t.reply ? recLine("said", "said", t.reply)
+                             : recLine("quiet", "said", "nothing spoken"));
+    box.appendChild(node);
+  });
+}
+
 function emptyState(box, isEmpty, text) {
   const e = box.querySelector(".empty");
   if (isEmpty && !e) box.appendChild(el("div", "empty", text));
@@ -1056,6 +1191,7 @@ function apply(s) {
   renderRules(s.rules || [], s.fallback);
   renderTalk(s.conversation || []);
   renderPending(s.pending);
+  renderStore(s.store || []);
   firstSnapshot = false;
   frame();
 }

@@ -85,6 +85,7 @@ The second command has nothing to resolve against unless the first one really ch
 | `/gate shipped\|permissive` | switch the confidence thresholds |
 | `/car` | every signal that differs from the seeded car |
 | `/log` | recent operations, and what the car said about each |
+| `/store [n]` | the last n turns as the store recorded them — heard, decided, did, said |
 | `/scene <key>=<value> [conf=] [ttl=]` | one perception event, as if the cabin camera saw it — see below |
 | `/context` | every live observation: value, confidence, source, age, time to expiry |
 | `/clock +30 \| -5` | move the session clock, to elapse a cooldown or expire an observation |
@@ -645,6 +646,161 @@ gave one. Two silences, two causes, and the `rule` line is the only thing that t
 
 ---
 
+## Looking at what it wrote down
+
+Every transcript above is the system deciding in front of you. This one is what it *kept*.
+
+Each input is written to a SQLite store as it goes through the door: the row that arrived, the
+turn it opened, one decision per clause or per rule, whatever the car then did, and the sentence
+the driver heard. `/store` prints the last few turns of that, newest first — it is how you ask
+**why did it do that** about a turn that has already scrolled off the screen.
+
+Type the same three beats as [the section above](#the-fifth-thing-let-the-car-start-the-conversation),
+then `/store`. This one is under `--fake` — the routing it shows is not evidence of anything,
+which is fine, because what is being demonstrated is the record and not the router:
+
+```
+[C_llm · shipped · S · FAKE] > /scene rear_occupant=child conf=0.9
+  scene        rear_child_window_lock
+  rule         animal_ahead            reject      vehicle.all/speed_kph is 0.0, not above 5.0
+  rule         rear_child_window_lock  match       all conditions met
+  reply        后排有小孩，要打开儿童锁吗？
+
+[C_llm · shipped · S · FAKE] > 好
+
+  scene        consent
+  executed     window.all/window_child_lock   False → True
+  reply        已为您打开车窗儿童锁。
+
+[C_llm · shipped · S · FAKE] > 开车窗
+
+  recognised   open_window{is_open: True}    band=HIGH
+  refused      vehicle · 车窗儿童锁已开启 · nothing changed
+  reply        车窗儿童锁已开启。
+
+[C_llm · shipped · S · FAKE] > /store
+  #3  route    18:21:29
+    heard    开车窗
+    decided  开车窗  high           → open_window · 车窗儿童锁已开启
+    did      open_window  refused · precondition_failed · 车窗儿童锁已开启
+    said     车窗儿童锁已开启。
+  #2  consent  18:21:29
+    heard    {"text": "好"}
+    decided  好  yes            → set_window_child_lock
+    did      set_window_child_lock  executed
+    said     已为您打开车窗儿童锁。
+  #1  scene    18:21:29
+    heard    {"key": "inside.rear_occupant", "value": "child", "confidence": 0.9, "ttl": 300.0}
+    decided  animal_ahead  reject         · vehicle.all/speed_kph is 0.0, not above 5.0
+    decided  rear_child_window_lock  match          → rear_child_window_lock · all conditions met
+    said     后排有小孩，要打开儿童锁吗？
+```
+
+Four lines per turn, and they are the four things the store holds:
+
+| | |
+|---|---|
+| `heard` | the row that arrived, exactly as the column holds it — the bare sentence for a voice turn, the JSON a camera or a producer wrote for anything else |
+| `decided` | one line per **clause** on a voice turn, per **rule** on a scene turn: the subject, the verdict, the function or scene chosen, and the reason behind it |
+| `did` | the operations this turn caused, with the cause of any refusal — the same rows `/log` shows, tied to the turn that asked for them |
+| `said` | what the driver heard. Always printed, even empty: silence is a decision, and on the scene subsystem it is the commonest correct one |
+
+**Turn #3 is the whole point of the thing.** The window was refused, and the record says why in
+three different registers: the band and the function the router chose, the precondition the car
+tripped over, and the sentence the driver was given. Two turns earlier, #2 says who authorised
+the lock that caused it — `好`, and the operation it turned into. Nothing in the terminal
+scrollback links those two; the store does, because `operation_log` carries the turn id.
+
+`/store 20` asks for more, and a mistyped one is refused rather than guessed:
+
+```
+[C_llm · shipped · S · FAKE] > /store x
+  usage: /store [6]   (how many turns, newest first)
+```
+
+### A turn is a decision, not a heartbeat
+
+```
+[C_llm · shipped · S · FAKE] > /signal vehicle.all/speed_kph=45
+  → vehicle.all/speed_kph = 45.0 kph · publishing · re-stamped on every command
+[C_llm · shipped · S · FAKE] > /store
+  (nothing recorded yet — a turn is a voice, scene or consent input)
+```
+
+The speed **was** recorded — as a raw row, and as the `signal` row every rule reads. What it did
+not do is open a turn, because nothing was decided: the world moved. A real bus publishes at
+10 Hz, and a turn per frame would be tens of thousands of rows an hour recording that nothing
+happened — a cost with no reader.
+
+### An hour later, the words are gone and the reasons are not
+
+The store keeps a raw voice or camera payload for **one hour**, a signal frame for a day, and a
+turn with its decisions for a day. `/clock` reaches all three. Same session as above, moved past
+the first window:
+
+```
+[C_llm · shipped · S · FAKE] > /clock +3700
+  → clock offset +3700s
+[C_llm · shipped · S · FAKE] > /store
+  #3  route    18:21:29
+    heard    —  (not recorded)
+    decided  —  high           → open_window · 车窗儿童锁已开启
+    did      open_window  refused · precondition_failed · 车窗儿童锁已开启
+    said     车窗儿童锁已开启。
+  #2  consent  18:21:29
+    heard    —  (not recorded)
+    decided  —  yes            → set_window_child_lock
+    did      set_window_child_lock  executed
+    said     已为您打开车窗儿童锁。
+  #1  scene    18:21:29
+    heard    —  (not recorded)
+    decided  animal_ahead  reject         · vehicle.all/speed_kph is 0.0, not above 5.0
+    decided  rear_child_window_lock  match          → rear_child_window_lock · all conditions met
+    said     后排有小孩，要打开儿童锁吗？
+```
+
+**Every one of those turns still answers "why".** The band, the function, the rule verdicts, the
+refusal and its cause, what the driver was told — all of it survives. What went is every verbatim
+copy of what a person said: the payload, the transcript, and the clause a route or consent
+decision named. The scene turn's subjects are rule ids, which are ours rather than anybody's
+speech, so they stay.
+
+That is the raw/parsed split doing the thing it exists for. A drive stays replayable at the level
+of what the system believed long after the words are unavailable.
+
+### Never writing them down at all: `--no-raw-capture`
+
+Retention says how long the words may be kept. This says they are never kept:
+
+```
+$ python3 -m cli --fake --no-raw-capture
+
+[C_llm · shipped · S · FAKE · no-raw] > 开车窗
+
+  recognised   open_window{is_open: True}    band=HIGH
+  executed     window.all/window_position   50 → 100
+  reply        已为您打开当前区域车窗。
+
+[C_llm · shipped · S · FAKE · no-raw] > /store
+  #1  route    18:19:56
+    heard    —  (not recorded)
+    decided  —  high           → open_window
+    did      open_window  executed
+    said     已为您打开当前区域车窗。
+```
+
+Identical to the swept turn above, from the first moment rather than an hour later. The prompt
+carries `no-raw` for as long as the session lasts, because someone reading a store afterwards and
+finding no transcripts needs to know that was a setting and not a fault.
+
+**This matters most with `--db`.** In memory the store dies with the process. On disk it is a
+file that remembers what was said in a car — which is why the window, the switch and the prompt
+label all exist, and why `--db car.sqlite` is worth thinking about for a second before you type
+it. The file is a plain SQLite database; `sqlite3 car.sqlite "SELECT * FROM turn"` works, and
+`/store` is the same rows with the joins already made.
+
+---
+
 ## The same session, in a browser
 
 ```bash
@@ -659,7 +815,7 @@ through the same methods, so anything you can do here you can do there. It exist
 table cannot show perception decaying.** `/context` tells you an observation has 240 seconds left;
 the page shows the bar draining, and you watch the belief age out.
 
-Five panes:
+Six panes:
 
 | | |
 |---|---|
@@ -668,6 +824,13 @@ Five panes:
 | **The car** | signals that differ from the seeded vehicle, flashing when they move |
 | **Rules** | every rule with its verdict, its reason, and what suppressed it — the same thing the terminal prints, but standing still instead of scrolling past |
 | **Conversation** | the transcript, plus the pending question with a live countdown and **Yes** / **No** buttons |
+| **The record** | `/store` as a pane: heard · decided · did · said, newest first, for the last eight turns |
+
+The record pane is the only one that is not a fact about *now*. Everything above it is the
+running system — what perception believes this second, what the last observation decided — and
+all of it is replaced by the next event. That pane is what survives, so it is deliberately the
+quietest thing on the page: no colour of its own, nothing that moves, nothing to click. It reads
+the store and there is no route back — a page cannot write the record, only the door can.
 
 Those two buttons submit the utterances `好` and `不用`. They are not a shortcut past the consent
 lexicon — there is exactly one route to the car and the page uses it, the same one you type into at

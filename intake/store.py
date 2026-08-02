@@ -203,9 +203,16 @@ class Store:
         declares the column nullable for exactly this, and a row with a NULL text still says
         somebody spoke at that instant.
 
-        `decision.subject` on a ROUTE turn is the clause the router decided about, which is a
-        slice of the sentence. Scene turns are left alone: their subjects are rule ids, which
-        are ours and not anybody's speech.
+        `decision.subject` on a ROUTE or CONSENT turn is speech: the clause the router decided
+        about, or the word the driver answered a question with. Scene turns are left alone —
+        their subjects are rule ids, which are ours and not anybody's speech.
+
+        **Consent was missed here until `/store` showed it.** A consent turn writes no
+        `utterance` row, so once the payload goes its subject is the last verbatim copy of
+        what the driver said — and an hour after the sweep the record still read
+        `decided 好`. One word is a small leak and it is still a leak: the switch already
+        reaches that column through `spoken`, and retention has to reach everything the switch
+        does or the two disagree about what counts as speech.
 
         Both are scrubbed BEFORE the delete, while `raw_id` still points somewhere: the
         foreign keys are ON DELETE SET NULL, so the link is gone a statement later.
@@ -217,12 +224,13 @@ class Store:
         which is worse than dropping it. The row's absence is the record; a queue that far
         behind has already failed at something bigger than this.
         """
-        # Only route turns: `kind` is the one thing that distinguishes a subject that is speech
+        # By `kind`, because it is the one thing that distinguishes a subject that is speech
         # from a subject that is a rule id, and the store must not have to parse the string to
-        # find out which it is holding.
+        # find out which it is holding. Route and consent are the two kinds a person spoke.
         self.conn.execute(
             "UPDATE decision SET subject = '' WHERE turn_id IN "
-            f"(SELECT id FROM turn WHERE kind = 'route' AND raw_id IN ({self._EXPIRED}))",
+            f"(SELECT id FROM turn WHERE kind IN ('route', 'consent') "
+            f"AND raw_id IN ({self._EXPIRED}))",
             (now,))
         self.conn.execute(
             f"UPDATE utterance SET text = NULL WHERE raw_id IN ({self._EXPIRED})", (now,))
@@ -365,6 +373,57 @@ class Store:
             "VALUES (?,?,?,?,?,?)",
             (turn_id, subject, verdict, chosen, reason or "", suppressed_by or ""))
         return cur.lastrowid
+
+    # --- reads for a person ---------------------------------------------------------------
+    def recent_turns(self, limit: int = 10) -> list:
+        """The last turns, newest first, each with every decision it produced.
+
+        The read half of "why did the car do that". A turn says when, what triggered it and
+        what the driver heard; its decisions say what was considered and how it was judged.
+        What the car then DID is `operation_log`, which belongs to the car — see
+        `SqliteVehicle.operations_for_turn`, and `cli/session.py::recent_turns` for the join.
+        Two owners, one question, and the seam is `turn_id`.
+
+        Ordered `(at, id)` DESC, mirroring `pending`: rows can be written out of order by a
+        producer on its own clock, so `id` alone is not "newest" and `at` alone is not total.
+
+        **Every join is a LEFT JOIN, because a turn outlives what triggered it.** Retention
+        deletes the raw row and the schema's `ON DELETE SET NULL` leaves `raw_id` empty; an
+        inner join would then hide precisely the turns old enough to need looking up. The
+        answer is a turn with `heard = None`, which is a fact — the words are gone — and every
+        display of this has to say so rather than printing a blank.
+
+        `heard` prefers `utterance.text` over the raw payload because for a voice turn they
+        are the same sentence written twice, once bare and once inside a JSON object. A scene
+        turn has no utterance row, so it falls through to the payload verbatim: that IS the
+        column, and re-rendering it here would be a second account of one row.
+        """
+        rows = self.conn.execute(
+            "SELECT t.id, t.at, t.kind, t.reply, r.source, r.error, r.payload, u.text "
+            "FROM turn t "
+            "LEFT JOIN observation_raw r ON r.id = t.raw_id "
+            "LEFT JOIN utterance u ON u.raw_id = t.raw_id "
+            "ORDER BY t.at DESC, t.id DESC LIMIT ?", (int(limit),)).fetchall()
+        turns = [{"id": r["id"], "at": r["at"], "kind": r["kind"], "reply": r["reply"],
+                  "source": r["source"], "error": r["error"],
+                  # "" is the shape `--no-raw-capture` and the sweep leave behind, and it means
+                  # the same thing NULL does: not recorded. One value for one fact.
+                  "heard": r["text"] or r["payload"] or None,
+                  "decisions": []} for r in rows]
+        by_id = {t["id"]: t for t in turns}
+        if not by_id:
+            return turns
+        # One query for the whole page rather than one per turn. The ids are integers straight
+        # out of the query above, and they are still bound as parameters — a store read must
+        # not be the one place in this module that builds SQL out of values.
+        marks = ",".join("?" * len(by_id))
+        for d in self.conn.execute(
+                "SELECT turn_id, subject, verdict, chosen, reason, suppressed_by "
+                f"FROM decision WHERE turn_id IN ({marks}) ORDER BY id", tuple(by_id)):
+            by_id[d["turn_id"]]["decisions"].append(
+                {"subject": d["subject"], "verdict": d["verdict"], "chosen": d["chosen"],
+                 "reason": d["reason"], "suppressed_by": d["suppressed_by"]})
+        return turns
 
     # --- reads for Scene Context --------------------------------------------------------
     def newest_perception(self, key: str) -> Optional[dict]:

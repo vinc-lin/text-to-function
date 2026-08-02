@@ -201,6 +201,22 @@ def test_the_sweep_takes_every_copy_of_the_words(store):
     assert (row["verdict"], row["chosen"]) == ("high", "open_window")
 
 
+def test_the_sweep_takes_the_word_a_driver_consented_with(store):
+    """A consent turn writes no `utterance` row, so once the payload goes its subject is the
+    LAST verbatim copy of what the driver said. Missed until `/store` printed `decided 好` an
+    hour after the sweep had supposedly taken the words: the privacy switch already reaches
+    this column through `spoken`, and retention has to reach everything the switch does."""
+    rid = store.put_raw("mic", 100.0, '{"text": "好"}', expires_at=200.0)
+    tid = store.open_turn(rid, 100.0, "consent")
+    store.put_decision(tid, "好", "yes", "set_window_child_lock")
+    store.close_turn(tid, "已为您打开车窗儿童锁。")
+    store.sweep(now=201.0)
+    row = store.conn.execute("SELECT subject, verdict, chosen FROM decision").fetchone()
+    assert row["subject"] == ""
+    assert (row["verdict"], row["chosen"]) == ("yes", "set_window_child_lock"), \
+        "that consent was given, and to what, is not speech and stays"
+
+
 def test_the_sweep_leaves_a_rule_id_alone(store):
     """A scene decision's subject is a rule id. It is ours, it is not anybody's speech, and
     blanking it would delete the only thing that says which rule spoke."""
@@ -546,3 +562,91 @@ def test_retention_bounds_the_audit_trail_too(store):
     store.commit()
     store.apply_retention(now)
     assert [r[0] for r in store.conn.execute("SELECT id FROM turn")] == [keep]
+
+
+# --- reading it back -------------------------------------------------------------------------
+
+def test_recent_turns_is_newest_first(store):
+    """`(at, id)` DESC, mirroring `pending`'s `(at, id)`. A producer on its own clock writes
+    out of order, so the largest id is not always the newest turn."""
+    late = store.open_turn(None, at=300.0, kind="route")
+    early = store.open_turn(None, at=100.0, kind="scene")
+    middle = store.open_turn(None, at=200.0, kind="consent")
+    assert [t["id"] for t in store.recent_turns()] == [late, middle, early]
+
+
+def test_recent_turns_respects_the_limit(store):
+    for i in range(5):
+        store.open_turn(None, at=float(i), kind="route")
+    assert len(store.recent_turns(limit=2)) == 2
+
+
+def test_a_turn_arrives_with_every_decision_it_produced(store):
+    tid = store.open_turn(None, at=100.0, kind="scene")
+    store.put_decision(tid, "animal_ahead", "reject", reason="not above 5.0")
+    store.put_decision(tid, "rear_child_window_lock", "match", chosen="rear_child_window_lock",
+                       suppressed_by="outranked by animal_ahead")
+    store.close_turn(tid, "前方有动物，请注意。")
+
+    turn = store.recent_turns()[0]
+    assert turn["reply"] == "前方有动物，请注意。"
+    assert [(d["subject"], d["verdict"]) for d in turn["decisions"]] == [
+        ("animal_ahead", "reject"), ("rear_child_window_lock", "match")]
+    assert turn["decisions"][1]["suppressed_by"] == "outranked by animal_ahead"
+
+
+def test_the_words_come_from_the_utterance_row_when_there_is_one(store):
+    """Both columns hold the sentence for a voice turn — once bare, once inside a JSON object
+    — and the bare one is what a person reads."""
+    raw = store.put_raw("mic", 100.0, '{"text": "开车窗"}')
+    store.put_utterance(raw, 100.0, "开车窗")
+    store.open_turn(raw, 100.0, "route")
+    assert store.recent_turns()[0]["heard"] == "开车窗"
+
+
+def test_a_scene_turn_falls_through_to_the_payload(store):
+    """No utterance row: nobody said anything. The payload IS the column, printed as written."""
+    raw = store.put_raw("cabin_cam", 100.0, '{"key": "inside.rear_occupant"}')
+    store.open_turn(raw, 100.0, "scene")
+    assert store.recent_turns()[0]["heard"] == '{"key": "inside.rear_occupant"}'
+
+
+def test_a_turn_survives_the_words_that_caused_it(store):
+    """The LEFT JOIN, and the reason for it. Retention deletes the raw row and the schema's
+    ON DELETE SET NULL empties `raw_id`; an inner join would hide exactly the turns old enough
+    to be worth looking up."""
+    raw = store.put_raw("mic", 100.0, '{"text": "开车窗"}', expires_at=200.0)
+    store.put_utterance(raw, 100.0, "开车窗")
+    tid = store.open_turn(raw, 100.0, "route")
+    store.put_decision(tid, "开车窗", "high", chosen="open_window")
+    store.close_turn(tid, "已为您打开当前区域车窗。")
+    store.commit()
+    store.sweep(now=300.0)
+
+    turn = store.recent_turns()[0]
+    assert turn["id"] == tid and turn["heard"] is None, "the words are gone"
+    assert turn["reply"] == "已为您打开当前区域车窗。"
+    assert [d["verdict"] for d in turn["decisions"]] == ["high"], "the reasoning is not"
+
+
+def test_words_that_were_never_written_read_the_same_as_words_that_were_deleted(store):
+    """`--no-raw-capture` leaves '' where the sweep leaves NULL. Two spellings of one fact —
+    not recorded — and a display must not have to tell them apart to say so."""
+    quiet = Store(store.conn, raw_capture=False)
+    raw = quiet.put_raw("mic", 100.0, '{"text": "开车窗"}')
+    quiet.put_utterance(raw, 100.0, "开车窗")
+    quiet.open_turn(raw, 100.0, "route")
+    assert quiet.recent_turns()[0]["heard"] is None
+
+
+def test_a_raw_row_that_raised_carries_its_error_onto_the_turn(store):
+    """The turn itself just looks quiet. The error is on the row that arrived, and this is the
+    one read that puts the two beside each other."""
+    raw = store.put_raw("mic", 100.0, '{"text": "开车窗"}')
+    store.open_turn(raw, 100.0, "route")
+    store.mark_processed(raw, 101.0, error="RuntimeError: boom")
+    assert store.recent_turns()[0]["error"] == "RuntimeError: boom"
+
+
+def test_an_empty_store_reads_back_empty(store):
+    assert store.recent_turns() == []

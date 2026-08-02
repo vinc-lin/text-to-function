@@ -526,6 +526,34 @@ class Session:
              for o in self.scene.context.live(now).values()),
             key=lambda r: r.key)
 
+    # How many turns a hand tool shows by default. Small on purpose: this is the answer to
+    # "why did it just do that", and a screen of history is a worse answer than four turns.
+    STORE_TURNS = 6
+
+    def recent_turns(self, limit: int = STORE_TURNS) -> list[dict]:
+        """What the store recorded, newest first — heard, decided, did, said.
+
+        The whole of `/store` and of the browser's record pane, in one place, because the two
+        doors must not be able to show different histories of one session.
+
+        This is where the two halves of the record are joined. `intake.store` owns the turn and
+        its decisions; `sim` owns `operation_log` and therefore what the car actually did. Both
+        are asked here, by the object that already holds both, so neither module has to reach
+        into the other's tables. See `Store.recent_turns` and `SqliteVehicle.operations_for_turn`.
+
+        Plain dicts rather than a dataclass, unlike `ContextRow`: every field goes to the page
+        as JSON unchanged, and a display type would have to be flattened again on the way out.
+        Nothing here derives anything from the session's clock either — these are rows as
+        written, and the stamps are the stamps.
+        """
+        turns = self.intake.store.recent_turns(limit)
+        for turn in turns:
+            turn["operations"] = [
+                {"function": op["function"], "outcome": op["outcome"],
+                 "error": op["error"], "detail": op["detail"]}
+                for op in self.car.operations_for_turn(turn["id"])]
+        return turns
+
     # --- the world, not the car ----------------------------------------------------------
     def set_signal(self, entity: str, attribute: str, value):
         """Tell the simulator what the car is DOING. Returns the number written.
