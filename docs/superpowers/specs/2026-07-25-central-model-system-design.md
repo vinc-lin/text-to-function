@@ -319,6 +319,8 @@ Two items in this bucket deserve the stakeholder's attention:
 - **The Spec-3 learned confidence gate is not wired into anything.** `ConfidenceModelGate` and
   `ExecutionConfidence` are constructed only in tests; all four arm builders hardcode the plain
   `ConfidenceGate`. Its published frontier came from an ad-hoc run whose driver was never committed.
+  *(As built, 2026-08-04: this finding was acted on — the code and its tests were deleted rather
+  than wired, the plain gate having measured better in Spec 4. The frontier stays in `RESULTS.md`.)*
 
 ---
 

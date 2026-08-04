@@ -9,7 +9,7 @@ Qwen3-0.6B).
 > **Status:** Specs 1–9 complete, plus work that came after and is deliberately **not** a numbered
 > spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`, then **the
 > store**, then a **second witness** for the end-to-end suite
-> ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1138 automated tests + 74
+> ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1127 automated tests + 74
 > model-backed**, and **one red case** — the count went 11 → 9 → 1 → 0 and back to 1, opened by the
 > model tier rather than left behind: a strict `xfail` pinning a ranking weakness the real embedder
 > exposed and the shipped gate contains ([§15][tier]). Every red case is `xfail(strict=True)`, so
@@ -299,7 +299,7 @@ docs/
 ## Setup & test
 
 Core deps: `numpy pyyaml pytest`. Real models add `transformers torch` (embedder + LLM),
-`scikit-learn joblib` (classifier + confidence model), `xgrammar` (constrained decoding).
+`scikit-learn joblib` (the Arm-D classifier), `xgrammar` (constrained decoding).
 
 ```bash
 python3 -m pytest -q            # core suite (no network / no model)

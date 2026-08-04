@@ -45,13 +45,13 @@ Measured results are **not** here. `docs/TEST_REPORT.md` owns current figures an
 Neither is a defect; both are the design record differing from what got built, which is worth
 knowing before you go looking for a file.
 
-- **Spec 3's learned confidence gate is built and unwired.** `ConfidenceModelGate` and
-  `ExecutionConfidence` exist, are trained (`models/confidence.joblib`) and are
-  integration-tested — in `research/`, which does not ship. **No eval arm constructs them**;
-  all four builders in `eval/arms.py` use the plain threshold `ConfidenceGate`. The safety
-  frontier in `RESULTS.md` is reproducible in principle and is not shipped behaviour. Spec 4's
-  deterministic arm subsequently reported *better* safety with the plain gate, so the open
-  question is whether to wire it or delete it.
+- **Spec 3's learned confidence gate no longer exists.** `ConfidenceModelGate`,
+  `ExecutionConfidence`, their 11 tests and the trained model were deleted on 2026-08-04. No eval
+  arm had ever constructed one — all four builders in `eval/arms.py` use the plain threshold
+  `ConfidenceGate` — and Spec 4's deterministic arm reported *better* safety with the plain gate
+  than the learned one's best published point. **The spec and its measured frontier stay**:
+  `RESULTS.md` is the record, and deleting an implementation does not delete evidence. Read the
+  spec as a documented experiment, not as a description of code.
 - **Spec 4 proposed `t2f/llm/plan_prompt.py`; it was never created.** The per-span plan path
   lives in `t2f/pipeline.py::_llm_plan`, and the prompt building stayed in `t2f/llm/prompt.py`.
   The spec also cites `Span.attached_context`, which no longer exists anywhere in the tree.

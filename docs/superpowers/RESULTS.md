@@ -135,6 +135,11 @@ Spec 2 turns the retrieval router into an executing system: **guaranteed-valid, 
 > produced the frontier below was never committed. Treat this section as a reproducible-in-principle
 > research result, not as shipped behaviour. Spec 4's deterministic arm C subsequently reported
 > *better* safety with the plain gate (OOD 0.000 / incorrect 0.031 / P95 73 ms).
+>
+> **Code removed 2026-08-04.** `research/safety/`, its 11 tests and `models/confidence.joblib` are
+> deleted. **The frontier below stands as measured** — this section is the record, and removing an
+> implementation does not remove evidence. What was deleted was an unwired mechanism whose presence
+> implied it ran, on an approach the plain gate had already beaten. `git log` has the code.
 
 ## The safety/coverage frontier (learned gate, deterministic HIGH-only, **zero LLM**)
 
