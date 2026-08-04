@@ -111,7 +111,9 @@ Two honest limits:
 - **Mixed-utterance recall ceiling.** On the plan path, when at least one `ACTION` and one `CONTEXT`
   span coexist, a genuine command that the lexical filter mislabels `CONTEXT` is **silently
   dropped** — never decided (`t2f/pipeline.py:198`), never executed, and never mentioned in the
-  reply, because `Span.attached_context` (`t2f/segment.py:49`) has no production reader. This
+  reply, because `Span.attached_context` (`t2f/segment.py:49` — the field no longer exists
+  anywhere in the tree as of 2026-08-04; this paragraph describes the code as it stood on
+  2026-07-25) has no production reader. This
   affects 10 of the 36 multi-intent test rows and caps set-recall at 0.8611 against 0.8194 achieved.
   The root cause is narrow and fixable: 8 rows lack an `_OP_CUES` entry (放 / 切到 / 切成 / 喷 / 息 /
   往上调) and 2 lack an alias-index target (HUD, 屏幕). Utterances with *zero* action spans are
