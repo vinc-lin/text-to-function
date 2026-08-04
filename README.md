@@ -1,6 +1,6 @@
 # Central Model — In-Vehicle Text-to-Function Router
 
-**中文版 →** [`docs/OVERVIEW.zh.md`](docs/OVERVIEW.zh.md)
+**中文版 →** [`README.zh.md`](README.zh.md) · **更长的中文系统介绍 →** [`docs/OVERVIEW.zh.md`](docs/OVERVIEW.zh.md)
 
 Turns a colloquial **Chinese** in-car utterance into validated vehicle-control function calls,
 dispatches them, and returns **one spoken reply**. **Retrieval-first and LLM-optional** — a small LLM
