@@ -8,7 +8,7 @@ Qwen3-0.6B).
 
 > **Status:** Specs 1–9 complete, plus work that came after and is deliberately **not** a numbered
 > spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`, then **the
-> store** ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1135 automated tests + 74
+> store** ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1138 automated tests + 74
 > model-backed**, and **one red case** — the count went 11 → 9 → 1 → 0 and back to 1, opened by the
 > model tier rather than left behind: a strict `xfail` pinning a ranking weakness the real embedder
 > exposed and the shipped gate contains ([§15][tier]). Every red case is `xfail(strict=True)`, so
@@ -41,7 +41,7 @@ something several turns ago. `python3 -m ui` is the same session in a browser, o
 | Step | Status | Note |
 |---|---|---|
 | 1 — user speaks | **upstream** | no audio/ASR here; the Central Model consumes an ASR transcript |
-| 2 — segmented intent recognition | **covered** | multi-intent set-recall 0.819; OOD & context false-action 0.000 |
+| 2 — segmented intent recognition | **covered** | multi-intent set-recall 0.8194; OOD & context false-action 0.000 |
 | 3 — execute | **covered in simulation** | validation + plan barrier + a SQLite-simulated car whose state each operation actually changes; a refusal writes nothing and is never spoken as success |
 | 4a — report success | **covered** | one composed reply on every path, metric-enforced; a boolean confirmation states which way it went (`已为您打开车窗儿童锁。` / `已为您关闭车窗儿童锁。`). 10 of 92 cards still confirm without naming the value chosen — nine enum switches and `spray_washer` ([TEST_REPORT §10](docs/TEST_REPORT.md)) |
 | 4b — explain failure cause | **covered** | all three categories are spoken with their cause — didn't understand, value unusable (`目标温度只能设置在16到32度之间。`), the car refused (`空调尚未开启。`); `reply_cause_coverage` **1.000** over 15 annotations |
@@ -148,7 +148,8 @@ not as shipped behaviour.
 Full analysis and the safety/coverage frontier are in
 **[`docs/superpowers/RESULTS.md`](docs/superpowers/RESULTS.md)** — a per-spec record written as each
 spec shipped and left as written; each feature's design reasoning lives under
-`docs/superpowers/specs/`.
+**[`docs/superpowers/specs/`](docs/superpowers/specs/README.md)**, whose index says what each
+one covers and which of them describe code that actually exists.
 
 ## After Spec 9: what the numbered specs do not cover
 

@@ -153,6 +153,13 @@ subset in order and produces one consolidated `ClarificationRequest` (reusing mu
 `PendingState`) for the remainder. Depends on: `validate`, `state`, `execute`.
 
 ### `t2f/llm/plan_prompt.py` + `t2f/llm/schema.py` — new / extended
+
+> **As built (noted 2026-08-04):** `t2f/llm/plan_prompt.py` was never created. The design below
+> was superseded during implementation by the per-span confirm-or-reject approach — the single
+> multi-action call failed on Qwen3-0.6B — so the plan path lives in
+> `t2f/pipeline.py::_llm_plan` and prompt building stayed in `t2f/llm/prompt.py`. The pivot is
+> recorded in `RESULTS.md`'s Spec 4 section. Kept as written: the rejected shape is the reason
+> the built one looks the way it does.
 Multi-action plan prompt (full utterance + per-span candidate cards, thinking disabled) and an
 xgrammar schema `{"actions": [ {name ∈ offered ∪ __reject__, parameters, relative?} ]}`. Reuses the
 Spec-2 constrained-decoding path; falls back to strict-parse + one repair when constrained decoding
