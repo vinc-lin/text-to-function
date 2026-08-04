@@ -27,7 +27,12 @@ ALLOWED = {
     "t2f":      set(),                              # the router core depends on nothing
     "scene":    {"t2f"},
     "sim":      {"t2f"},
-    "intake":   {"t2f", "scene", "sim"},            # the composition root
+    # The composition root, and `t2f` is deliberately NOT on its list. CLAUDE.md calls this
+    # load-bearing — intake is handed a pipeline rather than building one, which is how it can
+    # be the root without depending on the thing it routes to — and until now only prose said
+    # so while this map permitted the import. If intake ever genuinely needs `t2f`, that is a
+    # design decision someone writes here with a reason, not a line that slips into a module.
+    "intake":   {"scene", "sim"},
     "eval":     {"t2f", "scene", "sim", "intake", "cli", "research"},
     "cli":      {"t2f", "scene", "sim", "intake"},
     "ui":       {"t2f", "scene", "sim", "intake", "cli"},
