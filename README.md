@@ -1,318 +1,321 @@
 # Central Model — In-Vehicle Text-to-Function Router
 
-The **Central Model** turns a colloquial **Chinese** in-car utterance into concrete vehicle-control
-function calls (name + validated parameters), dispatches them, and returns **one spoken reply**. It is
-**retrieval-first and LLM-optional**: a small LLM is used only as a fallback, never as the primary
-router. Targets on-device deployment (Qualcomm SA8797 / "87 platform", Qwen3-Embedding-0.6B +
-Qwen3-0.6B).
+**中文版 →** [`docs/OVERVIEW.zh.md`](docs/OVERVIEW.zh.md)
 
-> **Status:** Specs 1–9 complete, plus work that came after and is deliberately **not** a numbered
-> spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`, then **the
-> store**, then a **second witness** for the end-to-end suite
-> ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1127 automated tests + 74
-> model-backed**, and **one red case** — the count went 11 → 9 → 1 → 0 and back to 1, opened by the
-> model tier rather than left behind: a strict `xfail` pinning a ranking weakness the real embedder
-> exposed and the shipped gate contains ([§15][tier]). Every red case is `xfail(strict=True)`, so
-> closing a gap makes the suite say so rather than waiting to be asked.
-> No performance number has been measured on the 87 platform. Start with **[the Central Model system
-> design](docs/superpowers/specs/2026-07-25-central-model-system-design.md)**; current measured
-> figures live in **[`docs/TEST_REPORT.md`](docs/TEST_REPORT.md)**.
+Turns a colloquial **Chinese** in-car utterance into validated vehicle-control function calls,
+dispatches them, and returns **one spoken reply**. **Retrieval-first and LLM-optional** — a small LLM
+is a fallback, never the primary router. Targets on-device deployment (Qualcomm SA8797,
+Qwen3-Embedding-0.6B + Qwen3-0.6B).
 
-## Try it yourself
+## One turn
+
+Captured from a real session — shipped gate, **no LLM**:
+
+```
+[C · shipped · S] > 副驾温度调到26度
+
+  recognised   set_temperature{temperature: 26.0, position: passenger}   band=HIGH
+  executed     climate.passenger/temperature   24.0 → 26.0
+  reply        已将副驾温度设置为26°C。
+```
+
+Four things are visible there, and each is a claim the repo defends: the utterance became a
+**concrete function with validated parameters**, the gate rated it **confident enough to act**, a row
+in the vehicle database **really moved**, and the driver got **one sentence naming what happened**.
+
+## What it is
+
+```mermaid
+flowchart LR
+  ASR["ASR / wake word<br/>not here"] -.->|"transcript"| R
+  subgraph CM["Central Model — this repo"]
+    direction TB
+    R["t2f — Pipeline.route(utterance)<br/>reactive: the driver speaks"]
+    S["scene — SceneEngine.observe(percept)<br/>proactive: the cabin is watched"]
+    X{"executor.execute(ToolCall)<br/>the only path to the car"}
+    R --> X
+    S -->|"only after the driver consents"| X
+  end
+  X --> CAR[("the car<br/>sim/ — SQLite, can refuse<br/>or a real bus adapter")]
+  R -.->|"one reply"| TTS["TTS<br/>not here"]
+  S -.-> TTS
+```
+
+**Two entry points, one door to the car.** The router answers the driver; the Scene Engine speaks
+first when the cabin warrants it. They share no code path and meet only at `executor.execute` — which
+is why validation, preconditions, limits and the operation log cannot be bypassed by either.
+
+## What is real, and what is not
+
+| | status |
+|---|---|
+| ASR, wake word, TTS | **not here** — the Central Model consumes a transcript and returns text |
+| the router, the gate, the reply | **real, ships** |
+| the LLM fallback | **real, optional** — recommended **off** for a vehicle; see [Which build ships](#which-build-ships) |
+| the Scene Engine | **real, ships** — a second entry point, not a router change |
+| the car | **simulated** — `sim/` is SQLite behind the same seam a real bus adapter would use |
+| the 92-function catalog | a **demonstration** catalog across 10 domains, not a production one |
+| on-device (SA8797) | **designed, not built** — no figure here was measured on the target |
+
+## Try it
 
 ```bash
-python3 -m cli
+python3 -m cli          # terminal; first start loads models (~1 min)
+python3 -m ui           # the same session in a browser, on :8770
 ```
 
-Type Chinese, watch the workflow run against a simulated car — what it recognised, the row that
-moved in the vehicle database, and what the driver would hear. Switch the LLM and the confidence
-gate mid-session to compare the two candidate builds against the same car. `/store` prints what the
-system recorded on the way — what it heard, decided, did and said — which is how you ask why it did
-something several turns ago. `python3 -m ui` is the same session in a browser, on :8770 — the same
-methods behind a different door, six panes, and a perception TTL that drains while you watch, which
-is the one thing a text table cannot show. Clicking a turn there opens it into the rows it became:
-in this architecture the dataflow and the database are the same thing, so the path an input took
-through the system *is* a path through five tables, ids and all. **[Guide →](docs/TRYING_IT.md)**
+`--fake` starts instantly with no model, but routing is then **meaningless** — it exists to check
+plumbing. `--no-llm`, `--gate permissive` and `--db car.sqlite` switch the build, the gate, and
+whether the car survives the run. **[Full guide →](docs/TRYING_IT.md)**
 
-## The business workflow
+### The browser
 
-1. The user **speaks** a command in the car.
-2. The Central Model performs **segmented intent recognition** on the utterance.
-3. The **corresponding operations are executed**.
-4. The system **feeds back the result** in simple dialogue — on success, the completed action; on
-   failure, the specific cause.
-
-| Step | Status | Note |
-|---|---|---|
-| 1 — user speaks | **upstream** | no audio/ASR here; the Central Model consumes an ASR transcript |
-| 2 — segmented intent recognition | **covered** | multi-intent set-recall 0.8194; OOD & context false-action 0.000 |
-| 3 — execute | **covered in simulation** | validation + plan barrier + a SQLite-simulated car whose state each operation actually changes; a refusal writes nothing and is never spoken as success |
-| 4a — report success | **covered** | one composed reply on every path, metric-enforced; a boolean confirmation states which way it went (`已为您打开车窗儿童锁。` / `已为您关闭车窗儿童锁。`). 10 of 92 cards still confirm without naming the value chosen — nine enum switches and `spray_washer` ([TEST_REPORT §10](docs/TEST_REPORT.md)) |
-| 4b — explain failure cause | **covered** | all three categories are spoken with their cause — didn't understand, value unusable (`目标温度只能设置在16到32度之间。`), the car refused (`空调尚未开启。`); `reply_cause_coverage` **1.000** over 15 annotations |
-| 87-platform performance | **not benchmarked** | all figures are dev-machine (x86 + discrete GPU) |
-
-Every figure in that table is measured, and **[`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) is where
-they are maintained** — it carries the denominators, the re-measurement dates, and what each number
-does *not* establish.
-
-### Scope boundary
+Takes the CLI's flags minus `--scene-llm`, plus `--port`. Not a second system — `ui/__main__.py`
+builds its session through `cli.session`, so anything you can do there you can do here.
 
 ```
- ┌───────┐   text    ┌──────────── Central Model (this repo) ────────────┐   text   ┌───────┐
- │  ASR  │──────────▶│  Pipeline.route(utterance: str) -> RouteResult    │─────────▶│  TTS  │
- └───────┘           └───────────────────────┬──────────────────────────┘          └───────┘
-  not here                                   │ execute(ToolCall) -> dict            not here
-                                             ▼
-                       vehicle bus adapter — not here. Behind the seam: `sim/` (a SQLite
-                       car that really changes state and can refuse) or `MockExecutor`
++-------------------+-------------------+-------------------+
+| Perception        | Vehicle           | Rules             |
+|  a TTL bar        |  sensed signals,  |  every rule, its  |
+|  draining, and    |  their age, and   |  verdict, and     |
+|  confidence vs    |  the bus toggle   |  what suppressed  |
+|  a rule's bands   |                   |  it               |
+|                   +-------------------+                   |
+|                   | The car           |                   |
+|                   |  what moved,      |                   |
+|                   |  flashing         |                   |
++-------------------+-------------------+-------------------+
+| Conversation   transcript, pending question, Yes / No     |
++-----------------------------------------------------------+
+| The record     heard - decided - did - said. Click a turn.|
++-----------------------------------------------------------+
 ```
 
-## Why
+It exists because **a text table cannot show perception decaying** — the page draws the TTL draining
+and the confidence sitting *between* a rule's floor and its threshold, so a near-miss reads as a
+position rather than two numbers you compare in your head. **Clicking a turn opens it into the rows
+it became** (`GET /trace/:id`): here the dataflow and the database are the same object, so the path
+an input took *is* a path through five tables, ids and all.
 
-The naïve approach — hand every utterance to an LLM to pick a tool — is slow, hallucination-prone, and
-hard to run on an automotive SoC. This project shows that **strong embedding retrieval + a calibrated
-confidence gate** can route most requests correctly with **zero LLM calls**, reserve a small LLM for
-genuinely ambiguous cases, and — critically for a safety-critical system — **abstain rather than
-execute the wrong thing.**
+Three things worth knowing:
 
-## Pipeline
+- **The Yes / No buttons submit the utterances `好` and `不用`** — not a shortcut past the consent
+  lexicon. There is one route to the car and the page uses it.
+- **What the model *performs* goes through `ACTIONS`** (`observe · say · clock · reset · scene_llm`);
+  the simulator's own knobs are a disjoint `CONTROLS` (`set_signal · set_bus`), with a test asserting
+  they never overlap. The Vehicle slider writes signals **no function can write** — hence a control,
+  not an action.
+- **The clock alone cannot make a signal stale.** The page's poll pumps the bus; stop the bus first.
+
+## How a turn is routed
+
+Normalize, segment into spans labelled ACTION or CONTEXT, embed, retrieve by max-sim over multiple
+prototypes per card, rescore — then the gate decides what may happen. **Retrieval targets a concrete
+function, never a domain**, so a wrong domain guess cannot remove the right function from the pool:
+
+```mermaid
+flowchart TB
+  C["scored candidates"] --> O{"did an out-of-domain<br/>prototype win?"}
+  O -->|yes| LOW
+  O -->|no| F{"is top1 above the floor?"}
+  F -->|no| LOW["LOW — refuse.<br/>never executes"]
+  F -->|yes| M{"is top1 high enough,<br/>AND does it beat the<br/>runner-up by the margin?"}
+  M -->|yes| HIGH["HIGH — deterministic extraction"]
+  M -->|no| MED["MEDIUM — the LLM's job,<br/>or a dead end without one"]
+  HIGH --> V["strict schema validation"]
+  MED -->|"constrained decoding"| V
+  V --> E["execute"]
+```
+
+A multi-intent utterance then passes a **plan barrier** — validate the whole plan, execute the valid
+subset — and the turn composes **one** reply: confirmations joined, at most one clarification.
+
+**No thresholds are drawn above, deliberately**: the class defaults, the shipped `config.yaml` and
+`--gate permissive` are three different triples, so any number would be wrong for two of them. The
+shape is what is stable — **both paths reconverge on the same validator**, so attaching the LLM
+widens what reaches the validator, never what reaches the car.
+
+**The margin is the interesting clause.** `top1` asks "did anything match?"; the margin asks "did one
+thing win?" Over 92 cards with near-twins — `set_screen_brightness` against `set_dashboard_brightness`
+— the right function routinely wins by too little to act on. Precision over coverage, deliberately,
+and what it costs is [measured][tier].
+
+## The car can say no
+
+`sim/` is a SQLite vehicle behind an injectable `execute(ToolCall) -> ExecResult` seam. **Rows are
+signals**, `(entity, attribute)` — not functions — so `open_window` and `set_window_position` move the
+same physical window instead of the car holding two contradictory beliefs about it.
 
 ```
-utterance (ASR transcript)
-  → normalize → segment into spans, label ACTION / CONTEXT
-  → embed (Qwen3-Embedding-0.6B) → retrieve (multi-prototype, max-sim)  ∪  classifier candidates
-  → hybrid rescore → confidence gate
-      high   → deterministic param extraction → strict schema validation → execute → template reply
-      medium → Qwen3-0.6B single-shot, JSON-schema-constrained tool-call → validate → execute / clarify
-      low    → clarify / reject (never execute)
-  → plan barrier (multi-intent): validate the whole plan, then execute the valid subset
-  → compose ONE spoken reply: confirmations sentence-joined + at most one clarification
+execute(tool_call)
+  |
+  +-- not in the catalog? ------------------> refuse: unknown_function
+  +-- resolves to no signals? --------------> succeed, logged  (lock_doors, pause_playback)
+  +-- device unavailable? ------------------> refuse: {entity} 当前不可用
+  +-- precondition unmet? ------------------> refuse: 空调尚未开启。
+  +-- outside the signal's physical limits?  refuse: 目标温度只能设置在16到32度之间。
+  |     (which may be tighter than the card's: a card says 0-100, a jammed window says 0-60)
+  +-- write every signal in one transaction, and log the attempt either way
 ```
 
-Execution dispatches through an injectable `execute(ToolCall) -> ExecResult` seam. `sim/` implements
-it as a **SQLite-backed simulated vehicle**; a real car swaps in a bus adapter and nothing else changes.
+A refusal is the only source of the third failure category — *I tried and the car refused*. The
+driver hears the vehicle's own reason and the car is left exactly as it was.
 
-**The DB is the car.** Rows are *signals* — `(entity, attribute)`, e.g. `window.driver/window_position`
-— not functions, so `open_window` and `set_window_position` move the same physical window instead of
-the car holding two contradictory beliefs about it. An operation resolves to signals, checks device
-availability, then preconditions, then the signal's **physical limits** (which may be tighter than the
-card's: a card says a window is 0–100, a jammed window is 0–60), writes every signal in one
-transaction, and logs the attempt either way.
+## The proactive half
 
-That makes the simulator able to **refuse** — which is the only source of requirement 4b's third
-failure category, "I tried and the car refused". The driver hears `空调尚未开启。` rather than a
-generic apology, and the car is left exactly as it was.
+```mermaid
+sequenceDiagram
+  participant W as world
+  participant E as SceneEngine
+  participant D as driver
+  participant X as executor
+  W->>E: a percept (camera, bus, or you typing one)
+  E->>E: evaluate every rule — match, near-miss, or not applicable
+  E->>E: arbitrate by priority, recording cooldown and what suppressed what
+  E->>D: at most one sentence, chosen from a fixed table
+  D->>E: an answer
+  Note over E: accepted only on exact membership<br/>of a closed affirmative set
+  E->>X: the proposal, unchanged
+```
+
+Three invariants make this safe to leave on. The engine **never authors** what the car says — the
+sentence comes from a table, so a rule cannot invent a promise. Consent is **exact set membership**,
+never a substring: `好` is a yes, `好像有点热` is not. And a rule that only warns proposes nothing:
+`animal_ahead` notifies and stops, because no vehicle function makes an animal in the road safe.
+
+**Silence is the safe default.** A stale signal, a missing model, a failed validation, an exception
+mid-evaluation — all degrade to saying nothing, with the reason recorded so the silence can explain
+itself.
+
+## The database is the record
+
+```mermaid
+flowchart LR
+  P["any producer — ASR, a camera,<br/>a CAN reader in C++<br/>writes a row and calls nothing"] --> RAW[("observation_raw<br/>processed_at NULL = pending")]
+  RAW -->|"process_pending(now)"| K{"the payload type<br/>is its kind"}
+  K --> U[("utterance")]
+  K --> PER[("perception<br/>append-only, newest per key")]
+  K --> T[("turn<br/>route | scene | consent")]
+  T --> D[("decision<br/>verdict, chosen, reason, suppressed_by")]
+  T --> OP[("operation_log<br/>turn_id — what the car did")]
+```
+
+`utterance`, `perception` and `turn` are three **siblings** of one raw row, and the deletion rules
+say why. A parsed row loses its `raw_id` when retention takes the words (`ON DELETE SET NULL`) but
+survives, so a drive stays replayable at the belief level after the transcript is gone. A `decision`
+cannot outlive its `turn` (`CASCADE`) — a reason with no turn records something that did not happen.
+An `operation_log` row keeps its row and loses only the link: an operation the car really performed
+must outlive its explanation.
+
+**Inputs therefore become an interface** — a vision process on another accelerator integrates by
+writing a row, not by importing anything — and a run can be asked *why* an hour later.
 
 ## Which build ships
 
-`eval/arms.py` builds four configurations, and they differ materially in safety. **Arm C
-(deterministic, zero LLM) is the recommended candidate build**: it is the only arm with OOD
-false-execution and context false-action at 0.000, and it is also the cheapest on the target SoC.
+`eval/arms.py` builds four configurations and they differ materially in safety. **Arm C
+(deterministic, zero LLM) is the recommended candidate build** — the only one in this table with OOD
+false-execution and context false-action at 0.000, and the cheapest on the target SoC.
 
 | arm | LLM | OOD false-exec | context false-action | incorrect-exec | P95 |
 |---|---|---|---|---|---|
 | **C** (recommended) | none | **0.000** | **0.000** | **0.000** | 73 ms |
-| C_llm | Qwen3-0.6B on medium band | 0.321 | 0.857 | 0.285 | ~1085 ms |
+| C_llm | Qwen3-0.6B on the medium band | 0.321 | 0.857 | 0.285 | ~1085 ms |
 
-Arm C_llm buys parameter accuracy (param exact-match 0.72 vs 0.41, e2e 0.62 vs 0.13) at a safety cost
-that is not acceptable for a vehicle without further work. Arm D adds a supervised classifier for no
-measured recall gain and a 184 MB artifact; it should not enter a vehicle image.
+> The one table here that restates measured figures, because the recommendation *is* this document's
+> thesis and a link cannot carry it. Rates owned by [`TEST_REPORT §5`](docs/TEST_REPORT.md);
+> latencies by `RESULTS.md` Spec 4 and Spec 5. **Arm C's row is current; C_llm's predates the
+> extractor and negation fixes** — read the gap as a ceiling, not a current reading.
 
-Arm C's row is current — re-measured after the extractor and negation fixes and again after every
-change since ([TEST_REPORT §5](docs/TEST_REPORT.md)). **Arm C_llm's has not been re-measured since**;
-its row predates those fixes, so read the gap as a ceiling on the difference, not a current reading.
+C_llm buys parameter accuracy at a safety cost not acceptable for a vehicle without further work.
+Arm D adds a classifier for no measured recall gain and a 184 MB artifact. **Arms S / S_llm are not a
+third and fourth candidate** — they score the Scene Engine, which has no path into `Pipeline.route()`,
+so attaching or detaching its fallback cannot move any number above.
 
-**Arms S and S_llm are not a third and fourth candidate here.** They score the Scene Engine (Spec 9),
-a second top-level entry point that never routes an utterance — a build picks one row from the table
-above *and*, separately, whether the proactive layer ships with its fallback attached. `scene/` has
-no path into `Pipeline.route()`, so attaching or detaching the scene fallback cannot move any number
-in that table.
+## Layering
 
-## The specs
+```mermaid
+flowchart TB
+  ui["ui/ — dev tool"] --> cli["cli/ — dev tool"]
+  ui --> scene
+  cli --> intake["intake/ — the composition root"]
+  intake --> scene["scene/"]
+  intake --> sim["sim/"]
+  scene --> t2f["t2f/ — the router core"]
+  sim --> t2f
+```
 
-| Spec | What | Key result (gold test split) |
-|---|---|---|
-| **1 — Deterministic router** | retrieval + hybrid scoring + calibrated gate + rule param-extraction + strict validation + eval harness | recall@1 0.82 / @3 0.91; OOD & incorrect execution ≈0; P95 **72 ms**; LLM-ceiling e2e **0.845** |
-| **2 — LLM fallback + classifier + multi-turn** | Qwen3-0.6B via **xgrammar**-constrained decoding; supervised classifier (Arm D); bounded multi-turn; `__ood__` prototypes + reject option | schema-valid **0.995**, param-match **0.63**, e2e **0.46**, multi-turn follow-up **1.0**; but executing the medium band via LLM leaks OOD (0.32) |
-| **3 — Accuracy & safety hardening** | **learned execution-confidence gate** (LR over cheap routing features) → tunable safety/coverage frontier | safe point (τ=0.7, no LLM): OOD **0.107** (3×↓), incorrect **0.067** (5×↓), coverage 0.51, ~275 ms; balanced point hits avg-LLM-calls **0.447 (≤0.5)** |
-| **4 — Multi-intent, context-aware routing** | lexical actionability filter (context suppression), plan-then-execute barrier, relative-op resolution against injectable mock vehicle state, multi-intent eval axis | multi-intent set-recall **0.819**; deterministic point: context & OOD false-action **0.000**, incorrect **0.031**, P95 **73 ms** |
-| **5 — Utterance-level reply** | one spoken `RouteResult.reply` composed from what the router already produced; four contract metrics enforce it every eval run | coverage / single-question / non-empty all **1.000** on both arms; zero routing change (arm C byte-identical to baseline) |
-| **7 — SQLite vehicle simulator** | the DB *is* the car: signal-keyed state, physical limits, preconditions, transactional writes, an operation log — and the ability to **refuse** | operations demonstrably change state (24.0 → 25.0); a refusal changes nothing and is spoken with its cause; red count **11 → 9** |
-| **6 — End-to-end test cases** | 36 e2e cases asserting *both* what was dispatched and the exact reply, 11 of them red (`xfail(strict=True)`); 54 new eval rows carrying the failure taxonomy gold never had | `invalid_no_execution_rate` **1.000** (22 rows) — nothing unusable reaches the vehicle; `reply_exact_match` **0.081** (37 rows) — the measured distance to the workflow; gold metrics byte-identical |
-| **8 — Interactive session** | `python3 -m cli` — type Chinese, watch the four workflow steps run against a session-persistent simulated car; LLM and confidence gate switchable mid-session without resetting the car | no metric: a hand-testing tool, not a shipped path. 37 tests, most over the pure `Turn → text` renderer |
-| **9 — Scene Engine** | a **proactive subsystem beside the router, not a router change**: perception → declarative rules → arbitration → at most a spoken question, with the driver's consent the only path to the car; constrained LLM fallback for near-misses; its own arms **S** / **S_llm** | `scene_false_speech_rate` and `scene_false_consent_rate` **0.000**, `scene_recall` **1.000**, on both arms. Gold is hand-authored — it encodes our beliefs about perception, not measured perception |
+`t2f/` depends on **nothing** — every measured number comes from it, and a dependency on `scene` or
+`sim` would make the eval harness a witness to something other than the router. `intake/` is the
+composition root and **does not import `t2f`**: it is handed a pipeline, which is how it can be the
+root without depending on what it routes to. `ui/` reaches the root through `cli/` — the browser is
+the terminal session behind a different door.
 
-Each row records what that spec measured **when it shipped**; current figures live in
-**[`docs/TEST_REPORT.md`](docs/TEST_REPORT.md)**, which also states what the suite does *not* cover.
+`tests/test_layering.py` asserts this rather than trusting the diagram. `eval/` is omitted above: it
+may import almost everything, including a documented `research ↔ eval` cycle the test names rather
+than hides. `pyproject.toml` ships `t2f eval sim scene intake`; `cli`, `ui` and `research` are
+excluded on purpose.
 
-Note: the Spec-3 *learned* gate is measured in `RESULTS.md` but is **not wired into any eval arm** —
-all four arms construct the plain threshold `ConfidenceGate`. Treat its frontier as a research result,
-not as shipped behaviour.
+## After Spec 9
 
-Full analysis and the safety/coverage frontier are in
-**[`docs/superpowers/RESULTS.md`](docs/superpowers/RESULTS.md)** — a per-spec record written as each
-spec shipped and left as written; each feature's design reasoning lives under
-**[`docs/superpowers/specs/`](docs/superpowers/specs/README.md)**, whose index says what each
-one covers and which of them describe code that actually exists.
+Four pieces landed after the numbered specs — three changing how facts reach the system, one changing
+what the test suite may claim. All four carry the same proof obligation: arm C and arm S come back
+**byte-identical**, so no routing decision and no rule outcome moved.
 
-## After Spec 9: what the numbered specs do not cover
+**Sensed signals.** The car holds signals it *knows* and nothing *commands* — `speed_kph` first. They
+declare a `max_age`, past which a signal reads as **absent**, identical to one the car does not hold,
+so every condition on it rejects and names both ages. Actuated signals never expire: a window
+position holds until commanded otherwise, while a speed is a measurement whose absence means the bus
+stopped.
 
-Four pieces of work landed after Spec 9. None is a numbered spec: the first three change how facts
-reach the system rather than adding a capability to the router, and the fourth changes what the test
-suite is allowed to claim. All four carry the same proof obligation — `run_eval --arm C` and
-`run_scene_eval --arm S` come back **byte-identical**, so no routing decision and no rule outcome
-moved.
+**`intake/` — one door in, one view out.** Every input is one `Input(source, at, payload)` whose
+payload type *is* its kind. `WorldView` is a single read-through view over perception **and** the
+car, and **owns nothing** — a hub that stored would rebuild the contradictory-beliefs problem
+signal-keyed state exists to prevent.
 
-**Sensed signals, and a second rule.** The car now holds a category of signal it *knows* and nothing
-*commands*, starting with `vehicle.all/speed_kph`. `sim/` had until then modelled exactly what the
-92 cards can write, which was right until a rule needed to read something no card produces — so the
-seed guard widened from "exactly the writable signals" to "the writable signals **plus** the declared
-sensed ones", both directions still enforced. A third closed condition form, `SignalAbove`, expresses
-motion without giving `Signal` an operator, and `animal_ahead` (notify-only — no vehicle function
-makes an animal in the road safe) is the second shipped rule. It outranks the child-lock question,
-which is the first time arbitration has had anything real to arbitrate. Setting a sensed signal is a
-**simulator control**, not a Central Model action: `/signal vehicle.all/speed_kph=45` in the CLI and a
-Vehicle pane in the browser, both on a `CONTROLS` table kept disjoint from `ACTIONS`.
+**The store.** The account of a run used to sit in three places, two of which died with the process.
+Now every input is a row and every decision lands beside it, so an execution cannot be untraceable —
+and a test asserts it. Live on the `:memory:` default; the file-backed vehicle path waits on the
+conditions in [TEST_REPORT §13–14](docs/TEST_REPORT.md).
 
-**`intake/` — one door in, one view out.** Three inputs arrived through three unrelated doors with
-three different disciplines. Now every input is one `Input(source, at, payload)` whose payload type
-*is* its kind, from a source that declares what it may produce, and `WorldView` is a single
-read-through view over perception **and** the car — owning nothing, because a hub that stored would
-rebuild the two-contradictory-beliefs problem signal-keyed state exists to prevent. `intake/` is
-packaged: it is the composition root that used to live only in `cli/session.py`, which `pyproject`
-deliberately does not ship.
-
-That unblocked the defect underneath both: `updated_at` had been written on every signal write since
-Spec 7 and **read by nothing**, so a dead bus and a stationary car were indistinguishable to every
-rule. Sensed signals now declare a `max_age`; past it a signal reads as **absent** — identical to one
-the car does not hold — so every condition on it rejects and names both ages
-(`vehicle.all/speed_kph is stale (40.0s > 2.0s)`). Actuated signals never expire, and the asymmetry is
-the point: a window position holds until something commands it otherwise, while a speed is a
-measurement whose absence means the bus stopped. The bus is **pumped, not threaded** (SQLite thread
-affinity forces it), so a live bus is fresh whenever you look and `/bus off` is what makes age
-accumulate.
-
-**The store — the database is the record.** The account of a run used to sit in three places and two
-of them died with the process: perception was an in-memory dict, voice was a return value, and *why*
-— the bands, the rule verdicts, what suppressed what — was a field the next event cleared. So there
-was nothing to replay, audit or generate from, and no way to ask an hour later why the car did
-something. Now every input is written to `observation_raw` as it arrives and what the owning module
-decided lands beside it in `turn` and `decision`, with `operation_log` carrying the turn that caused
-each operation — so an execution cannot be untraceable, and a test asserts it. Two things follow.
-**Inputs become an interface:** a vision process on another accelerator, a CAN reader in C++ or an
-ASR service integrates by writing a row and calling nothing, and `process_pending(now)` runs it
-through the identical dispatch. **And a run can be asked why** — `/store` in the terminal, a pane in
-the browser, or SQL. Outputs stay synchronous returns *as well as* rows, so the reply the driver is
-waiting for keeps its latency. Persisting voice on a vehicle is a data-protection decision as much as
-an engineering one, so raw payloads carry a retention window and `--no-raw-capture` never writes them
-at all; the parsed layer survives both, which keeps a drive replayable at the belief level after the
-words are gone. This is **built and measured before the shipped runtime adopts it** — the vehicle
-path still keeps perception in memory, and what the store costs, on what machine, and what would have
-to be true to flip it are in [TEST_REPORT §13](docs/TEST_REPORT.md).
-
-**The model tier — a second witness for the end-to-end suite.** All 120 end-to-end tests ran on
-`FakeEmbedder`, and for the files routing over the real 92-card catalog that was circular: with no
-semantics behind it, many plausible utterances misroute, so the cases had to be probed against the
-catalog and **kept only because the stand-in reached the function they name**. Their own docstrings
-said so. A suite whose inputs are chosen by the system under test measures the selection. Those
-bodies now run a second time — unchanged, not one assertion moved — on the real Qwen3 embedder under
-the shipped fusion weights, marked `model` and deselected by default. The tier is worth its cost for
-a reason found by mutation rather than by reading: zero the embedder and **10 of 29 cases still
-passed** under the default weights, because the coarse lexical signals alone clear the permissive
-gate. Under the shipped weights, one does. It caught two things immediately — a test whose
-MEDIUM-forcing threshold silently depended on which embedder ran, and a genuine ranking weakness on
-a confusable pair, contained by the shipped gate and now pinned by the one strict `xfail`. It also
-turns what that gate costs into an assertion: of 22 utterances the shipped build recognises
-correctly, **10 execute**, and the score floor rejects none of them — the whole cost is the margin
-requirement. [§15][tier] carries the figures and what the tier still does not establish.
+**The model tier.** Every end-to-end test ran on the stand-in embedder, and for the real-catalog
+files that was circular: the utterances had been kept **only because the stand-in reached the
+function they name**. A suite whose inputs are chosen by the system under test measures the
+selection. Those bodies now run again, unchanged, on the real embedder under the shipped weights. Its
+value was established by mutation rather than a green run — with the embedder zeroed, **10 of 29
+cases still passed** under the default weights and **one** under the shipped ones. [§15][tier] has
+the rest.
 
 Design and reasoning: **[sensed signals](docs/superpowers/specs/2026-07-31-sensed-signals-design.md)** ·
 **[intake and WorldView](docs/superpowers/specs/2026-08-01-intake-and-worldview-design.md)** ·
 **[the store](docs/superpowers/specs/2026-08-02-the-store-design.md)** ·
 **[the model tier](docs/superpowers/specs/2026-08-02-the-model-tier-design.md)**.
 
-## Layout
+## Where things live
 
-```
-t2f/          # the shipped runtime. Everything here is reachable from Pipeline.route().
-  normalize · segment · embed · retrieve · score · gate · params/ · validate · respond · pipeline
-  llm/        # LLMClient interface + xgrammar-constrained Qwen3-0.6B + FakeLLMClient (Spec 2)
-  actionability · state · plan   # context filter, mock vehicle state, plan barrier (Spec 4)
-  reply.py    # utterance-level reply composition (Spec 5)
-  execute.py  # MockExecutor — the vehicle-adapter seam, stub only
-  build.py    # the ONE place a Pipeline is assembled — the session and eval arms C/C_llm share it,
-              # so what you try by hand and what the metrics describe cannot drift apart
-sim/          # the simulated vehicle — the thing on the FAR side of the executor seam
-  schema.sql · vehicle.py · mapping.py · seed.py · executor.py
-              # rows are signals: those the 92 cards can write, PLUS the declared sensed ones the
-              # car knows and nothing commands (speed), which carry a max_age and can go stale
-              # the same database holds the store: observation_raw · perception · utterance ·
-              # turn · decision, plus turn_id on operation_log and a schema_version
-  migrate.py  # schema.sql is CREATE TABLE IF NOT EXISTS, so it cannot CHANGE an existing table
-              # — every shape change to a --db file that already exists goes through here
-  environment.py  # scenarios that write observation_raw rows and let process_pending do the
-              # rest, so generated and real inputs travel exactly the same path
-scene/        # the proactive Scene Engine (Spec 9) — a SECOND top-level entry, packaged like t2f/
-  context.py · rules.py · engine.py · consent.py · llm.py · speech.py
-              # perception in, at most a question out; consent is the only path to the car, and
-              # the two subsystems meet only at execute(ToolCall). It cannot reach Pipeline.route()
-              # two rules ship: animal_ahead (notify-only) and rear_child_window_lock (asks)
-intake/       # one door in, one view out — packaged, and the composition root a real integration
-  envelope.py · sources.py · hub.py · ingest.py
-              # every input arrives as one Input(source, at, payload) and is handed to the module
-              # that owns the decision; WorldView is the single read-through view over perception
-              # AND the car, which is what lets a sensed signal go stale instead of being believed
-              # forever. Assembling router + scene engine + car used to live only in cli/session.py
-  store.py    # the ONLY module that reads or writes the store's tables. Every input recorded,
-              # every decision written down, retention and the --no-raw-capture switch, and the
-              # read behind /store. Liveness is NOT decided here — see its docstring
-cli/          # python3 -m cli — the hand-testing session (Spec 8); see docs/TRYING_IT.md
-  __main__.py · session.py · render.py    # loop · utterance→Turn · pure Turn→text
-              # a dev tool: run from the repo, NOT packaged
-              # (pyproject ships t2f/ eval/ sim/ scene/ intake/)
-ui/           # python3 -m ui — the same session in a browser; see docs/TRYING_IT.md
-  state.py · actions.py · server.py · page.html
-              # snapshot · the five actions and two controls · routes · one self-contained page
-              # stdlib only, single-threaded on purpose, and NOT packaged either
-research/     # measured, NOT shipped and NOT packaged — see research/README.md
-  safety/     # Spec-3 learned confidence gate (no arm constructs it; the plain gate measures better)
-  classify/   # Spec-2 char-ngram + embedding classifiers (Arm D only; no measured recall gain)
-  dialog.py   # Spec-2 multi-turn follow-up resolver (never reachable from Pipeline.route())
-data/
-  catalog/    # 92 function cards across 10 domains (YAML)
-  eval/       # hand-verified gold.jsonl (328) + context_negatives.jsonl (14)
-              # + generated silver.jsonl + followups.jsonl
-              # + scenes.jsonl (20) — hand-authored scene events, beliefs about perception
-  ood/        # 100 out-of-domain / chitchat negative prototypes
-eval/         # all PRD metrics, pluggable arms (C, baseline, C+LLM, D), runner
-              # run_scene_eval.py + scene_metrics.py — the S / S_llm arms, a separate runner
-              # arms C and C_llm now call t2f/build.py; baseline and D stay here — this package
-              # builds experiments, t2f/build.py builds the product (closes gap 6)
-docs/
-  TRYING_IT.md   # the hands-on guide to the interactive session
-  TEST_REPORT.md # THE HOME OF CURRENT MEASURED NUMBERS — the 131 end-to-end cases, what a driver
-                 # actually hears, and what is NOT covered
-  OVERVIEW.zh.md # the system in two minutes, in Chinese — hand-written
-  superpowers/   # specs, plans, RESULTS.md (per-spec records, kept as each spec shipped)
-```
+Nine numbered specs plus four later pieces, each with its own design document. One home per fact:
+
+- [`docs/superpowers/specs/`](docs/superpowers/specs/README.md) — every spec, indexed by what it
+  covers and **which of them describe code that exists** (two do not).
+- [`docs/TEST_REPORT.md`](docs/TEST_REPORT.md) — **current measured figures**, their denominators, and
+  what each does *not* establish. Newest section wins; earlier ones are dated records.
+- [`docs/superpowers/RESULTS.md`](docs/superpowers/RESULTS.md) — the per-spec record, written as each
+  spec shipped and left as written.
+- [`docs/TRYING_IT.md`](docs/TRYING_IT.md) — how to drive it by hand and what to look for.
 
 ## Setup & test
 
-Core deps: `numpy pyyaml pytest`. Real models add `transformers torch` (embedder + LLM),
-`scikit-learn joblib` (the Arm-D classifier), `xgrammar` (constrained decoding).
+Core deps: `numpy pyyaml pytest`. The real models add `transformers torch`; `scikit-learn joblib` are
+for the Arm-D classifier and `xgrammar` for constrained decoding. Python ≥ 3.10.
 
 ```bash
-python3 -m pytest -q            # core suite (no network / no model)
-python3 -m pytest -m model -q   # the model tier: the end-to-end suite re-run on the real embedder,
-                                # plus the model-backed unit tests (Qwen3; need GPU/network)
+python3 -m pytest -q            # 1128 selected — no network, no model, ~45 s
+python3 -m pytest -m model -q   # the other 74: the e2e suite re-run on the real embedder (needs GPU)
 ```
 
-The default suite routes through `FakeEmbedder`, a hashed-n-gram stand-in with no semantics. The
-second tier re-runs the end-to-end bodies on the real Qwen3 embedder under the shipped fusion
-weights, so those claims are about the router that ships rather than about the stand-in — what it
-proves, and what it still does not, is **[TEST_REPORT §15][tier]**.
-
-[tier]: docs/TEST_REPORT.md#15-update--2026-08-02-later-still-the-model-tier-and-the-circularity-it-removes
+**1202 tests, partitioned** — not 1128 plus 74. The default suite routes through `FakeEmbedder`, a
+hashed-n-gram stand-in with **no semantics**; the model tier re-runs the end-to-end bodies on the real
+embedder under the shipped weights, so those claims are about the router that ships. What that proves,
+and what it still does not, is **[TEST_REPORT §15][tier]**.
 
 ## Run the evaluation
 
@@ -321,46 +324,37 @@ proves, and what it still does not, is **[TEST_REPORT §15][tier]**.
 python3 -m eval.run_eval --arm C --dataset data/eval/gold.jsonl --fake --permissive
 
 # Real models (calibrate the gate on dev, report on test):
-python3 -m eval.run_eval --arm C        --dataset data/eval/gold.jsonl --calibrate   # Spec 1
-python3 -m research.classify.train --embedding                                            # Spec 2: train classifiers
-python3 -m eval.run_eval --arm C_llm    --dataset data/eval/gold.jsonl --calibrate   # Spec 2: + LLM fallback
-python3 -m eval.run_eval --arm D        --dataset data/eval/gold.jsonl --calibrate   # Spec 2: classifier + LLM
+python3 -m eval.run_eval --arm C     --dataset data/eval/gold.jsonl --calibrate
+python3 -m eval.run_eval --arm C_llm --dataset data/eval/gold.jsonl --calibrate
+python3 -m eval.run_eval --arm D     --dataset data/eval/gold.jsonl --calibrate  # needs
+python3 -m research.classify.train --embedding                                   # these first
 
-# The Scene Engine has its own runner and its own gold file; no embedder on this path:
-python3 -m eval.run_scene_eval --arm S        # Spec 9: rules only
-python3 -m eval.run_scene_eval --arm S_llm    # Spec 9: + the constrained fallback
+# The Scene Engine has its own runner and gold file; no embedder on this path:
+python3 -m eval.run_scene_eval --arm S        # or --arm S_llm
 ```
 
-The real embedder/LLM run via `transformers` (GPU if available). Note: on some boxes a mismatched
-`torchvision` breaks `sentence-transformers`; the transformers backend neutralizes it
-(`sys.modules["torchvision"] = None`) and is the default.
+On some boxes a mismatched `torchvision` breaks `sentence-transformers`; the transformers backend
+neutralises it (`sys.modules.setdefault("torchvision", None)`, `t2f/embed.py:74`) and is the default.
 
-## Design principles
-
-- **Retrieval-first, LLM-optional** — the target is a concrete function, never a domain name; a wrong
-  domain guess never removes the correct function from the candidate pool.
-- **Never execute low-confidence** — the LLM's output flows through the *same* strict validator as the
-  deterministic path; the confidence gate abstains rather than execute the wrong function.
-- **On-device-friendly** — small models, brute-force cosine over a small catalog, logistic regression
-  over cheap features; the FP `transformers` path mirrors the eventual GGUF/llama.cpp on-device port.
 
 ## Performance posture — read this before quoting a number
 
 Every latency figure in this repository was measured on an **x86 dev machine with a discrete GPU
-(CUDA, FP16)**. None was measured on SA8797. Memory is **not measured at all** — there is no RSS,
-peak, cold-start, power, thermal, or soak-stability figure anywhere. The `<1500 ms` budget the docs
+(CUDA, FP16)**. None was measured on SA8797. Memory is **not measured at all** — no RSS, peak,
+cold-start, power, thermal or soak-stability figure exists anywhere. The `<1500 ms` budget the docs
 compare against is a self-set engineering inference, not an 87-platform standard.
 
 ## Deferred: SA8797 on-device port
 
-The design ports to Qualcomm SA8797 via GGUF/llama.cpp on the Hexagon NPU (GBNF replaces xgrammar for
-constrained decoding) plus on-device latency/memory/crash benchmarking. It is **deferred** pending the
-target hardware + Qualcomm toolchain; `GgufEmbedder` / `GgufLLMClient` mark the seam and currently
-raise `NotImplementedError`. Quantisation (Q8_0 / Q4_0) is designed but not implemented — both models
-run FP16 today.
+Ports via GGUF/llama.cpp on the Hexagon NPU (GBNF replaces xgrammar), plus on-device latency, memory
+and crash benchmarking. **Deferred** pending the hardware and the Qualcomm toolchain;
+`GgufEmbedder` / `GgufLLMClient` mark the seam and raise `NotImplementedError`. Quantisation
+(Q8_0 / Q4_0) is designed, not implemented — both models run FP16 today.
 
 ---
 
 *Built with [Claude Code](https://claude.com/claude-code) via iterative brainstorm → spec → TDD plan →
 subagent-driven execution → adversarial review cycles. Evaluation numbers are measured, not estimated;
 gaps vs. targets are documented with levers rather than hidden.*
+
+[tier]: docs/TEST_REPORT.md#15-update--2026-08-02-later-still-the-model-tier-and-the-circularity-it-removes

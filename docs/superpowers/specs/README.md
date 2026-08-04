@@ -17,7 +17,7 @@ Measured results are **not** here. `docs/TEST_REPORT.md` owns current figures an
 |---|---|---|
 | 1 | [Deterministic router + eval harness](2026-07-20-text-to-function-routing-design.md) | yes — `t2f/`, `eval/` |
 | 2 | [LLM fallback, classifier, multi-turn](2026-07-21-spec2-llm-classifier-multiturn-design.md) | yes — `t2f/llm/`, xgrammar-constrained |
-| 3 | [Accuracy & safety hardening](2026-07-22-accuracy-safety-hardening-design.md) | **built, not wired** — see below |
+| 3 | [Accuracy & safety hardening](2026-07-22-accuracy-safety-hardening-design.md) | **no** — the code was deleted 2026-08-04; see below |
 | 4 | [Multi-intent, context-aware routing](2026-07-24-multi-intent-context-aware-routing-design.md) | yes — `t2f/plan.py`, `t2f/actionability.py` |
 | 5 | [Utterance-level reply](2026-07-25-utterance-level-reply-design.md) | yes — `t2f/respond.py` |
 

@@ -1,8 +1,7 @@
 # research/ — measured, not shipped
 
 Code that produced numbers in [`docs/superpowers/RESULTS.md`](../docs/superpowers/RESULTS.md) but is
-**not on the runtime path** and is **not packaged** (see `pyproject.toml`: only `t2f*` and `eval*` are
-included).
+**not on the runtime path** and is **not packaged** (see `pyproject.toml`, which ships `t2f* eval* sim* scene* intake*`).
 
 It lives here rather than being deleted because deleting code should not delete evidence. The
 measurements stay valid; this is the code behind them.
