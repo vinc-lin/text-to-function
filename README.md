@@ -8,7 +8,8 @@ Qwen3-0.6B).
 
 > **Status:** Specs 1–9 complete, plus work that came after and is deliberately **not** a numbered
 > spec — **sensed signals** and the `animal_ahead` scene, then `intake/` and `WorldView`, then **the
-> store** ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1138 automated tests + 74
+> store**, then a **second witness** for the end-to-end suite
+> ([below](#after-spec-9-what-the-numbered-specs-do-not-cover)). **1138 automated tests + 74
 > model-backed**, and **one red case** — the count went 11 → 9 → 1 → 0 and back to 1, opened by the
 > model tier rather than left behind: a strict `xfail` pinning a ranking weakness the real embedder
 > exposed and the shipped gate contains ([§15][tier]). Every red case is `xfail(strict=True)`, so
@@ -27,8 +28,11 @@ Type Chinese, watch the workflow run against a simulated car — what it recogni
 moved in the vehicle database, and what the driver would hear. Switch the LLM and the confidence
 gate mid-session to compare the two candidate builds against the same car. `/store` prints what the
 system recorded on the way — what it heard, decided, did and said — which is how you ask why it did
-something several turns ago. `python3 -m ui` is the same session in a browser, on :8770.
-**[Guide →](docs/TRYING_IT.md)**
+something several turns ago. `python3 -m ui` is the same session in a browser, on :8770 — the same
+methods behind a different door, six panes, and a perception TTL that drains while you watch, which
+is the one thing a text table cannot show. Clicking a turn there opens it into the rows it became:
+in this architecture the dataflow and the database are the same thing, so the path an input took
+through the system *is* a path through five tables, ids and all. **[Guide →](docs/TRYING_IT.md)**
 
 ## The business workflow
 
@@ -153,10 +157,11 @@ one covers and which of them describe code that actually exists.
 
 ## After Spec 9: what the numbered specs do not cover
 
-Three pieces of work landed after Spec 9. None is a numbered spec — they change how facts reach the
-system rather than adding a capability to the router — and all three carry the same proof obligation:
-`run_eval --arm C` and `run_scene_eval --arm S` come back **byte-identical**, so no routing decision
-and no rule outcome moved.
+Four pieces of work landed after Spec 9. None is a numbered spec: the first three change how facts
+reach the system rather than adding a capability to the router, and the fourth changes what the test
+suite is allowed to claim. All four carry the same proof obligation — `run_eval --arm C` and
+`run_scene_eval --arm S` come back **byte-identical**, so no routing decision and no rule outcome
+moved.
 
 **Sensed signals, and a second rule.** The car now holds a category of signal it *knows* and nothing
 *commands*, starting with `vehicle.all/speed_kph`. `sim/` had until then modelled exactly what the
@@ -205,9 +210,26 @@ words are gone. This is **built and measured before the shipped runtime adopts i
 path still keeps perception in memory, and what the store costs, on what machine, and what would have
 to be true to flip it are in [TEST_REPORT §13](docs/TEST_REPORT.md).
 
+**The model tier — a second witness for the end-to-end suite.** All 120 end-to-end tests ran on
+`FakeEmbedder`, and for the files routing over the real 92-card catalog that was circular: with no
+semantics behind it, many plausible utterances misroute, so the cases had to be probed against the
+catalog and **kept only because the stand-in reached the function they name**. Their own docstrings
+said so. A suite whose inputs are chosen by the system under test measures the selection. Those
+bodies now run a second time — unchanged, not one assertion moved — on the real Qwen3 embedder under
+the shipped fusion weights, marked `model` and deselected by default. The tier is worth its cost for
+a reason found by mutation rather than by reading: zero the embedder and **10 of 29 cases still
+passed** under the default weights, because the coarse lexical signals alone clear the permissive
+gate. Under the shipped weights, one does. It caught two things immediately — a test whose
+MEDIUM-forcing threshold silently depended on which embedder ran, and a genuine ranking weakness on
+a confusable pair, contained by the shipped gate and now pinned by the one strict `xfail`. It also
+turns what that gate costs into an assertion: of 22 utterances the shipped build recognises
+correctly, **10 execute**, and the score floor rejects none of them — the whole cost is the margin
+requirement. [§15][tier] carries the figures and what the tier still does not establish.
+
 Design and reasoning: **[sensed signals](docs/superpowers/specs/2026-07-31-sensed-signals-design.md)** ·
 **[intake and WorldView](docs/superpowers/specs/2026-08-01-intake-and-worldview-design.md)** ·
-**[the store](docs/superpowers/specs/2026-08-02-the-store-design.md)**.
+**[the store](docs/superpowers/specs/2026-08-02-the-store-design.md)** ·
+**[the model tier](docs/superpowers/specs/2026-08-02-the-model-tier-design.md)**.
 
 ## Layout
 
