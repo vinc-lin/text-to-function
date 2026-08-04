@@ -6,7 +6,7 @@ fallback, never the primary router. A proactive Scene Engine sits beside it.
 ## Commands
 
 ```bash
-python3 -m pytest -q          # ~45s, 1138 tests. Model tests deselected by default.
+python3 -m pytest -q          # ~45s, 1127 tests. Model tests deselected by default.
 python3 -m pytest -m model -q # ~45s, 74 tests, needs GPU. Mostly the e2e suite re-run on the
                               # real embedder — end-to-end routing is witnessed there, nowhere else.
 python3 -m cli                # hand-testing session against a simulated car
